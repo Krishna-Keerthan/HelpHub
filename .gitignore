@@ -47,6 +47,7 @@ data/
 .cache/
 huggingface/
 models/
+!backend/app/db/models/
 
 # ---------- Logs ----------
 *.log
