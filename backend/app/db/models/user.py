@@ -7,6 +7,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     String,
+    UniqueConstraint,
     func,
     text,
     true,
@@ -22,6 +23,8 @@ class User(Base):
     __table_args__ = (
         CheckConstraint("role IN ('admin', 'agent')", name="role"),
         CheckConstraint("email = lower(email)", name="email_lowercase"),
+        UniqueConstraint("tenant_id", "email"),
+        UniqueConstraint("tenant_id", "id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -30,7 +33,7 @@ class User(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
     )
-    email: Mapped[str] = mapped_column(String(320), unique=True)
+    email: Mapped[str] = mapped_column(String(320))
     password_hash: Mapped[str] = mapped_column(String)
     role: Mapped[str] = mapped_column(String(16))
     is_active: Mapped[bool] = mapped_column(Boolean, server_default=true())
