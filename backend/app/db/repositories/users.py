@@ -39,3 +39,16 @@ async def create(
     await session.flush()
     await session.refresh(user)
     return user
+
+
+async def list_by_tenant(
+    session: AsyncSession, tenant_id: uuid.UUID, *, limit: int, offset: int
+) -> list[User]:
+    result = await session.execute(
+        select(User)
+        .where(User.tenant_id == tenant_id)
+        .order_by(User.created_at, User.id)
+        .limit(limit)
+        .offset(offset)
+    )
+    return list(result.scalars())

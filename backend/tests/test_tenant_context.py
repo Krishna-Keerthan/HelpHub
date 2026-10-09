@@ -3,8 +3,15 @@ import uuid
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
+from sqlalchemy.ext.asyncio import (
+    AsyncConnection,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
+from app.core.config import settings
+from app.db import tenant_context
 from app.db.tenant_context import set_tenant, tenant_transaction
 from tests.conftest import MakeTenant, SeededTenant
 
@@ -97,3 +104,29 @@ async def test_tenant_transaction_cannot_write_other_tenant(
                 ),
                 {"tid": b["id"]},
             )
+
+
+async def test_pooled_connection_does_not_leak_tenant_context(
+    two_tenants_seeded: dict[str, SeededTenant], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    a = two_tenants_seeded["tenant_a"]
+    engine = create_async_engine(settings.database_url, pool_size=1, max_overflow=0)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(tenant_context, "AsyncSessionLocal", maker)
+    try:
+        async with tenant_transaction(a["id"]) as session:
+            seen = (
+                await session.execute(text("SELECT count(*) FROM users"))
+            ).scalar_one()
+            assert seen == 1
+
+        # Same single pooled connection, no tenant context set.
+        async with maker() as plain:
+            leaked = (
+                await plain.execute(text("SELECT count(*) FROM users"))
+            ).scalar_one()
+            setting = (await plain.execute(text(CURRENT_TENANT))).scalar_one()
+        assert leaked == 0
+        assert setting in (None, "")
+    finally:
+        await engine.dispose()

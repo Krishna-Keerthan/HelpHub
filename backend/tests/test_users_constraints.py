@@ -2,6 +2,7 @@ import uuid
 from collections.abc import AsyncIterator
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
@@ -24,6 +25,11 @@ async def db_session() -> AsyncIterator[AsyncSession]:
             await session.close()
             await trans.rollback()
     await engine.dispose()
+
+
+def constraint_name(exc: IntegrityError) -> str | None:
+    cause = exc.orig.__cause__ if exc.orig is not None else None
+    return getattr(cause, "constraint_name", None)
 
 
 async def add_tenant(session: AsyncSession) -> Tenant:
@@ -52,6 +58,13 @@ async def test_same_email_in_two_tenants_succeeds(db_session: AsyncSession) -> N
     await add_user(db_session, acme, "sam@example.com")
     await add_user(db_session, globex, "sam@example.com")
 
+    for tenant in (acme, globex):
+        await set_tenant(db_session, tenant.id)
+        count = await db_session.execute(
+            text("SELECT count(*) FROM users WHERE email = 'sam@example.com'")
+        )
+        assert count.scalar_one() == 1
+
 
 async def test_duplicate_email_in_one_tenant_rejected(
     db_session: AsyncSession,
@@ -59,12 +72,14 @@ async def test_duplicate_email_in_one_tenant_rejected(
     acme = await add_tenant(db_session)
     await add_user(db_session, acme, "sam@example.com")
 
-    with pytest.raises(IntegrityError):
+    with pytest.raises(IntegrityError) as exc_info:
         await add_user(db_session, acme, "sam@example.com")
+    assert constraint_name(exc_info.value) == "uq_users_tenant_id_email"
 
 
 async def test_uppercase_email_rejected(db_session: AsyncSession) -> None:
     acme = await add_tenant(db_session)
 
-    with pytest.raises(IntegrityError):
+    with pytest.raises(IntegrityError) as exc_info:
         await add_user(db_session, acme, "Sam@Example.com")
+    assert constraint_name(exc_info.value) == "ck_users_email_lowercase"
