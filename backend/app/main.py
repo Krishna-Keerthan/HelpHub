@@ -4,10 +4,12 @@ from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.auth import router as auth_router
 from app.db.health import ping
 from app.db.session import get_session
 
 app = FastAPI(title="HelpHub")
+app.include_router(auth_router)
 
 
 @app.get("/health")

@@ -80,7 +80,7 @@ async def make_tenant(seed_password_hash: str) -> AsyncIterator[MakeTenant]:
         *, role: str = "admin", is_active: bool = True, slug: str | None = None
     ) -> SeededTenant:
         slug = slug or f"t-{uuid.uuid4().hex[:12]}"
-        email = f"user@{slug}.test"
+        email = f"user@{slug}.example.com"
         async with engine.begin() as conn:
             tenant_id = (
                 await conn.execute(
