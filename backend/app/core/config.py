@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     database_url: str
     migration_database_url: str
     app_env: str = "local"
+    jwt_secret: str
+    jwt_algorithm: str = "HS256"
+    access_token_minutes: int = 60
 
 
 settings = Settings()
