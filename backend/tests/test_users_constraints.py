@@ -8,6 +8,7 @@ from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
 from app.db.models import Tenant, User
+from app.db.tenant_context import set_tenant
 
 
 @pytest.fixture
@@ -25,7 +26,7 @@ async def db_session() -> AsyncIterator[AsyncSession]:
     await engine.dispose()
 
 
-async def make_tenant(session: AsyncSession) -> Tenant:
+async def add_tenant(session: AsyncSession) -> Tenant:
     slug = f"t-{uuid.uuid4().hex[:12]}"
     tenant = Tenant(name=slug, slug=slug)
     session.add(tenant)
@@ -37,31 +38,33 @@ def make_user(tenant: Tenant, email: str) -> User:
     return User(tenant_id=tenant.id, email=email, password_hash="x", role="agent")
 
 
-async def test_same_email_in_two_tenants_succeeds(db_session: AsyncSession) -> None:
-    acme = await make_tenant(db_session)
-    globex = await make_tenant(db_session)
+async def add_user(session: AsyncSession, tenant: Tenant, email: str) -> None:
+    """Insert a user under the tenant's RLS context and flush it."""
+    await set_tenant(session, tenant.id)
+    session.add(make_user(tenant, email))
+    await session.flush()
 
-    db_session.add_all(
-        [make_user(acme, "sam@example.com"), make_user(globex, "sam@example.com")]
-    )
-    await db_session.flush()
+
+async def test_same_email_in_two_tenants_succeeds(db_session: AsyncSession) -> None:
+    acme = await add_tenant(db_session)
+    globex = await add_tenant(db_session)
+
+    await add_user(db_session, acme, "sam@example.com")
+    await add_user(db_session, globex, "sam@example.com")
 
 
 async def test_duplicate_email_in_one_tenant_rejected(
     db_session: AsyncSession,
 ) -> None:
-    acme = await make_tenant(db_session)
-    db_session.add(make_user(acme, "sam@example.com"))
-    await db_session.flush()
+    acme = await add_tenant(db_session)
+    await add_user(db_session, acme, "sam@example.com")
 
-    db_session.add(make_user(acme, "sam@example.com"))
     with pytest.raises(IntegrityError):
-        await db_session.flush()
+        await add_user(db_session, acme, "sam@example.com")
 
 
 async def test_uppercase_email_rejected(db_session: AsyncSession) -> None:
-    acme = await make_tenant(db_session)
-    db_session.add(make_user(acme, "Sam@Example.com"))
+    acme = await add_tenant(db_session)
 
     with pytest.raises(IntegrityError):
-        await db_session.flush()
+        await add_user(db_session, acme, "Sam@Example.com")
