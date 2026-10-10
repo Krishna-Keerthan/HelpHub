@@ -46,6 +46,12 @@ Day 1 left models + migrations 0001/0002 (no RLS). New tests (`test_security.py`
   4. /users endpoints; tests/isolation green; full pytest + ruff.
 - Future sessions start by reading CLAUDE.md and docs/plans/day-02.md.
 
+## Decisions made during implementation
+- JWT carries sub (user id), tid, iat, exp. No role claim; role is read from the DB row on every request.
+- Duplicate email: flush happens in users_repo.create, called inside the service try/except, mapped to 409.
+- RLS violations are detected by sqlstate 42501.
+- Login failure paths all run verify_password against DUMMY_HASH and raise the same InvalidCredentials.
+
 ## Open questions (resolved above)
 1. JWT `sub`: user id (recommended) vs email? Tests currently use email.
 2. GUC name: `app.tenant_id` (your spec) — OK to change tests from `app.current_tenant_id`?
