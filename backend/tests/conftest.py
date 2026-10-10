@@ -125,8 +125,14 @@ async def owner_conn() -> AsyncIterator[AsyncConnection]:
 
 
 @pytest.fixture
-async def app_conn() -> AsyncIterator[AsyncConnection]:
-    """Connection as the runtime role (DATABASE_URL); subject to RLS."""
+async def app_conn(make_tenant: MakeTenant) -> AsyncIterator[AsyncConnection]:
+    """Connection as the runtime role (DATABASE_URL); subject to RLS.
+
+    Depends on ``make_tenant`` only for teardown order: pytest tears down
+    dependents first, so this connection's transaction (and any row locks it
+    holds) always ends before make_tenant deletes the tenants, whatever order
+    a test lists its fixtures in.
+    """
     engine = create_async_engine(settings.database_url, poolclass=NullPool)
     try:
         async with engine.connect() as conn:

@@ -20,11 +20,7 @@ Tenants = dict[str, SeededTenant]
 
 
 async def use_tenant(conn: AsyncConnection, tenant_id: uuid.UUID) -> None:
-    """Session-level tenant context, committed so a later rollback keeps it.
-
-    Tests list ``app_conn`` as their last fixture so it is torn down (and its
-    transaction ended) before make_tenant deletes the tenants.
-    """
+    """Session-level tenant context, committed so a later rollback keeps it."""
     await conn.execute(text(SET_TENANT), {"tid": str(tenant_id)})
     await conn.commit()
 
@@ -43,7 +39,7 @@ async def owner_value(
 
 
 async def test_documents_insert_for_other_tenant_fails_rls(
-    two_tenants_seeded: Tenants, app_conn: AsyncConnection
+    app_conn: AsyncConnection, two_tenants_seeded: Tenants
 ) -> None:
     ta, tb = two_tenants_seeded["tenant_a"], two_tenants_seeded["tenant_b"]
     await use_tenant(app_conn, ta["id"])
@@ -60,10 +56,10 @@ async def test_documents_insert_for_other_tenant_fails_rls(
 
 
 async def test_documents_update_other_tenant_affects_zero_rows(
+    app_conn: AsyncConnection,
     owner_conn: AsyncConnection,
     two_tenants_seeded: Tenants,
     make_document: DocumentMaker,
-    app_conn: AsyncConnection,
 ) -> None:
     ta, tb = two_tenants_seeded["tenant_a"], two_tenants_seeded["tenant_b"]
     doc_b = await make_document(tb, title="original")
@@ -78,10 +74,10 @@ async def test_documents_update_other_tenant_affects_zero_rows(
 
 
 async def test_documents_delete_other_tenant_affects_zero_rows(
+    app_conn: AsyncConnection,
     owner_conn: AsyncConnection,
     two_tenants_seeded: Tenants,
     make_document: DocumentMaker,
-    app_conn: AsyncConnection,
 ) -> None:
     ta, tb = two_tenants_seeded["tenant_a"], two_tenants_seeded["tenant_b"]
     doc_b = await make_document(tb, title="keep")
@@ -96,9 +92,9 @@ async def test_documents_delete_other_tenant_affects_zero_rows(
 
 
 async def test_documents_select_other_tenant_by_id_returns_nothing(
+    app_conn: AsyncConnection,
     two_tenants_seeded: Tenants,
     make_document: DocumentMaker,
-    app_conn: AsyncConnection,
 ) -> None:
     ta, tb = two_tenants_seeded["tenant_a"], two_tenants_seeded["tenant_b"]
     doc_b = await make_document(tb, title="b-only")
@@ -116,9 +112,9 @@ async def test_documents_select_other_tenant_by_id_returns_nothing(
 
 
 async def test_chunks_insert_for_other_tenant_fails_rls(
+    app_conn: AsyncConnection,
     two_tenants_seeded: Tenants,
     make_document: DocumentMaker,
-    app_conn: AsyncConnection,
 ) -> None:
     ta, tb = two_tenants_seeded["tenant_a"], two_tenants_seeded["tenant_b"]
     doc_b = await make_document(tb)
@@ -141,11 +137,11 @@ async def test_chunks_insert_for_other_tenant_fails_rls(
 
 
 async def test_chunks_update_other_tenant_affects_zero_rows(
+    app_conn: AsyncConnection,
     owner_conn: AsyncConnection,
     two_tenants_seeded: Tenants,
     make_document: DocumentMaker,
     make_chunk: ChunkMaker,
-    app_conn: AsyncConnection,
 ) -> None:
     ta, tb = two_tenants_seeded["tenant_a"], two_tenants_seeded["tenant_b"]
     doc_b = await make_document(tb)
@@ -161,11 +157,11 @@ async def test_chunks_update_other_tenant_affects_zero_rows(
 
 
 async def test_chunks_delete_other_tenant_affects_zero_rows(
+    app_conn: AsyncConnection,
     owner_conn: AsyncConnection,
     two_tenants_seeded: Tenants,
     make_document: DocumentMaker,
     make_chunk: ChunkMaker,
-    app_conn: AsyncConnection,
 ) -> None:
     ta, tb = two_tenants_seeded["tenant_a"], two_tenants_seeded["tenant_b"]
     doc_b = await make_document(tb)
@@ -181,10 +177,10 @@ async def test_chunks_delete_other_tenant_affects_zero_rows(
 
 
 async def test_chunks_select_other_tenant_by_id_returns_nothing(
+    app_conn: AsyncConnection,
     two_tenants_seeded: Tenants,
     make_document: DocumentMaker,
     make_chunk: ChunkMaker,
-    app_conn: AsyncConnection,
 ) -> None:
     ta, tb = two_tenants_seeded["tenant_a"], two_tenants_seeded["tenant_b"]
     doc_b = await make_document(tb)
