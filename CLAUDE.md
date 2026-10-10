@@ -21,3 +21,4 @@ Project lives in WSL2 Ubuntu at ~/projects/helphub. Use bash and Linux paths onl
 - Tenant tables are accessed only through get_tenant_session. Never use get_session for them.
 - Every new tenant table needs RLS enabled in its migration and a test.
 - Only repositories/tenants.py and services/auth.py may use the untenanted get_session, and only for the tenants table. Everything else uses get_tenant_session or tenant_transaction.
+- Default pytest skips slow tests. Before any Day-end commit, also run: uv run pytest -m "slow or not slow"
