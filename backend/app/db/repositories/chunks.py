@@ -1,9 +1,13 @@
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import TypedDict
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import TextClause, bindparam, text
+from sqlalchemy import TextClause, bindparam, delete, func, insert, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.models import Chunk
 
 # Must match the HNSW index declared in the chunks model and migration 0004.
 CHUNKS_EMBEDDING_INDEX = "ix_chunks_embedding_hnsw"
@@ -77,3 +81,58 @@ async def vector_search(
     )
     rows = await session.execute(vector_search_statement(tenant_id, embedding, k))
     return [SearchHit(*row) for row in rows]
+
+
+class NewChunk(TypedDict):
+    chunk_index: int
+    content: str
+    char_start: int
+    char_end: int
+    embedding: list[float]
+
+
+async def delete_for_document(
+    session: AsyncSession, tenant_id: uuid.UUID, document_id: uuid.UUID
+) -> int:
+    result = await session.execute(
+        delete(Chunk).where(
+            Chunk.tenant_id == tenant_id, Chunk.document_id == document_id
+        )
+    )
+    return result.rowcount
+
+
+async def insert_many(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    document_id: uuid.UUID,
+    chunks: Sequence[NewChunk],
+    *,
+    embedding_model: str,
+) -> None:
+    """Bulk insert ``chunks`` for one document (a single executemany)."""
+    if not chunks:
+        return
+    await session.execute(
+        insert(Chunk),
+        [
+            {
+                **chunk,
+                "tenant_id": tenant_id,
+                "document_id": document_id,
+                "embedding_model": embedding_model,
+            }
+            for chunk in chunks
+        ],
+    )
+
+
+async def count_for_document(
+    session: AsyncSession, tenant_id: uuid.UUID, document_id: uuid.UUID
+) -> int:
+    result = await session.execute(
+        select(func.count())
+        .select_from(Chunk)
+        .where(Chunk.tenant_id == tenant_id, Chunk.document_id == document_id)
+    )
+    return result.scalar_one()

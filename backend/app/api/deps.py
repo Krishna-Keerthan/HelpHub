@@ -1,5 +1,6 @@
 import uuid
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, status
@@ -75,6 +76,36 @@ async def require_admin(user: CurrentUser) -> User:
 
 
 AdminUser = Annotated[User, Depends(require_admin, scope="function")]
+
+
+@dataclass(frozen=True)
+class Principal:
+    """The authenticated user as plain data; holds no session."""
+
+    user_id: uuid.UUID
+    tenant_id: uuid.UUID
+    role: str
+
+
+async def get_current_principal(claims: Claims) -> Principal:
+    """Verify the token and load the user in a short transaction.
+
+    The transaction is closed before this returns, so a route using this
+    (instead of CurrentUser/TenantSession) holds no connection while it does
+    slow work such as embedding.
+    """
+    tenant_id = _tenant_id(claims)
+    user_id = parse_uuid(claims["sub"])
+    if user_id is None:
+        raise _unauthorized()
+    async with tenant_transaction(tenant_id) as session:
+        user = await users_repo.get_by_id(session, tenant_id, user_id)
+        if user is None or not user.is_active:
+            raise _unauthorized()
+        return Principal(user_id=user.id, tenant_id=user.tenant_id, role=user.role)
+
+
+CurrentPrincipal = Annotated[Principal, Depends(get_current_principal)]
 
 
 def get_embedding_provider() -> EmbeddingProvider:

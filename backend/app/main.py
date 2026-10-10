@@ -7,6 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import router as auth_router
+from app.api.documents import router as documents_router
 from app.api.users import router as users_router
 from app.core.config import settings
 from app.db.health import ping
@@ -24,6 +25,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="HelpHub", lifespan=lifespan)
 app.include_router(auth_router)
 app.include_router(users_router)
+app.include_router(documents_router)
 
 
 @app.get("/health")

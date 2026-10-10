@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     access_token_minutes: int = 60
     allow_public_registration: bool = True
     warm_up_embeddings: bool = True
+    # Longest document (in characters, after NUL stripping) accepted for ingestion.
+    max_document_chars: int = 500_000
 
     @field_validator("jwt_secret")
     @classmethod
