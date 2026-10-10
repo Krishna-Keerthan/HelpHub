@@ -114,4 +114,5 @@ Step zero of implementation: copy this plan to `docs/plans/day-03.md` and commit
 - [x] Commit 5: search (migration 0005, exact fallback, `POST /search`, hermetic fixture)
 - [x] Commit 6: documents API completion (JSON-only `POST /documents` + 415, `POST /documents/upload`, `GET /documents/{id}`, `GET /documents/{id}/chunks`, `DELETE /documents/{id}`, acceptance test)
 - [x] Final verification V1–V9 (2026-10-10: 319 passed incl. slow; 15/15 isolation loops; 3 clean full runs; alembic check clean)
-- [ ] Next: Day 4 (open items in the commit-6 report: PDF extraction CPU cap, Settings repr exposes secrets)
+- [x] Settings secrets are SecretStr (repr, dumps and validation errors hide them)
+- [ ] Next: Day 4 (open item from the commit-6 report: PDF extraction CPU cap)

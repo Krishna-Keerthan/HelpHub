@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parents[3] / ".env"
@@ -12,12 +12,20 @@ JWT_SECRET_MIN_LENGTH = 32
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=ROOT, extra="ignore")
+    # hide_input_in_errors: a rejected value (e.g. a 31-char JWT secret) is
+    # never echoed in a ValidationError.
+    model_config = SettingsConfigDict(
+        env_file=ROOT, extra="ignore", hide_input_in_errors=True
+    )
 
-    database_url: str
-    migration_database_url: str
+    # Secrets are SecretStr so reprs, dumps and error messages show
+    # '**********'. The aliases keep the env var / keyword names
+    # (DATABASE_URL, MIGRATION_DATABASE_URL, JWT_SECRET); the read-only
+    # properties below return the plain values for the few call sites.
+    database_dsn: SecretStr = Field(validation_alias="database_url")
+    migration_database_dsn: SecretStr = Field(validation_alias="migration_database_url")
     app_env: str = "local"
-    jwt_secret: str
+    jwt_signing_key: SecretStr = Field(validation_alias="jwt_secret")
     jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     access_token_minutes: int = 60
     allow_public_registration: bool = True
@@ -27,16 +35,29 @@ class Settings(BaseSettings):
     # Largest accepted upload file; the request body is read with a bounded cap.
     max_upload_bytes: int = 5 * 1024 * 1024
 
-    @field_validator("jwt_secret")
+    @field_validator("jwt_signing_key")
     @classmethod
-    def _check_jwt_secret(cls, value: str) -> str:
-        if value == JWT_SECRET_PLACEHOLDER:
+    def _check_jwt_secret(cls, value: SecretStr) -> SecretStr:
+        secret = value.get_secret_value()
+        if secret == JWT_SECRET_PLACEHOLDER:
             raise ValueError("JWT_SECRET is still the .env.example placeholder")
-        if len(value) < JWT_SECRET_MIN_LENGTH:
+        if len(secret) < JWT_SECRET_MIN_LENGTH:
             raise ValueError(
                 f"JWT_SECRET must be at least {JWT_SECRET_MIN_LENGTH} characters"
             )
         return value
+
+    @property
+    def database_url(self) -> str:
+        return self.database_dsn.get_secret_value()
+
+    @property
+    def migration_database_url(self) -> str:
+        return self.migration_database_dsn.get_secret_value()
+
+    @property
+    def jwt_secret(self) -> str:
+        return self.jwt_signing_key.get_secret_value()
 
 
 settings = Settings()
