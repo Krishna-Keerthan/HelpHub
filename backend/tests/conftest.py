@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from typing import Any, TypedDict
@@ -73,17 +74,43 @@ async def _seed_tenant_slugs() -> set[str]:
         await engine.dispose()
 
 
-@pytest.fixture(scope="session", autouse=True)
-async def tenant_leak_guard() -> AsyncIterator[None]:
-    """Fail the session if it leaves seeded tenants (slug t-<12 hex>) behind."""
-    before = await _seed_tenant_slugs()
-    yield
-    leaked = sorted(await _seed_tenant_slugs() - before)
-    if leaked:
-        pytest.fail(
-            f"test session leaked {len(leaked)} seeded tenant(s): {', '.join(leaked)}",
-            pytrace=False,
-        )
+_slugs_before: set[str] | None = None
+
+
+def _read_seed_slugs() -> set[str] | None:
+    """Seeded tenant slugs now in the DB, or None when the DB is unreachable."""
+    try:
+        return asyncio.run(_seed_tenant_slugs())
+    except (SQLAlchemyError, OSError):
+        return None
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    global _slugs_before
+    _slugs_before = _read_seed_slugs()
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """Fail the run (non-zero exit status) if it left seeded tenants behind.
+
+    Done here, not in a fixture, so no individual test is reported as the
+    one that errored.
+    """
+    if _slugs_before is None:
+        return
+    after = _read_seed_slugs()
+    leaked = sorted((after or set()) - _slugs_before)
+    if not leaked:
+        return
+    reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+    message = f"test session leaked {len(leaked)} seeded tenant(s): {', '.join(leaked)}"
+    if reporter is not None:
+        reporter.write_line("")
+        reporter.write_sep("=", "TENANT LEAK", red=True, bold=True)
+        reporter.write_line(message, red=True)
+    if session.exitstatus == 0:
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
 
 
 @pytest.fixture

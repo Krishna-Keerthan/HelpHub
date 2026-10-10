@@ -116,6 +116,9 @@ async def test_filtered_ann_with_hnsw(owner_conn, app_conn, two_tenants_seeded):
     ta = two_tenants_seeded["tenant_a"]
     tb = two_tenants_seeded["tenant_b"]
     q = unit_vector(1.0)
+    # There is deliberately no tenant_id btree on chunks, so the planner has no
+    # competing index path. See docs/plans/day-03.md, "Decisions during
+    # implementation", for the trade-off and the fallback if one is re-added.
 
     # Seed as owner: 200 chunks of B right next to q, 3 chunks of A far from q.
     doc_a = await insert_document(owner_conn, ta["id"], created_by=ta["user_id"])

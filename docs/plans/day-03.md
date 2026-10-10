@@ -54,3 +54,11 @@ Step zero of implementation: copy this plan to `docs/plans/day-03.md` and commit
 
 ## Verification
 `docker compose up -d`; in backend: `uv sync`, `uv run alembic upgrade head`, `downgrade -1`, `upgrade head`, `uv run alembic check`, `uv run ruff check .`, `uv run pytest`, `uv run pytest -m slow`; manual: two tenants ingest the same text, search as A returns only A's chunk ids.
+
+## Decisions during implementation
+
+### No `tenant_id` indexes on `documents` / `chunks` (commit 3)
+- **Decision:** migration 0004 creates no btree on `tenant_id` for either table. The only chunk index is `ix_chunks_embedding_hnsw`.
+- **Why:** with a `tenant_id` btree present, the planner picks "tenant btree scan + exact sort" over the HNSW index for a small tenant (the filter looks selective), so `test_filtered_ann_with_hnsw` (which asserts the HNSW index appears in the plan) fails. Without it, the only index path for the ANN `ORDER BY` is HNSW.
+- **What we gave up:** deleting a tenant cascades to `chunks` and `documents` via `tenant_id` FKs, and with no index on the referencing column each cascade is a sequential scan of `chunks`. Acceptable while tenant deletion is rare/administrative. Per-document operations are not affected (`uq_chunks_document_id_chunk_index` leads with `document_id`).
+- **Fallback:** if tenant delete or tenant-filtered reads become slow, re-add `ix_chunks_tenant_id` (and `documents`) and pin the test plan with `SET LOCAL enable_bitmapscan = off` (together with `enable_seqscan = off`) in `test_filtered_ann_with_hnsw` so the planner still has to choose HNSW.
