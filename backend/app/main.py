@@ -1,3 +1,5 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -8,8 +10,16 @@ from app.api.auth import router as auth_router
 from app.api.users import router as users_router
 from app.db.health import ping
 from app.db.session import get_session
+from app.services.embeddings import warm_up_default_provider
 
-app = FastAPI(title="HelpHub")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    await warm_up_default_provider()
+    yield
+
+
+app = FastAPI(title="HelpHub", lifespan=lifespan)
 app.include_router(auth_router)
 app.include_router(users_router)
 

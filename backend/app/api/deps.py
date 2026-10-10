@@ -11,6 +11,7 @@ from app.db.models import User
 from app.db.repositories import users as users_repo
 from app.db.tenant_context import tenant_transaction
 from app.services.auth import parse_uuid
+from app.services.embeddings import EmbeddingProvider, default_provider
 
 bearer = HTTPBearer(auto_error=False)
 
@@ -74,3 +75,10 @@ async def require_admin(user: CurrentUser) -> User:
 
 
 AdminUser = Annotated[User, Depends(require_admin, scope="function")]
+
+
+def get_embedding_provider() -> EmbeddingProvider:
+    return default_provider()
+
+
+Embedder = Annotated[EmbeddingProvider, Depends(get_embedding_provider)]

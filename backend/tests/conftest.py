@@ -1,5 +1,5 @@
 import uuid
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from typing import Any, TypedDict
 
 import pytest
@@ -10,9 +10,11 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from app.api.deps import get_embedding_provider
 from app.core.config import settings
 from app.core.security import create_access_token, hash_password
 from app.main import app
+from app.services.embeddings import FakeEmbeddingProvider
 
 SEED_PASSWORD = "Password123!Password"
 EMBEDDING_DIM = 384
@@ -29,6 +31,14 @@ class SeededTenant(TypedDict):
 
 
 MakeTenant = Callable[..., Awaitable[SeededTenant]]
+
+
+@pytest.fixture(autouse=True)
+def fake_embedding_provider() -> Iterator[None]:
+    """API tests never load the real model."""
+    app.dependency_overrides[get_embedding_provider] = FakeEmbeddingProvider
+    yield
+    app.dependency_overrides.pop(get_embedding_provider, None)
 
 
 @pytest.fixture
