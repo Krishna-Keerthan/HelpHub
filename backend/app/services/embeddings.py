@@ -28,7 +28,13 @@ EMBED_BATCH_SIZE = 64
 
 
 class EmbeddingError(Exception):
-    """The provider returned vectors that do not match the request."""
+    """The provider returned vectors that do not match the request.
+
+    Its message is stored in documents.error and logged on ingestion failure,
+    so it must never contain input text or upstream response bodies: counts,
+    lengths and indices only. Providers wrapping a remote error should raise
+    a different exception type (logged as class name only).
+    """
 
 
 def validate_vectors(

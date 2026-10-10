@@ -8,7 +8,9 @@ database connection or row locks.
 
 import hashlib
 import logging
+import traceback
 import uuid
+from pathlib import Path
 
 from app.core.config import settings
 from app.db.models import Document
@@ -86,24 +88,42 @@ def sqlstate_of(exc: BaseException) -> str | None:
     return None
 
 
+def _frames(exc: BaseException) -> str:
+    """Traceback frames as ``file:line in func``, outermost first.
+
+    traceback.extract_tb rather than format_tb: the frame locations are what
+    we need; format_tb would also print each frame's source line.
+    """
+    return " > ".join(
+        f"{Path(frame.filename).name}:{frame.lineno} in {frame.name}"
+        for frame in traceback.extract_tb(exc.__traceback__)
+    )
+
+
 def _log_failure(
     message: str,
     exc: BaseException,
     tenant_id: uuid.UUID,
     document_id: uuid.UUID,
 ) -> None:
-    """Class name, SQLSTATE and ids only: no traceback, no exception message.
+    """Class name, SQLSTATE, ids and traceback frames (file:line).
 
-    Driver messages can echo bound values (chunk text), and a traceback's
-    message lines would carry them into the shared logs.
+    No exception message, except for our own exception types: driver messages
+    can echo bound values (chunk text). No exc_info either, since a formatted
+    traceback ends with the message line.
     """
+    detail = (
+        f" message={exc}" if isinstance(exc, _SAFE_MESSAGE_ERRORS) and str(exc) else ""
+    )
     logger.error(
-        "%s: tenant=%s document=%s error=%s sqlstate=%s",
+        "%s: tenant=%s document=%s error=%s sqlstate=%s%s frames=%s",
         message,
         tenant_id,
         document_id,
         type(exc).__name__,
         sqlstate_of(exc) or "-",
+        detail,
+        _frames(exc),
     )
 
 
@@ -153,7 +173,8 @@ async def create_or_get(
                 existing = await documents_repo.set_status(
                     session, tenant_id, existing.id, PENDING
                 )
-                assert existing is not None
+                if existing is None:
+                    raise DocumentNotFound("document disappeared while being updated")
             return existing, False
     raise DocumentNotFound("document disappeared during creation")
 
@@ -227,7 +248,8 @@ async def _embed_and_store(
             embedding_model=provider.model_name,
         )
         ready = await documents_repo.set_status(session, tenant_id, document_id, READY)
-        assert ready is not None
+        if ready is None:
+            raise DocumentNotFound("document disappeared while being updated")
         return ready
 
 

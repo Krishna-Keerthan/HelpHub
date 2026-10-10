@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from app.db.session import APPLICATION_NAME
 from app.services.embeddings import FakeEmbeddingProvider
 
 # Several paragraphs (with \r\n and runs of blank lines) so the chunker
@@ -22,13 +23,19 @@ CONTENT = (
 IDLE_IN_TRANSACTION_SQL = text(
     "SELECT count(*) FROM pg_stat_activity "
     "WHERE usename = 'helphub_app' AND datname = current_database() "
-    "AND state LIKE 'idle in transaction%'"
+    "AND application_name = :app AND state LIKE 'idle in transaction%'"
 )
 
 
 async def idle_in_transaction(owner_conn: AsyncConnection) -> int:
-    """helphub_app sessions currently idle inside an open transaction."""
-    count = (await owner_conn.execute(IDLE_IN_TRANSACTION_SQL)).scalar_one()
+    """This process's app sessions currently idle inside an open transaction.
+
+    Filtered on the runtime engine's application_name, so other clients of
+    the shared dev database cannot make the spy tests fail.
+    """
+    count = (
+        await owner_conn.execute(IDLE_IN_TRANSACTION_SQL, {"app": APPLICATION_NAME})
+    ).scalar_one()
     await owner_conn.rollback()
     return count
 

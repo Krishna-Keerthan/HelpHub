@@ -22,5 +22,5 @@ Project lives in WSL2 Ubuntu at ~/projects/helphub. Use bash and Linux paths onl
 - Every new tenant table needs RLS enabled in its migration and a test.
 - Only repositories/tenants.py and services/auth.py may use the untenanted get_session, and only for the tenants table. Everything else uses get_tenant_session or tenant_transaction.
 - Default pytest skips slow tests. Before any Day-end commit, also run: uv run pytest -m "slow or not slow"
-- Never log document content, tokens, passwords, or raw exception messages from the DB driver. Log class name, SQLSTATE, and ids only.
+- Never log document content, tokens, passwords, or raw exception messages from the DB driver. Log class name, SQLSTATE, ids, and traceback frames (file:line) only.
 - Routes that do slow work (embedding, LLM, streaming) use CurrentPrincipal and short tenant_transactions, never TenantSession.

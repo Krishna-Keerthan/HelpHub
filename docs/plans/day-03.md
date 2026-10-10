@@ -62,3 +62,12 @@ Step zero of implementation: copy this plan to `docs/plans/day-03.md` and commit
 - **Why:** with a `tenant_id` btree present, the planner picks "tenant btree scan + exact sort" over the HNSW index for a small tenant (the filter looks selective), so `test_filtered_ann_with_hnsw` (which asserts the HNSW index appears in the plan) fails. Without it, the only index path for the ANN `ORDER BY` is HNSW.
 - **What we gave up:** deleting a tenant cascades to `chunks` and `documents` via `tenant_id` FKs, and with no index on the referencing column each cascade is a sequential scan of `chunks`. Acceptable while tenant deletion is rare/administrative. Per-document operations are not affected (`uq_chunks_document_id_chunk_index` leads with `document_id`).
 - **Fallback:** if tenant delete or tenant-filtered reads become slow, re-add `ix_chunks_tenant_id` (and `documents`) and pin the test plan with `SET LOCAL enable_bitmapscan = off` (together with `enable_seqscan = off`) in `test_filtered_ann_with_hnsw` so the planner still has to choose HNSW.
+
+### Re-posting content that is still PENDING (commit 4d)
+- **Behaviour:** `POST /documents` for content whose document is still `PENDING` (another request is ingesting it) runs `ingest_document` again. The `SELECT ... FOR UPDATE` + re-check in the write transaction keeps the data correct (one set of chunks), but the embedding work is done twice.
+- **Accepted until Day 9:** the background worker will dedupe ingestion jobs by document id, after which the route only enqueues.
+- **Related:** re-posting identical content with a different title returns the existing document unchanged (200, original title); pinned by `tests/test_documents_repost.py`.
+
+### `application_name` on the runtime engine (commit 4d)
+- The runtime engine sets `application_name = helphub-<pid>` (`app/db/session.py`), and the transaction spy tests filter `pg_stat_activity` on it, so other clients of the shared dev database cannot affect them.
+- **Day 9 note:** the name is fixed when `app.db.session` is imported. A worker process forked after that import keeps the parent's pid in its connections' `application_name` unless it builds its own engine after the fork.
