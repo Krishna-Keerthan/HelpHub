@@ -1,10 +1,15 @@
 import uuid
 
 import pytest
-from app.db.repositories.chunks import vector_search
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.repositories.chunks import (
+    CHUNKS_EMBEDDING_INDEX,
+    explain_statement,
+    vector_search,
+    vector_search_statement,
+)
 from app.db.tenant_context import set_tenant
 from tests.conftest import (
     auth_headers,
@@ -139,9 +144,16 @@ async def test_filtered_ann_with_hnsw(owner_conn, app_conn, two_tenants_seeded):
         await set_tenant(session, ta["id"])
         await app_conn.execute(text("SET LOCAL enable_seqscan = off"))
         hits = await vector_search(session, ta["id"], q, 3)
+        # The plan of the very statement the service runs must use the HNSW
+        # index, otherwise this test would pass by accident through a seq scan.
+        plan = await session.execute(
+            explain_statement(vector_search_statement(ta["id"], q, 3))
+        )
+        plan_text = "\n".join(row[0] for row in plan)
 
     assert len(hits) == 3
     assert {str(hit.chunk_id) for hit in hits} == a_ids
+    assert CHUNKS_EMBEDDING_INDEX in plan_text, plan_text
 
 
 @pytest.mark.asyncio
@@ -189,3 +201,23 @@ async def test_get_other_tenant_chunks_returns_404(
     own = await client.get(f"/documents/{doc_a}/chunks", headers=headers)
     assert own.status_code == 200
     assert len(own.json()) == 1
+
+
+@pytest.mark.parametrize("k", [0, 51])
+@pytest.mark.asyncio
+async def test_search_k_outside_1_to_50_is_422(client, two_tenants_seeded, k):
+    response = await client.post(
+        "/search",
+        json={"query": "anything", "k": k},
+        headers=auth_headers(two_tenants_seeded["tenant_a"]),
+    )
+    assert response.status_code == 422
+
+
+def test_search_statement_is_tenant_filtered_and_materialized():
+    tid = uuid.uuid4()
+    statement = vector_search_statement(tid, unit_vector(1.0), 3)
+    assert "AS MATERIALIZED" in statement.text
+    assert "WHERE tenant_id = :tid" in statement.text
+    assert statement.compile().params["tid"] == tid
+    assert statement.compile().params["k"] == 3

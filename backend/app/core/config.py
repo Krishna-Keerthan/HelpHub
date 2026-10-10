@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     access_token_minutes: int = 60
     allow_public_registration: bool = True
+    warm_up_embeddings: bool = True
 
     @field_validator("jwt_secret")
     @classmethod

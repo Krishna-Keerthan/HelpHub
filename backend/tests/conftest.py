@@ -6,7 +6,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import bindparam, text
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -33,12 +33,57 @@ class SeededTenant(TypedDict):
 MakeTenant = Callable[..., Awaitable[SeededTenant]]
 
 
+SEED_SLUG_PATTERN = r"^t-[0-9a-f]{12}$"
+_MISSING: Any = object()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def no_embedding_warm_up() -> Iterator[None]:
+    """The app lifespan never loads the real model during tests."""
+    previous = settings.warm_up_embeddings
+    settings.warm_up_embeddings = False
+    yield
+    settings.warm_up_embeddings = previous
+
+
 @pytest.fixture(autouse=True)
 def fake_embedding_provider() -> Iterator[None]:
-    """API tests never load the real model."""
+    """API tests never load the real model. Restores any prior override."""
+    previous = app.dependency_overrides.get(get_embedding_provider, _MISSING)
     app.dependency_overrides[get_embedding_provider] = FakeEmbeddingProvider
+    try:
+        yield
+    finally:
+        if previous is _MISSING:
+            app.dependency_overrides.pop(get_embedding_provider, None)
+        else:
+            app.dependency_overrides[get_embedding_provider] = previous
+
+
+async def _seed_tenant_slugs() -> set[str]:
+    engine = create_async_engine(settings.migration_database_url, poolclass=NullPool)
+    try:
+        async with engine.connect() as conn:
+            rows = await conn.execute(
+                text("SELECT slug FROM tenants WHERE slug ~ :pattern"),
+                {"pattern": SEED_SLUG_PATTERN},
+            )
+            return {row[0] for row in rows}
+    finally:
+        await engine.dispose()
+
+
+@pytest.fixture(scope="session", autouse=True)
+async def tenant_leak_guard() -> AsyncIterator[None]:
+    """Fail the session if it leaves seeded tenants (slug t-<12 hex>) behind."""
+    before = await _seed_tenant_slugs()
     yield
-    app.dependency_overrides.pop(get_embedding_provider, None)
+    leaked = sorted(await _seed_tenant_slugs() - before)
+    if leaked:
+        pytest.fail(
+            f"test session leaked {len(leaked)} seeded tenant(s): {', '.join(leaked)}",
+            pytrace=False,
+        )
 
 
 @pytest.fixture
@@ -134,14 +179,35 @@ async def make_tenant(seed_password_hash: str) -> AsyncIterator[MakeTenant]:
     try:
         yield _make
     finally:
-        try:
-            async with engine.begin() as conn:
-                for tenant_id in created:
+        await engine.dispose()
+        leaked = await _delete_tenants(created)
+        if leaked:
+            detail = "; ".join(f"{tid} ({err})" for tid, err in leaked.items())
+            raise RuntimeError(f"cleanup failed, leaked tenant ids: {detail}")
+
+
+async def _delete_tenants(tenant_ids: list[uuid.UUID]) -> dict[uuid.UUID, str]:
+    """Delete exactly ``tenant_ids`` on a fresh owner connection.
+
+    One transaction per id so one failure cannot leak the others; lock_timeout
+    keeps a stuck test connection from hanging teardown. Returns the ids that
+    could not be deleted, with the error (the caller raises on any).
+    """
+    leaked: dict[uuid.UUID, str] = {}
+    engine = create_async_engine(settings.migration_database_url, poolclass=NullPool)
+    try:
+        for tenant_id in tenant_ids:
+            try:
+                async with engine.begin() as conn:
+                    await conn.execute(text("SET LOCAL lock_timeout = '5s'"))
                     await conn.execute(
                         text("DELETE FROM tenants WHERE id = :id"), {"id": tenant_id}
                     )
-        finally:
-            await engine.dispose()
+            except (SQLAlchemyError, OSError) as exc:
+                leaked[tenant_id] = repr(exc)
+    finally:
+        await engine.dispose()
+    return leaked
 
 
 @pytest.fixture

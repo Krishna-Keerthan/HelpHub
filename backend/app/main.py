@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import router as auth_router
 from app.api.users import router as users_router
+from app.core.config import settings
 from app.db.health import ping
 from app.db.session import get_session
 from app.services.embeddings import warm_up_default_provider
@@ -15,7 +16,8 @@ from app.services.embeddings import warm_up_default_provider
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    await warm_up_default_provider()
+    if settings.warm_up_embeddings:
+        await warm_up_default_provider()
     yield
 
 
