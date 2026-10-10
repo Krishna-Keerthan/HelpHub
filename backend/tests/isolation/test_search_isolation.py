@@ -1,0 +1,191 @@
+import uuid
+
+import pytest
+from app.db.repositories.chunks import vector_search
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.tenant_context import set_tenant
+from tests.conftest import (
+    auth_headers,
+    insert_chunk,
+    insert_chunks,
+    insert_document,
+    unit_vector,
+)
+
+SHARED_TEXT = (
+    "To reset your password, open the account settings page and choose the "
+    "security tab.\n\n"
+    "Then click the reset link and follow the instructions sent to your email "
+    "address. The link expires after one hour, so request a new one if needed."
+)
+
+
+async def _chunk_ids_by_tenant(owner_conn, tenant_id) -> set[str]:
+    result = await owner_conn.execute(
+        text("SELECT id FROM chunks WHERE tenant_id = :tid"), {"tid": tenant_id}
+    )
+    return {str(row[0]) for row in result}
+
+
+@pytest.mark.asyncio
+async def test_same_text_searched_isolates_tenants(
+    client, owner_conn, two_tenants_seeded
+):
+    ta = two_tenants_seeded["tenant_a"]
+    tb = two_tenants_seeded["tenant_b"]
+    payload = {"title": "Reset password", "content": SHARED_TEXT}
+
+    # Upload same text payload for both tenants.
+    for tenant in (ta, tb):
+        created = await client.post(
+            "/documents", json=payload, headers=auth_headers(tenant)
+        )
+        assert created.status_code == 201
+
+    a_chunks = await _chunk_ids_by_tenant(owner_conn, ta["id"])
+    b_chunks = await _chunk_ids_by_tenant(owner_conn, tb["id"])
+    assert a_chunks and b_chunks
+    assert a_chunks.isdisjoint(b_chunks)
+
+    # Search as A with the very same text: only A chunk IDs come back.
+    response = await client.post(
+        "/search",
+        json={"query": SHARED_TEXT, "k": 10},
+        headers=auth_headers(ta),
+    )
+    assert response.status_code == 200
+    hits = response.json()
+    returned = {hit["chunk_id"] for hit in hits}
+    assert returned
+    assert returned <= a_chunks
+    assert returned.isdisjoint(b_chunks)
+    scores = [hit["score"] for hit in hits]
+    assert scores == sorted(scores, reverse=True)
+
+
+@pytest.mark.asyncio
+async def test_limit_k_bounding(client, owner_conn, two_tenants_seeded):
+    ta = two_tenants_seeded["tenant_a"]
+    tb = two_tenants_seeded["tenant_b"]
+    doc_a = await insert_document(owner_conn, ta["id"], created_by=ta["user_id"])
+    doc_b = await insert_document(owner_conn, tb["id"], created_by=tb["user_id"])
+    await insert_chunks(
+        owner_conn, ta["id"], doc_a, [unit_vector(1.0, 0.1 * i) for i in range(3)]
+    )
+    await insert_chunks(
+        owner_conn, tb["id"], doc_b, [unit_vector(1.0, 0.1 * i) for i in range(5)]
+    )
+    await owner_conn.commit()
+    a_chunks = await _chunk_ids_by_tenant(owner_conn, ta["id"])
+    assert len(a_chunks) == 3
+
+    # Asking for k=50 when A has 3 chunks returns exactly 3 results, none from B.
+    response = await client.post(
+        "/search",
+        json={"query": "anything at all", "k": 50},
+        headers=auth_headers(ta),
+    )
+    assert response.status_code == 200
+    returned = [hit["chunk_id"] for hit in response.json()]
+    assert len(returned) == 3
+    assert set(returned) == a_chunks
+
+    # k bounds the other direction too.
+    limited = await client.post(
+        "/search",
+        json={"query": "anything at all", "k": 2},
+        headers=auth_headers(ta),
+    )
+    assert limited.status_code == 200
+    assert len(limited.json()) == 2
+
+
+@pytest.mark.asyncio
+async def test_filtered_ann_with_hnsw(owner_conn, app_conn, two_tenants_seeded):
+    """
+    Tenant B gets 200 chunks very close to query q. Tenant A gets 3 chunks far from q.
+    With enable_seqscan = off, search as A with k=3 must return A's 3 chunks.
+    """
+    ta = two_tenants_seeded["tenant_a"]
+    tb = two_tenants_seeded["tenant_b"]
+    q = unit_vector(1.0)
+
+    # Seed as owner: 200 chunks of B right next to q, 3 chunks of A far from q.
+    doc_a = await insert_document(owner_conn, ta["id"], created_by=ta["user_id"])
+    doc_b = await insert_document(owner_conn, tb["id"], created_by=tb["user_id"])
+    await insert_chunks(
+        owner_conn,
+        tb["id"],
+        doc_b,
+        [unit_vector(1.0, 0.001 * (i + 1)) for i in range(200)],
+    )
+    a_ids = {
+        str(
+            await insert_chunk(
+                owner_conn,
+                ta["id"],
+                doc_a,
+                chunk_index=i,
+                embedding=unit_vector(0.0, 1.0, 0.1 * (i + 1)),
+            )
+        )
+        for i in range(3)
+    }
+    await owner_conn.commit()
+
+    async with AsyncSession(bind=app_conn) as session:
+        await set_tenant(session, ta["id"])
+        await app_conn.execute(text("SET LOCAL enable_seqscan = off"))
+        hits = await vector_search(session, ta["id"], q, 3)
+
+    assert len(hits) == 3
+    assert {str(hit.chunk_id) for hit in hits} == a_ids
+
+
+@pytest.mark.asyncio
+async def test_search_raw_sql_no_tenant_context(
+    owner_conn, app_conn, two_tenants_seeded
+):
+    ta = two_tenants_seeded["tenant_a"]
+    doc_a = await insert_document(owner_conn, ta["id"], created_by=ta["user_id"])
+    await insert_chunk(owner_conn, ta["id"], doc_a)
+    await owner_conn.commit()
+
+    # Without tenant context the runtime role sees nothing, though a row exists.
+    result = await app_conn.execute(text("SELECT count(*) FROM chunks"))
+    assert result.scalar_one() == 0
+
+    # Positive control: with the tenant set, the same row is visible.
+    await app_conn.execute(
+        text("SELECT set_config('app.tenant_id', :tid, false)"),
+        {"tid": str(ta["id"])},
+    )
+    result = await app_conn.execute(text("SELECT count(*) FROM chunks"))
+    assert result.scalar_one() == 1
+
+
+@pytest.mark.asyncio
+async def test_get_other_tenant_chunks_returns_404(
+    client, owner_conn, two_tenants_seeded
+):
+    ta = two_tenants_seeded["tenant_a"]
+    tb = two_tenants_seeded["tenant_b"]
+    doc_a = await insert_document(owner_conn, ta["id"], created_by=ta["user_id"])
+    doc_b = await insert_document(owner_conn, tb["id"], created_by=tb["user_id"])
+    await insert_chunk(owner_conn, ta["id"], doc_a)
+    await insert_chunk(owner_conn, tb["id"], doc_b)
+    await owner_conn.commit()
+    headers = auth_headers(ta)
+
+    # A real tenant-B document id is a 404 for tenant A, same as a random id.
+    response = await client.get(f"/documents/{doc_b}/chunks", headers=headers)
+    assert response.status_code == 404
+    unknown = await client.get(f"/documents/{uuid.uuid4()}/chunks", headers=headers)
+    assert unknown.status_code == 404
+
+    # Positive control: A can read its own document's chunks.
+    own = await client.get(f"/documents/{doc_a}/chunks", headers=headers)
+    assert own.status_code == 200
+    assert len(own.json()) == 1

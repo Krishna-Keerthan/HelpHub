@@ -1,18 +1,22 @@
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
-from typing import TypedDict
+from typing import Any, TypedDict
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import text
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import bindparam, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
-from app.core.security import hash_password
+from app.core.security import create_access_token, hash_password
 from app.main import app
 
 SEED_PASSWORD = "Password123!Password"
+EMBEDDING_DIM = 384
+TEST_EMBEDDING_MODEL = "test-model"
 
 
 class SeededTenant(TypedDict):
@@ -139,3 +143,167 @@ async def two_tenants_seeded(
         "tenant_a": await make_tenant(role="admin"),
         "tenant_b": await make_tenant(role="agent"),
     }
+
+
+# --- plumbing helpers for documents / chunks -------------------------------
+
+
+def auth_headers(tenant: SeededTenant) -> dict[str, str]:
+    """Bearer header for the tenant's seeded user (sub = user id, tid = tenant)."""
+    token = create_access_token(
+        {"sub": str(tenant["user_id"]), "tid": str(tenant["id"])}
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
+def sqlstate(exc: DBAPIError) -> str | None:
+    orig = exc.orig
+    return getattr(orig, "sqlstate", None) or getattr(
+        getattr(orig, "__cause__", None), "sqlstate", None
+    )
+
+
+def constraint_name(exc: DBAPIError) -> str | None:
+    orig = exc.orig
+    return getattr(orig, "constraint_name", None) or getattr(
+        getattr(orig, "__cause__", None), "constraint_name", None
+    )
+
+
+def unit_vector(*components: float) -> list[float]:
+    """Pad ``components`` with zeros to EMBEDDING_DIM and L2-normalise."""
+    vec = [0.0] * EMBEDDING_DIM
+    vec[: len(components)] = components
+    norm = sum(x * x for x in vec) ** 0.5
+    return [x / norm for x in vec]
+
+
+_INSERT_DOCUMENT = text(
+    "INSERT INTO documents "
+    "(tenant_id, title, raw_text, content_hash, status, created_by) "
+    "VALUES (:tid, :title, :raw_text, :content_hash, :status, :created_by) "
+    "RETURNING id"
+)
+
+
+def _insert_chunk_stmt(dim: int | None):
+    return text(
+        "INSERT INTO chunks (tenant_id, document_id, chunk_index, text, "
+        "char_start, char_end, embedding, embedding_model) "
+        "VALUES (:tid, :document_id, :chunk_index, :text, :char_start, "
+        ":char_end, :vec, :model) RETURNING id"
+    ).bindparams(bindparam("vec", type_=Vector(dim)))
+
+
+async def insert_document(
+    conn: AsyncConnection,
+    tenant_id: uuid.UUID,
+    *,
+    created_by: uuid.UUID,
+    title: str = "Doc",
+    raw_text: str = "content",
+    content_hash: str | None = None,
+    status: str = "READY",
+) -> uuid.UUID:
+    """Insert a document row on ``conn`` (no commit). Hash defaults to unique."""
+    result = await conn.execute(
+        _INSERT_DOCUMENT,
+        {
+            "tid": tenant_id,
+            "title": title,
+            "raw_text": raw_text,
+            "content_hash": content_hash or uuid.uuid4().hex,
+            "status": status,
+            "created_by": created_by,
+        },
+    )
+    return result.scalar_one()
+
+
+async def insert_chunk(
+    conn: AsyncConnection,
+    tenant_id: uuid.UUID,
+    document_id: uuid.UUID,
+    *,
+    chunk_index: int = 0,
+    content: str = "chunk",
+    embedding: list[float] | None = None,
+    dim: int | None = EMBEDDING_DIM,
+) -> uuid.UUID:
+    """Insert a chunk row on ``conn`` (no commit).
+
+    ``tenant_id`` is explicit so tests can pair a tenant with another
+    tenant's document. ``dim=None`` skips the client-side dimension check so
+    the database is the one to reject a wrong-sized vector.
+    """
+    result = await conn.execute(
+        _insert_chunk_stmt(dim),
+        {
+            "tid": tenant_id,
+            "document_id": document_id,
+            "chunk_index": chunk_index,
+            "text": content,
+            "char_start": 0,
+            "char_end": max(len(content), 1),
+            "vec": embedding if embedding is not None else unit_vector(1.0),
+            "model": TEST_EMBEDDING_MODEL,
+        },
+    )
+    return result.scalar_one()
+
+
+async def insert_chunks(
+    conn: AsyncConnection,
+    tenant_id: uuid.UUID,
+    document_id: uuid.UUID,
+    embeddings: list[list[float]],
+) -> None:
+    """Bulk insert one chunk per embedding (no commit)."""
+    await conn.execute(
+        _insert_chunk_stmt(EMBEDDING_DIM),
+        [
+            {
+                "tid": tenant_id,
+                "document_id": document_id,
+                "chunk_index": i,
+                "text": f"chunk {i}",
+                "char_start": 0,
+                "char_end": 7,
+                "vec": vec,
+                "model": TEST_EMBEDDING_MODEL,
+            }
+            for i, vec in enumerate(embeddings)
+        ],
+    )
+
+
+DocumentMaker = Callable[..., Awaitable[uuid.UUID]]
+ChunkMaker = Callable[..., Awaitable[uuid.UUID]]
+
+
+@pytest.fixture
+async def make_document(owner_conn: AsyncConnection) -> DocumentMaker:
+    """Factory: committed document owned by ``tenant`` (cleaned up with it)."""
+
+    async def _make(tenant: SeededTenant, **kwargs: Any) -> uuid.UUID:
+        doc_id = await insert_document(
+            owner_conn, tenant["id"], created_by=tenant["user_id"], **kwargs
+        )
+        await owner_conn.commit()
+        return doc_id
+
+    return _make
+
+
+@pytest.fixture
+async def make_chunk(owner_conn: AsyncConnection) -> ChunkMaker:
+    """Factory: committed chunk for ``document_id`` under ``tenant_id``."""
+
+    async def _make(
+        tenant_id: uuid.UUID, document_id: uuid.UUID, **kwargs: Any
+    ) -> uuid.UUID:
+        chunk_id = await insert_chunk(owner_conn, tenant_id, document_id, **kwargs)
+        await owner_conn.commit()
+        return chunk_id
+
+    return _make
