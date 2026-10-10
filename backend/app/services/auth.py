@@ -1,5 +1,3 @@
-import uuid
-
 from sqlalchemy.exc import IntegrityError
 
 from app.core.config import settings
@@ -81,10 +79,3 @@ async def authenticate(data: LoginRequest) -> str:
     if not verify_password(data.password, user.password_hash):
         raise InvalidCredentials
     return issue_token(user)
-
-
-def parse_uuid(value: object) -> uuid.UUID | None:
-    try:
-        return uuid.UUID(str(value))
-    except ValueError:
-        return None

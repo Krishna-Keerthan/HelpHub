@@ -1,4 +1,6 @@
 import secrets
+import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -48,3 +50,35 @@ def decode_access_token(token: str) -> dict[str, Any]:
         )
     except jwt.PyJWTError as exc:
         raise InvalidTokenError(str(exc)) from exc
+
+
+@dataclass(frozen=True)
+class TokenSubject:
+    user_id: uuid.UUID
+    tenant_id: uuid.UUID
+
+
+def _canonical_uuid(value: object) -> uuid.UUID:
+    """Only the exact form we issue (str(uuid)): no ints, lists, urn:/braces."""
+    if not isinstance(value, str):
+        raise InvalidTokenError("claim is not a string")
+    try:
+        parsed = uuid.UUID(value)
+    except ValueError:
+        raise InvalidTokenError("claim is not a UUID") from None
+    if str(parsed) != value:
+        raise InvalidTokenError("claim is not a canonical UUID")
+    return parsed
+
+
+def parse_token_subject(token: str) -> TokenSubject:
+    """Decode ``token`` and return its user and tenant ids.
+
+    The single place token claims are validated: any malformed, missing or
+    mistyped ``sub``/``tid`` raises InvalidTokenError (callers answer 401).
+    """
+    claims = decode_access_token(token)
+    return TokenSubject(
+        user_id=_canonical_uuid(claims["sub"]),
+        tenant_id=_canonical_uuid(claims["tid"]),
+    )
