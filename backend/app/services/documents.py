@@ -69,6 +69,44 @@ def prepare_text(content: str) -> str:
     return text
 
 
+def sqlstate_of(exc: BaseException) -> str | None:
+    """SQLSTATE of a database error, if any.
+
+    Walks SQLAlchemy's wrapper (.orig) and the cause chain down to the asyncpg
+    exception; both levels carry the same code.
+    """
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        code = getattr(current, "sqlstate", None)
+        if isinstance(code, str):
+            return code
+        current = getattr(current, "orig", None) or current.__cause__
+    return None
+
+
+def _log_failure(
+    message: str,
+    exc: BaseException,
+    tenant_id: uuid.UUID,
+    document_id: uuid.UUID,
+) -> None:
+    """Class name, SQLSTATE and ids only: no traceback, no exception message.
+
+    Driver messages can echo bound values (chunk text), and a traceback's
+    message lines would carry them into the shared logs.
+    """
+    logger.error(
+        "%s: tenant=%s document=%s error=%s sqlstate=%s",
+        message,
+        tenant_id,
+        document_id,
+        type(exc).__name__,
+        sqlstate_of(exc) or "-",
+    )
+
+
 def content_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -143,7 +181,7 @@ async def ingest_document(
     except DocumentNotFound:
         raise
     except Exception as exc:
-        logger.exception("ingestion of document %s failed", document_id)
+        _log_failure("ingestion failed", exc, tenant_id, document_id)
         await _mark_failed(tenant_id, document_id, exc)
         raise IngestionError("ingestion failed") from exc
 
@@ -211,8 +249,9 @@ async def _mark_failed(
             await documents_repo.set_status(
                 session, tenant_id, document_id, FAILED, error=error_summary(exc)
             )
-    except Exception:
-        logger.exception("could not mark document %s as FAILED", document_id)
+    # Deliberately broad: failing to record FAILED must not hide the original error.
+    except Exception as mark_exc:  # noqa: BLE001
+        _log_failure("could not mark document FAILED", mark_exc, tenant_id, document_id)
 
 
 async def list_documents(
