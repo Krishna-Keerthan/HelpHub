@@ -1,6 +1,7 @@
 """Small in-memory PDFs for upload tests."""
 
 import io
+import zlib
 
 from pypdf import PdfReader, PdfWriter
 
@@ -63,3 +64,47 @@ def encrypted_pdf(text: str = "Secret text") -> bytes:
     buffer = io.BytesIO()
     writer.write(buffer)
     return buffer.getvalue()
+
+
+def text_operator_bomb(operators: int, pages: int = 1) -> bytes:
+    """A tiny PDF whose pages each hold ``operators`` text-show operators.
+
+    All pages share one compressed content stream of a few KB, but text
+    extraction costs roughly linear CPU time in ``operators`` per page
+    (~13 us each with pypdf).
+    """
+    stream = zlib.compress(
+        b"BT /F1 12 Tf 72 720 Td " + b"(a) Tj " * operators + b"ET", 9
+    )
+    content_id = 4 + pages
+    kids = b" ".join(b"%d 0 R" % (4 + i) for i in range(pages))
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [%s] /Count %d >>" % (kids, pages),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        *(
+            (
+                b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+                b"/Contents %d 0 R /Resources << /Font << /F1 3 0 R >> >> >>"
+            )
+            % content_id
+            for _ in range(pages)
+        ),
+        b"<< /Length %d /Filter /FlateDecode >>\nstream\n" % len(stream)
+        + stream
+        + b"\nendstream",
+    ]
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for number, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += b"%d 0 obj\n" % number + body + b"\nendobj\n"
+    xref = len(out)
+    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objects) + 1)
+    for offset in offsets:
+        out += b"%010d 00000 n \n" % offset
+    out += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (
+        len(objects) + 1,
+        xref,
+    )
+    return bytes(out)

@@ -34,6 +34,13 @@ class Settings(BaseSettings):
     max_document_chars: int = 500_000
     # Largest accepted upload file; the request body is read with a bounded cap.
     max_upload_bytes: int = 5 * 1024 * 1024
+    # PDF text extraction runs in a child process: killed after
+    # pdf_timeout_seconds of wall time, with kernel limits on CPU seconds and
+    # address space (independent backstops); at most pdf_max_concurrency at once.
+    pdf_timeout_seconds: float = 10.0
+    pdf_cpu_seconds: int = 10
+    pdf_memory_bytes: int = 512 * 1024 * 1024
+    pdf_max_concurrency: int = 2
 
     @field_validator("jwt_signing_key")
     @classmethod

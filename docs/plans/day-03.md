@@ -115,4 +115,5 @@ Step zero of implementation: copy this plan to `docs/plans/day-03.md` and commit
 - [x] Commit 6: documents API completion (JSON-only `POST /documents` + 415, `POST /documents/upload`, `GET /documents/{id}`, `GET /documents/{id}/chunks`, `DELETE /documents/{id}`, acceptance test)
 - [x] Final verification V1–V9 (2026-10-10: 319 passed incl. slow; 15/15 isolation loops; 3 clean full runs; alembic check clean)
 - [x] Settings secrets are SecretStr (repr, dumps and validation errors hide them)
-- [ ] Next: Day 4 (open item from the commit-6 report: PDF extraction CPU cap)
+- [x] PDF extraction limits: separate worker process (`app/services/pdf_worker.py`) killed at `pdf_timeout_seconds` (10 s wall), kernel limits `pdf_cpu_seconds` (10) and `pdf_memory_bytes` (512 MB), minimal environment (no secrets), at most `pdf_max_concurrency` (2) at once, stops at the first page over `max_document_chars` (413)
+- [ ] Next: Day 4

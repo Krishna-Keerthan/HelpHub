@@ -162,6 +162,10 @@ async def upload_document(
         content = await extraction.extract_text(upload.filename, upload.data)
     except extraction.UnsupportedFileType as exc:
         raise _unsupported_media_type(str(exc)) from None
+    except extraction.ExtractedTextTooLarge:
+        raise HTTPException(
+            status.HTTP_413_CONTENT_TOO_LARGE, detail="Document is too large"
+        ) from None
     except extraction.UnreadableDocument as exc:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
