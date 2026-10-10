@@ -22,24 +22,35 @@ MAX_EF_SEARCH = 1000
 # of order, and PG17+ needs ORDER BY distance + 0 to keep them re-sortable.
 _SEARCH_SQL = """
 WITH ann AS MATERIALIZED (
-    SELECT id, document_id, text AS content, embedding <=> :vec AS distance
+    SELECT id, document_id, chunk_index, text AS content, char_start, char_end,
+           embedding <=> :vec AS distance
     FROM chunks
     WHERE tenant_id = :tid
-    ORDER BY embedding <=> :vec
+    ORDER BY {order_by}
     LIMIT :k
 )
-SELECT id AS chunk_id, document_id, content, 1 - distance AS score
+SELECT id AS chunk_id, document_id, chunk_index, content, char_start, char_end,
+       1 - distance AS score
 FROM ann
 ORDER BY distance + 0
 LIMIT :k
 """
+# ANN: the HNSW index can supply this order.
+_ANN_ORDER = "embedding <=> :vec"
+# Exact: "+ 0" makes the expression unusable by the HNSW index, so the plan
+# must compute every distance of the tenant's rows (found via
+# ix_chunks_tenant_id) and sort them. No planner flags needed.
+_EXACT_ORDER = "(embedding <=> :vec) + 0"
 
 
 @dataclass(frozen=True)
 class SearchHit:
     chunk_id: uuid.UUID
     document_id: uuid.UUID
+    chunk_index: int
     content: str
+    char_start: int
+    char_end: int
     score: float
 
 
@@ -51,7 +62,20 @@ def vector_search_statement(
     tenant_id: uuid.UUID, embedding: list[float], k: int
 ) -> TextClause:
     """The one ANN statement, shared by ``vector_search`` and EXPLAIN checks."""
-    return text(_SEARCH_SQL).bindparams(
+    return _search_statement(_ANN_ORDER, tenant_id, embedding, k)
+
+
+def exact_search_statement(
+    tenant_id: uuid.UUID, embedding: list[float], k: int
+) -> TextClause:
+    """Exact top-k of the tenant (never HNSW); the fallback for ANN misses."""
+    return _search_statement(_EXACT_ORDER, tenant_id, embedding, k)
+
+
+def _search_statement(
+    order_by: str, tenant_id: uuid.UUID, embedding: list[float], k: int
+) -> TextClause:
+    return text(_SEARCH_SQL.format(order_by=order_by)).bindparams(
         bindparam("vec", embedding, type_=Vector(EMBEDDING_DIM)),
         bindparam("tid", tenant_id),
         bindparam("k", clamp_k(k)),
@@ -81,6 +105,24 @@ async def vector_search(
     )
     rows = await session.execute(vector_search_statement(tenant_id, embedding, k))
     return [SearchHit(*row) for row in rows]
+
+
+async def exact_search(
+    session: AsyncSession, tenant_id: uuid.UUID, embedding: list[float], k: int
+) -> list[SearchHit]:
+    rows = await session.execute(exact_search_statement(tenant_id, embedding, k))
+    return [SearchHit(*row) for row in rows]
+
+
+async def count_for_tenant(
+    session: AsyncSession, tenant_id: uuid.UUID, *, limit: int
+) -> int:
+    """Chunks of ``tenant_id``, counted up to ``limit`` (an index lookup)."""
+    capped = (
+        select(Chunk.id).where(Chunk.tenant_id == tenant_id).limit(limit).subquery()
+    )
+    result = await session.execute(select(func.count()).select_from(capped))
+    return result.scalar_one()
 
 
 class NewChunk(TypedDict):

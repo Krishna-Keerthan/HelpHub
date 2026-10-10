@@ -1,6 +1,7 @@
 import uuid
+from collections.abc import Sequence
 
-from sqlalchemy import func, select, update
+from sqlalchemy import Select, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
@@ -111,3 +112,20 @@ async def list_for_tenant(
         .offset(offset)
     )
     return list(result)
+
+
+def titles_statement(
+    tenant_id: uuid.UUID, document_ids: Sequence[uuid.UUID]
+) -> Select[tuple[uuid.UUID, str]]:
+    return select(Document.id, Document.title).where(
+        Document.tenant_id == tenant_id, Document.id.in_(document_ids)
+    )
+
+
+async def titles_for(
+    session: AsyncSession, tenant_id: uuid.UUID, document_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, str]:
+    if not document_ids:
+        return {}
+    rows = await session.execute(titles_statement(tenant_id, document_ids))
+    return {doc_id: title for doc_id, title in rows}

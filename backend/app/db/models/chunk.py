@@ -34,6 +34,8 @@ class Chunk(Base):
             ["documents.tenant_id", "documents.id"],
             ondelete="CASCADE",
         ),
+        # Small-tenant search, the exact fallback and tenant delete (0005).
+        Index("ix_chunks_tenant_id", "tenant_id"),
         Index(
             "ix_chunks_embedding_hnsw",
             "embedding",

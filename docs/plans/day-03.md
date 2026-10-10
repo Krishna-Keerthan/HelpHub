@@ -71,3 +71,36 @@ Step zero of implementation: copy this plan to `docs/plans/day-03.md` and commit
 ### `application_name` on the runtime engine (commit 4d)
 - The runtime engine sets `application_name = helphub-<pid>` (`app/db/session.py`), and the transaction spy tests filter `pg_stat_activity` on it, so other clients of the shared dev database cannot affect them.
 - **Day 9 note:** the name is fixed when `app.db.session` is imported. A worker process forked after that import keeps the parent's pid in its connections' `application_name` unless it builds its own engine after the fork.
+
+### HNSW dead tuples and the exact fallback (diagnosis, before commit 5)
+- **Symptom:** `test_filtered_ann_with_hnsw` failed intermittently with 0 hits for tenant A.
+- **Evidence:** deterministic in a scratch repro (pgvector 0.8.7). Churning 200 near-identical B vectors without VACUUM: up to 1,827 dead tuples gave 3/3 A hits; 2,030 or more gave 0. `max_scan_tuples` 200k, `ef_search` up to 1000, `work_mem` 64MB, `scan_mem_multiplier` 4 and `strict_order` did not help (all 0). VACUUM or REINDEX restored 3/3. EXPLAIN ANALYZE: the HNSW scan returned only B's 200 live rows (`Rows Removed by Filter: 200`, ~2,991 buffers), then ended on its own.
+- **Cause:** dead entries stay in the graph until VACUUM; the scan exhausts the component reachable from the entry point and never reaches A's nodes. ~2,000 is where this synthetic data loses its last edge into A, not a budget.
+- **Production impact:** yes. Churn by a large tenant, then a small tenant elsewhere in vector space gets fewer than k hits (or none) until autovacuum runs.
+- **Fix (commit 5):** `search_in_session` falls back to an exact search when ANN returns fewer than k hits while the tenant has more chunks; `used_fallback` is logged as a WARNING (ids and counts only) and never exposed by the API.
+
+### Option B: re-add `ix_chunks_tenant_id` (commit 5, supersedes the commit-3 index decision)
+- **Step 5.0 (rolled-back transaction, run as `helphub_app` via `SET LOCAL ROLE`, spec data = 200 B rows near q + 3 A rows far, before and after ANALYZE):**
+
+  | test-only flags | plan for tenant A's ANN statement |
+  |---|---|
+  | `enable_seqscan = off` (what the unedited spec test sets) | Index Scan using `ix_chunks_tenant_id` (+ sort): **not HNSW** |
+  | `enable_sort = off` | Index Scan using `ix_chunks_embedding_hnsw` |
+  | `enable_seqscan = off` + `enable_sort = off` | Index Scan using `ix_chunks_embedding_hnsw` |
+  | `enable_seqscan = off` + `enable_bitmapscan = off` | Index Scan using `ix_chunks_tenant_id`: **not HNSW** |
+
+  So the commit-3 note ("pin with `enable_bitmapscan = off`") was wrong: a plain btree Index Scan remains available. `enable_sort = off` works because the btree, bitmap and seq-scan paths all need an extra Sort under the ANN LIMIT, while the HNSW scan returns rows already ordered.
+- **Final test-only flag set:** `enable_sort = off`, one flag. Applied to `app_conn` for `test_search_isolation` only, by `tests/isolation/conftest.py` (session level, before the test's transaction); the spec file is unedited. New ANN tests set it themselves with `SET LOCAL`. Production code never sets planner flags.
+- **Fallback (exact) query timings at 10,000 rows (20 MB heap), 3-row tenant, EXPLAIN ANALYZE:**
+  - **B, with the index:** Index Scan on `ix_chunks_tenant_id`, 3 buffers, cost 8.4, **0.06 ms**.
+  - **A, no index:** Seq Scan, 2,500 buffers, cost 2,625, **2.78 ms**. Scales with the whole table: ~250k buffers (~2 GB) at 1M rows, per fallback query.
+- **Why B:** the planner already answers small tenants (exactly the diagnosed failure case) with btree + exact sort, so their results are exact by construction; the fallback costs O(tenant rows) instead of O(table); tenant delete cascades stop seq-scanning `chunks`. Large tenants still use HNSW.
+- **Exact statement:** `ORDER BY (embedding <=> :vec) + 0` makes the HNSW index unusable for the ordering, so the fallback is exact without planner flags (pinned by `tests/test_search_statements.py`).
+- **Migration 0005:** plain `CREATE INDEX`. On a populated production table use `CREATE INDEX CONCURRENTLY` (outside a transaction) instead.
+- **Tests:** `tests/isolation/test_search_hermetic.py` (vacuumed state: HNSW path correct, `used_fallback` False); `tests/isolation/test_search_dead_tuples.py` (REINDEX, autovacuum off, 12 churn rounds, precondition raw ANN = 0 hits, then fallback returns A's 3 chunks; cleanup resets reloptions and VACUUMs).
+
+## Checklist (resume point)
+- [x] Commits 0–4, 4b (token claims), 4d (ingestion hardening)
+- [x] Commit 5: search (migration 0005, exact fallback, `POST /search`, hermetic fixture)
+- [ ] Commit 6: documents API completion (JSON-only `POST /documents` + 415, `POST /documents/upload`, `GET /documents/{id}`, `GET /documents/{id}/chunks`, `DELETE /documents/{id}`, acceptance test)
+- [ ] Final verification V1–V9

@@ -54,6 +54,20 @@ class SpyProvider(FakeEmbeddingProvider):
         return await super().embed_passages(texts)
 
 
+class QuerySpyProvider(FakeEmbeddingProvider):
+    """Fake provider that runs ``on_embed`` inside every embed_query call."""
+
+    def __init__(self, on_embed: Callable[[], Awaitable[None]] | None = None):
+        self.on_embed = on_embed
+        self.query_calls = 0
+
+    async def embed_query(self, text: str) -> list[float]:
+        self.query_calls += 1
+        if self.on_embed is not None:
+            await self.on_embed()
+        return await super().embed_query(text)
+
+
 class FailingProvider(FakeEmbeddingProvider):
     # The message mimics a third-party error carrying content; it must not
     # be stored.
