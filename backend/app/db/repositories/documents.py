@@ -1,7 +1,7 @@
 import uuid
 from collections.abc import Sequence
 
-from sqlalchemy import Select, func, select, update
+from sqlalchemy import Select, delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
@@ -129,3 +129,27 @@ async def titles_for(
         return {}
     rows = await session.execute(titles_statement(tenant_id, document_ids))
     return {doc_id: title for doc_id, title in rows}
+
+
+async def get_metadata(
+    session: AsyncSession, tenant_id: uuid.UUID, document_id: uuid.UUID
+) -> Document | None:
+    """Like ``get`` but raw_text is never loaded."""
+    result = await session.scalars(
+        select(Document)
+        .options(defer(Document.raw_text, raiseload=True))
+        .where(Document.tenant_id == tenant_id, Document.id == document_id)
+    )
+    return result.one_or_none()
+
+
+async def delete_document(
+    session: AsyncSession, tenant_id: uuid.UUID, document_id: uuid.UUID
+) -> bool:
+    """Delete one document (chunks cascade); False if not visible."""
+    result = await session.execute(
+        delete(Document).where(
+            Document.tenant_id == tenant_id, Document.id == document_id
+        )
+    )
+    return result.rowcount == 1

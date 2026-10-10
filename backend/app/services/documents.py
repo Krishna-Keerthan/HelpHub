@@ -12,6 +12,8 @@ import traceback
 import uuid
 from pathlib import Path
 
+from sqlalchemy import Row
+
 from app.core.config import settings
 from app.db.models import Document
 from app.db.models.chunk import EMBEDDING_DIM
@@ -286,3 +288,37 @@ async def list_documents(
             limit=max(1, min(limit, MAX_LIMIT)),
             offset=max(0, offset),
         )
+
+
+async def get_document(tenant_id: uuid.UUID, document_id: uuid.UUID) -> Document:
+    async with tenant_transaction(tenant_id) as session:
+        document = await documents_repo.get_metadata(session, tenant_id, document_id)
+    if document is None:
+        raise DocumentNotFound("document not found")
+    return document
+
+
+async def list_chunks(
+    tenant_id: uuid.UUID,
+    document_id: uuid.UUID,
+    *,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
+) -> list[Row[tuple[uuid.UUID, int, str, int, int]]]:
+    async with tenant_transaction(tenant_id) as session:
+        if await documents_repo.get_metadata(session, tenant_id, document_id) is None:
+            raise DocumentNotFound("document not found")
+        return await chunks_repo.list_for_document(
+            session,
+            tenant_id,
+            document_id,
+            limit=max(1, min(limit, MAX_LIMIT)),
+            offset=max(0, offset),
+        )
+
+
+async def delete_document(tenant_id: uuid.UUID, document_id: uuid.UUID) -> None:
+    async with tenant_transaction(tenant_id) as session:
+        deleted = await documents_repo.delete_document(session, tenant_id, document_id)
+    if not deleted:
+        raise DocumentNotFound("document not found")

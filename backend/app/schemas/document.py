@@ -27,3 +27,15 @@ class DocumentRead(BaseModel):
     created_by: uuid.UUID | None
     created_at: datetime
     updated_at: datetime
+
+
+class ChunkRead(BaseModel):
+    """Never includes the embedding."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    chunk_index: int
+    content: str
+    char_start: int
+    char_end: int

@@ -99,8 +99,18 @@ Step zero of implementation: copy this plan to `docs/plans/day-03.md` and commit
 - **Migration 0005:** plain `CREATE INDEX`. On a populated production table use `CREATE INDEX CONCURRENTLY` (outside a transaction) instead.
 - **Tests:** `tests/isolation/test_search_hermetic.py` (vacuumed state: HNSW path correct, `used_fallback` False); `tests/isolation/test_search_dead_tuples.py` (REINDEX, autovacuum off, 12 churn rounds, precondition raw ANN = 0 hits, then fallback returns A's 3 chunks; cleanup resets reloptions and VACUUMs).
 
+### Documents API completion (commit 6)
+- No existing test posts multipart to `/documents`, so `POST /documents` is JSON only. Any other Content-Type (text/plain, multipart, form-urlencoded, or none) gets 415. The body is parsed explicitly because FastAPI would otherwise treat a missing Content-Type as JSON and answer 422.
+- `POST /documents/upload`: multipart field `file`, optional `title`.
+  - Content-Length pre-check, then a bounded streaming read (cap = `max_upload_bytes` 5 MB + 64 KB multipart overhead), then a per-file size check: 413.
+  - Parsed in memory with python-multipart; nothing is written to disk (Starlette's form parser spools files over 1 MB to disk).
+  - `.txt`/`.md`/`.pdf` only (415). Text must be UTF-8 (BOM dropped). PDFs need the `%PDF-` signature at byte 0; pypdf would otherwise accept junk-prefixed files. Parsed in `to_thread`, at most 200 pages; encrypted, unreadable or text-less PDFs get 422 before any row exists.
+  - Default title: the base name of the filename (either separator, control characters removed), so `../../etc/passwd.txt` becomes `passwd.txt`.
+- `GET /documents/{id}` (no raw_text); `GET /documents/{id}/chunks` (limit 1..100, default 50, offset; never embeddings); `DELETE /documents/{id}` (AdminUser, 204, chunks cascade). Non-UUID ids: 422. Unknown or other tenant's: 404. A document vanishing mid-POST: 409.
+- Acceptance: `tests/test_day3_acceptance.py` (slow, real FastEmbed) registers two tenants through the API, uploads, searches, deletes.
+
 ## Checklist (resume point)
 - [x] Commits 0–4, 4b (token claims), 4d (ingestion hardening)
 - [x] Commit 5: search (migration 0005, exact fallback, `POST /search`, hermetic fixture)
-- [ ] Commit 6: documents API completion (JSON-only `POST /documents` + 415, `POST /documents/upload`, `GET /documents/{id}`, `GET /documents/{id}/chunks`, `DELETE /documents/{id}`, acceptance test)
+- [x] Commit 6: documents API completion (JSON-only `POST /documents` + 415, `POST /documents/upload`, `GET /documents/{id}`, `GET /documents/{id}/chunks`, `DELETE /documents/{id}`, acceptance test)
 - [ ] Final verification V1–V9

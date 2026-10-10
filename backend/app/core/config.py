@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     warm_up_embeddings: bool = True
     # Longest document (in characters, after NUL stripping) accepted for ingestion.
     max_document_chars: int = 500_000
+    # Largest accepted upload file; the request body is read with a bounded cap.
+    max_upload_bytes: int = 5 * 1024 * 1024
 
     @field_validator("jwt_secret")
     @classmethod
