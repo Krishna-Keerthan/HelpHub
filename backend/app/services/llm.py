@@ -60,6 +60,20 @@ class LLMBadRequestError(LLMError):
     message = "LLM provider rejected the request"
 
 
+class LLMModelUnavailableError(LLMBadRequestError):
+    """The configured model does not exist (HTTP 404), e.g. it was retired."""
+
+    code = "llm_model_unavailable"
+    message = "LLM model unavailable"
+
+
+class LLMEmptyResponseError(LLMError):
+    """The stream ended without a single content token (e.g. only reasoning)."""
+
+    code = "llm_empty_response"
+    message = "LLM returned no answer"
+
+
 class LLMProvider(Protocol):
     def stream_chat(
         self, messages: list[Message], *, max_tokens: int
@@ -98,9 +112,36 @@ def _classify(exc: Exception) -> tuple[LLMError, bool]:
         return LLMRateLimitError(), True
     if isinstance(exc, groq.InternalServerError):
         return LLMUnavailableError(), True
+    if isinstance(exc, groq.NotFoundError):
+        return LLMModelUnavailableError(), False
     if isinstance(exc, groq.BadRequestError | groq.UnprocessableEntityError):
         return LLMBadRequestError(), False
     return LLMUnavailableError(), False  # auth, permission, anything else
+
+
+def request_params(messages: list[Message], max_tokens: int) -> dict[str, Any]:
+    """Keyword arguments for chat.completions.create (also used by the smoke script).
+
+    ``max_tokens`` is the answer budget. For gpt-oss models, reasoning is
+    requested at low effort and excluded from the response
+    (``include_reasoning=False``; it cannot be combined with
+    ``reasoning_format``), and the completion budget gets extra headroom
+    because hidden reasoning tokens still count against it.
+    """
+    params: dict[str, Any] = {
+        "model": settings.groq_model,
+        "messages": messages,
+        "max_completion_tokens": max_tokens,
+        "temperature": settings.llm_temperature,
+        "stream": True,
+    }
+    if settings.groq_model.startswith("openai/gpt-oss"):
+        params["reasoning_effort"] = settings.llm_reasoning_effort
+        params["include_reasoning"] = False
+        params["max_completion_tokens"] = (
+            max_tokens + settings.llm_reasoning_token_headroom
+        )
+    return params
 
 
 def _retry_after(exc: Exception) -> float | None:
@@ -134,11 +175,7 @@ class GroqProvider:
             stream: Any = None
             try:
                 stream = await client.chat.completions.create(
-                    model=settings.groq_model,
-                    messages=messages,
-                    max_completion_tokens=max_tokens,
-                    temperature=settings.llm_temperature,
-                    stream=True,
+                    **request_params(messages, max_tokens)
                 )
                 iterator = stream.__aiter__()
                 return stream, iterator, await _first_token(iterator)
@@ -147,7 +184,10 @@ class GroqProvider:
                     await _close(stream)
                 error, retryable = _classify(exc)
                 logger.warning(
-                    "llm open failed: %s attempt=%d", type(exc).__name__, attempt
+                    "llm open failed: %s model=%s attempt=%d",
+                    type(exc).__name__,
+                    settings.groq_model,
+                    attempt,
                 )
                 delay = _retry_after(exc)
                 if delay is None:
@@ -169,7 +209,11 @@ class GroqProvider:
         stream, iterator, first = await self._open(messages, max_tokens)
         try:
             if first is None:
-                return
+                # Never an empty "successful" answer (e.g. reasoning ate the budget).
+                logger.warning(
+                    "llm stream had no content: model=%s", settings.groq_model
+                )
+                raise LLMEmptyResponseError()
             yield first
             try:
                 async for item in iterator:
@@ -184,6 +228,9 @@ class GroqProvider:
 
 
 def _delta(item: Any) -> str | None:
+    """The answer text of a chunk. ONLY ``delta.content``: ``delta.reasoning``
+    (and gpt-oss's ``channel``) is the model's chain of thought and must never
+    reach a client or the database."""
     if not item.choices:
         return None
     return item.choices[0].delta.content

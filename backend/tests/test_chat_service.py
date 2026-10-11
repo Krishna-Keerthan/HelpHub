@@ -4,6 +4,8 @@ import asyncio
 import logging
 import uuid
 
+import groq
+import httpx
 import pytest
 from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -27,7 +29,7 @@ from tests.chat_helpers import (
     seed_chunk,
 )
 from tests.conftest import MakeTenant, SeededTenant
-from tests.fakes import FakeLLMProvider
+from tests.fakes import FakeClient, FakeLLMProvider, FakeStream, chunk
 from tests.ingestion_helpers import idle_in_transaction
 
 TOKENS = ["t0 ", "t1 ", "t2 ", "t3 ", "t4 [1]"]
@@ -252,3 +254,64 @@ async def test_foreign_or_unknown_conversation_is_not_found_and_writes_nothing(
         await chat.prepare_chat(principal_of(a), uuid.uuid4(), "nope")
     assert await message_rows(owner_conn, b["id"]) == []
     assert len(await message_rows(owner_conn, a["id"])) == 1
+
+
+async def test_reasoning_text_reaches_neither_client_events_nor_the_saved_row(
+    owner_conn: AsyncConnection, make_tenant: MakeTenant
+) -> None:
+    thought = "PRIVATE-CHAIN-OF-THOUGHT"
+    client = FakeClient(
+        [
+            FakeStream(
+                [
+                    chunk(None, reasoning=thought, channel="analysis"),
+                    chunk("Reset it ", channel="final"),
+                    chunk(None, reasoning=thought, channel="analysis"),
+                    chunk("in Settings [1].", reasoning=thought, channel="final"),
+                ]
+            )
+        ]
+    )
+    tenant = await seeded(owner_conn, make_tenant)
+    _, stream = await start(tenant, GroqProvider(client))
+    events = [e async for e in stream]
+    assert thought not in repr(events)
+    assert [e.text for e in events if isinstance(e, TokenEvent)] == [
+        "Reset it ",
+        "in Settings [1].",
+    ]
+    _, assistant = await message_rows(owner_conn, tenant["id"])
+    assert assistant["status"] == "complete"
+    assert assistant["content"] == "Reset it in Settings [1]."
+    assert thought not in repr(assistant)
+
+
+async def test_zero_content_stream_saves_a_failed_row_not_an_empty_answer(
+    owner_conn: AsyncConnection, make_tenant: MakeTenant
+) -> None:
+    client = FakeClient([FakeStream([chunk(None, reasoning="only thinking")])])
+    tenant = await seeded(owner_conn, make_tenant)
+    _, stream = await start(tenant, GroqProvider(client))
+    events = [e async for e in stream]
+    assert events[-1] == ErrorEvent("llm_empty_response")
+    assert not any(isinstance(e, DoneEvent) for e in events)
+    _, assistant = await message_rows(owner_conn, tenant["id"])
+    assert (assistant["status"], assistant["content"]) == ("failed", "")
+
+
+async def test_retired_model_404_saves_a_failed_row_with_model_unavailable(
+    owner_conn: AsyncConnection, make_tenant: MakeTenant
+) -> None:
+    response = httpx.Response(
+        404, request=httpx.Request("POST", "https://example.invalid/chat")
+    )
+    client = FakeClient(
+        [groq.NotFoundError("PROVIDER-TEXT", response=response, body=None)]
+    )
+    tenant = await seeded(owner_conn, make_tenant)
+    _, stream = await start(tenant, GroqProvider(client))
+    events = [e async for e in stream]
+    assert events[-1] == ErrorEvent("llm_model_unavailable")
+    assert "PROVIDER-TEXT" not in repr(events)
+    _, assistant = await message_rows(owner_conn, tenant["id"])
+    assert assistant["status"] == "failed"

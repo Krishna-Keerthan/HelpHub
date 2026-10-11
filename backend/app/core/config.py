@@ -45,7 +45,16 @@ class Settings(BaseSettings):
     pdf_queue_wait_seconds: float = 5.0
     # Empty key is allowed at startup; chat requests then fail with llm_unavailable.
     groq_api_key: SecretStr = SecretStr("")
-    groq_model: str = "llama-3.3-70b-versatile"
+    # Groq retires models without much notice; scripts/smoke_groq.py checks
+    # this id against GET /models. openai/gpt-oss-120b is the larger option.
+    groq_model: str = "openai/gpt-oss-20b"
+    # Sent only to openai/gpt-oss-* models (other models reject or ignore it).
+    llm_reasoning_effort: Literal["low", "medium", "high"] = "low"
+    # gpt-oss reasoning tokens are billed against max_completion_tokens even
+    # though they are never shown. This is added to the answer budget so
+    # reasoning cannot starve the answer (measured: ~5 tokens at "low" for a
+    # greeting; a grounded answer needs far more, so 512 is a generous cap).
+    llm_reasoning_token_headroom: int = 512
     llm_timeout_seconds: float = 30.0
     # Overall budget for retries before the first token.
     llm_retry_deadline_seconds: float = 20.0

@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+from types import SimpleNamespace
 from typing import Any
 
 from app.services.llm import LLMUnavailableError
@@ -58,10 +59,53 @@ class FakeLLMProvider:
             raise self.error
 
 
-def chunk(content: str | None) -> Any:
-    """A Groq-shaped streaming chunk."""
-    from types import SimpleNamespace
-
+def chunk(
+    content: str | None, *, reasoning: str | None = None, channel: str | None = None
+) -> Any:
+    """A Groq-shaped streaming chunk. gpt-oss deltas also carry ``reasoning``
+    (and an undeclared ``channel``) unless include_reasoning=False was sent."""
     return SimpleNamespace(
-        choices=[SimpleNamespace(delta=SimpleNamespace(content=content))]
+        choices=[
+            SimpleNamespace(
+                delta=SimpleNamespace(
+                    content=content, reasoning=reasoning, channel=channel
+                )
+            )
+        ]
     )
+
+
+class FakeStream:
+    """Stands in for the groq stream object; exceptions in ``items`` are raised."""
+
+    def __init__(self, items: list[Any]) -> None:
+        self.items = items
+        self.closed = False
+
+    def __aiter__(self) -> AsyncIterator[Any]:
+        return self._gen()
+
+    async def _gen(self) -> AsyncIterator[Any]:
+        for item in self.items:
+            if isinstance(item, BaseException):
+                raise item
+            yield item
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+class FakeClient:
+    """Each create() call pops the next scripted outcome (exception or stream)."""
+
+    def __init__(self, outcomes: list[Any]) -> None:
+        self.outcomes = list(outcomes)
+        self.calls: list[dict[str, Any]] = []
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self.create))
+
+    async def create(self, **kwargs: Any) -> Any:
+        self.calls.append(kwargs)
+        outcome = self.outcomes.pop(0)
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome

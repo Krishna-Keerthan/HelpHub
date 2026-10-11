@@ -101,3 +101,20 @@ def test_secrets_are_read_only() -> None:
     settings = make_settings()
     with pytest.raises(AttributeError):
         settings.jwt_secret = "x" * 40  # type: ignore[misc]
+
+
+SECRET_NAME_PARTS = ("key", "secret", "password", "url", "dsn")
+
+
+def test_every_secret_looking_field_is_a_secretstr() -> None:
+    """By name, so a future groq_api_key-style field cannot silently be a str.
+
+    ``dsn`` is included because the URL fields are stored as *_dsn.
+    """
+    plain = [
+        name
+        for name, field in Settings.model_fields.items()
+        if any(part in name for part in SECRET_NAME_PARTS)
+        and field.annotation is not SecretStr
+    ]
+    assert plain == []
