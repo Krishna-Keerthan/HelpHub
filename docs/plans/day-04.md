@@ -32,4 +32,11 @@ Irrelevant: 0.3965, 0.4844, 0.4636, 0.4947, 0.4833, 0.4952, 0.4878, 0.4832, 0.40
 - [x] Commit 0: hygiene (PDF queue wait 503 + Retry-After; worker import isolation; chunks-list tenant bind; no planner flags in app/)
 - [x] Commit 1: schema (0006) + providers (one existing assertion changed: SecretStr count 3 -> 4, approved)
 - [x] Commit 2: prompt + orchestration
-- [ ] Commit 3: API (POST /chat/stream, conversations)
+- [x] Commit 3: API (POST /chat/stream, conversations)
+
+## Chat design notes
+- `POST /chat/stream` uses native `fastapi.sse` (`EventSourceResponse`, `ServerSentEvent`); POST works. Events: `sources` (first, with `conversation_id`), `token`, then `done` (`status`, `cited`) or `error` (generic `code`: `internal_error`, `llm_unavailable`, `llm_timeout`, `llm_rate_limited`, `llm_bad_request`).
+- Conversation ownership is checked in a dependency (`get_chat_context`) before the stream starts, so an unknown or foreign `conversation_id` is a real HTTP 404.
+- How tests read the stream: streams are finite, so `client.post` returns the whole body and `tests/test_chat_api.py` parses the SSE text. httpx's ASGITransport may buffer, so disconnect behaviour is tested on the orchestrator generator directly: cancel the consuming task and `aclose()` after N tokens (`tests/test_chat_service.py`); both leave an `interrupted` row with the partial text.
+- Output-token parameter: the installed groq 1.7.0 `chat.completions.create` has both `max_completion_tokens` and `max_tokens` (documented as deprecated); we send `max_completion_tokens`.
+- `scripts/smoke_groq.py` is a manual real-Groq check, not part of pytest.

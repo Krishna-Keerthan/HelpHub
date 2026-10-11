@@ -1,7 +1,7 @@
 """Test doubles for the LLM provider."""
 
 import asyncio
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from typing import Any
 
 from app.services.llm import LLMUnavailableError
@@ -24,12 +24,14 @@ class FakeLLMProvider:
         fail_at: int | None = None,
         error: BaseException | None = None,
         on_call: Callable[[list[dict[str, str]]], None] | None = None,
+        on_token: Callable[[int], Awaitable[None]] | None = None,
     ) -> None:
         self.tokens = list(tokens)
         self.delay = delay
         self.fail_at = fail_at
         self.error = error or LLMUnavailableError()
         self.on_call = on_call
+        self.on_token = on_token
         self.calls = 0
         self.last_messages: list[dict[str, str]] = []
         self.last_max_tokens: int | None = None
@@ -46,6 +48,8 @@ class FakeLLMProvider:
         for i, token in enumerate(self.tokens):
             if self.fail_at == i:
                 raise self.error
+            if self.on_token is not None:
+                await self.on_token(i)
             if self.delay:
                 await asyncio.sleep(self.delay)
             self.yielded.append(token)

@@ -19,8 +19,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from app.api.deps import Principal
 from app.core.config import settings
+from app.core.principal import Principal
 from app.db.repositories import chat_messages as messages_repo
 from app.db.repositories import conversations as conversations_repo
 from app.db.repositories import documents as documents_repo

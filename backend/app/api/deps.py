@@ -1,12 +1,11 @@
-import uuid
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.principal import Principal
 from app.core.security import InvalidTokenError, TokenSubject, parse_token_subject
 from app.db.models import User
 from app.db.repositories import users as users_repo
@@ -67,15 +66,6 @@ async def require_admin(user: CurrentUser) -> User:
 
 
 AdminUser = Annotated[User, Depends(require_admin, scope="function")]
-
-
-@dataclass(frozen=True)
-class Principal:
-    """The authenticated user as plain data; holds no session."""
-
-    user_id: uuid.UUID
-    tenant_id: uuid.UUID
-    role: str
 
 
 async def get_current_principal(subject: Subject) -> Principal:
