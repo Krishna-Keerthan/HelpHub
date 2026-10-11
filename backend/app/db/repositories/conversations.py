@@ -6,6 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import Conversation
 
 
+class ConversationNotOwned(Exception):
+    """The conversation is unknown, or belongs to another user or tenant."""
+
+
 async def create(
     session: AsyncSession, tenant_id: uuid.UUID, user_id: uuid.UUID
 ) -> Conversation:
@@ -33,13 +37,22 @@ async def get_owned(
 
 
 async def touch(
-    session: AsyncSession, tenant_id: uuid.UUID, conversation_id: uuid.UUID
-) -> None:
-    await session.execute(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    user_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+) -> int:
+    """Bump updated_at on the user's own conversation; returns rows affected."""
+    result = await session.execute(
         update(Conversation)
-        .where(Conversation.tenant_id == tenant_id, Conversation.id == conversation_id)
+        .where(
+            Conversation.tenant_id == tenant_id,
+            Conversation.user_id == user_id,
+            Conversation.id == conversation_id,
+        )
         .values(updated_at=func.now())
     )
+    return result.rowcount  # type: ignore[attr-defined]
 
 
 async def list_for_user(

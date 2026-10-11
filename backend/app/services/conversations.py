@@ -29,5 +29,10 @@ async def list_messages(
         if conversation is None:
             raise ConversationNotFound
         return await messages_repo.list_for_conversation(
-            session, principal.tenant_id, conversation_id, limit=limit, offset=offset
+            session,
+            principal.tenant_id,
+            principal.user_id,
+            conversation_id,
+            limit=limit,
+            offset=offset,
         )

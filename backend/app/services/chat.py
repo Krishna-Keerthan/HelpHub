@@ -108,17 +108,24 @@ async def prepare_chat(
                 raise ConversationNotFound
             conversation = found
         history_rows = await messages_repo.recent_history(
-            session, tenant_id, conversation.id, settings.chat_history_messages
+            session,
+            tenant_id,
+            principal.user_id,
+            conversation.id,
+            settings.chat_history_messages,
         )
         await messages_repo.add(
             session,
             tenant_id,
+            principal.user_id,
             conversation.id,
             role="user",
             content=question,
             status="complete",
         )
-        await conversations_repo.touch(session, tenant_id, conversation.id)
+        await conversations_repo.touch(
+            session, tenant_id, principal.user_id, conversation.id
+        )
         return ChatContext(
             principal=principal,
             conversation_id=conversation.id,
@@ -253,6 +260,7 @@ async def _save_assistant(ctx: ChatContext, outcome: _Outcome) -> bool:
             await messages_repo.add(
                 session,
                 tenant_id,
+                ctx.principal.user_id,
                 ctx.conversation_id,
                 role="assistant",
                 content="".join(outcome.parts),
@@ -260,7 +268,9 @@ async def _save_assistant(ctx: ChatContext, outcome: _Outcome) -> bool:
                 sources=outcome.sources,
                 model=outcome.model,
             )
-            await conversations_repo.touch(session, tenant_id, ctx.conversation_id)
+            await conversations_repo.touch(
+                session, tenant_id, ctx.principal.user_id, ctx.conversation_id
+            )
     except Exception as exc:  # noqa: BLE001 - logged by class; never leaves the stream
         _log_failure("chat save failed", exc, ctx)
         return False
