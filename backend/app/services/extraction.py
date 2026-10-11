@@ -9,6 +9,8 @@ import json
 import os
 import sys
 import unicodedata
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from app.core.config import settings
@@ -20,6 +22,10 @@ MAX_TITLE_CHARS = 500
 
 class UnsupportedFileType(Exception):
     pass
+
+
+class PdfQueueTimeout(Exception):
+    """No PDF worker slot became free in time; the client should retry."""
 
 
 class UnreadableDocument(Exception):
@@ -85,9 +91,23 @@ def _worker_env() -> dict[str, str]:
     return {"PATH": os.environ.get("PATH", ""), "LANG": "C.UTF-8"}
 
 
+@asynccontextmanager
+async def _acquire_worker_slot() -> AsyncIterator[None]:
+    """A worker slot, waiting at most pdf_queue_wait_seconds for one."""
+    slots = _worker_slots()
+    try:
+        await asyncio.wait_for(slots.acquire(), settings.pdf_queue_wait_seconds)
+    except TimeoutError:
+        raise PdfQueueTimeout("PDF workers are busy") from None
+    try:
+        yield
+    finally:
+        slots.release()
+
+
 async def _pdf_text(data: bytes) -> str:
     timeout = settings.pdf_timeout_seconds
-    async with _worker_slots():
+    async with _acquire_worker_slot():
         process = await asyncio.create_subprocess_exec(
             sys.executable,
             "-m",

@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     pdf_cpu_seconds: int = 10
     pdf_memory_bytes: int = 512 * 1024 * 1024
     pdf_max_concurrency: int = 2
+    # Longest an upload waits for a free PDF worker slot before getting 503.
+    pdf_queue_wait_seconds: float = 5.0
+    # Below this top-hit score a question gets a refusal and no LLM call
+    # (provisional, from scripts/calibrate_threshold.py; see docs/plans/day-04.md).
+    min_retrieval_score: float = 0.59
 
     @field_validator("jwt_signing_key")
     @classmethod

@@ -166,6 +166,12 @@ async def upload_document(
         raise HTTPException(
             status.HTTP_413_CONTENT_TOO_LARGE, detail="Document is too large"
         ) from None
+    except extraction.PdfQueueTimeout:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Server busy, retry shortly",
+            headers={"Retry-After": str(int(settings.pdf_queue_wait_seconds) or 1)},
+        ) from None
     except extraction.UnreadableDocument as exc:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)

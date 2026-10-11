@@ -4,7 +4,17 @@ from dataclasses import dataclass
 from typing import TypedDict
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Row, TextClause, bindparam, delete, func, insert, select, text
+from sqlalchemy import (
+    Row,
+    Select,
+    TextClause,
+    bindparam,
+    delete,
+    func,
+    insert,
+    select,
+    text,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Chunk
@@ -180,6 +190,20 @@ async def count_for_document(
     return result.scalar_one()
 
 
+def list_for_document_statement(
+    tenant_id: uuid.UUID, document_id: uuid.UUID, *, limit: int, offset: int
+) -> Select[tuple[uuid.UUID, int, str, int, int]]:
+    return (
+        select(
+            Chunk.id, Chunk.chunk_index, Chunk.content, Chunk.char_start, Chunk.char_end
+        )
+        .where(Chunk.tenant_id == tenant_id, Chunk.document_id == document_id)
+        .order_by(Chunk.chunk_index)
+        .limit(limit)
+        .offset(offset)
+    )
+
+
 async def list_for_document(
     session: AsyncSession,
     tenant_id: uuid.UUID,
@@ -190,12 +214,6 @@ async def list_for_document(
 ) -> list[Row[tuple[uuid.UUID, int, str, int, int]]]:
     """Chunk text and offsets in index order; embeddings are never selected."""
     result = await session.execute(
-        select(
-            Chunk.id, Chunk.chunk_index, Chunk.content, Chunk.char_start, Chunk.char_end
-        )
-        .where(Chunk.tenant_id == tenant_id, Chunk.document_id == document_id)
-        .order_by(Chunk.chunk_index)
-        .limit(limit)
-        .offset(offset)
+        list_for_document_statement(tenant_id, document_id, limit=limit, offset=offset)
     )
     return list(result)
