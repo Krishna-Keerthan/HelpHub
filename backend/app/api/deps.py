@@ -12,6 +12,7 @@ from app.db.models import User
 from app.db.repositories import users as users_repo
 from app.db.tenant_context import tenant_transaction
 from app.services.embeddings import EmbeddingProvider, default_provider
+from app.services.llm import GroqProvider, LLMProvider
 
 bearer = HTTPBearer(auto_error=False)
 
@@ -99,3 +100,16 @@ def get_embedding_provider() -> EmbeddingProvider:
 
 
 Embedder = Annotated[EmbeddingProvider, Depends(get_embedding_provider)]
+
+
+_llm_provider: GroqProvider | None = None
+
+
+def get_llm_provider() -> LLMProvider:
+    global _llm_provider
+    if _llm_provider is None:
+        _llm_provider = GroqProvider()
+    return _llm_provider
+
+
+LLM = Annotated[LLMProvider, Depends(get_llm_provider)]

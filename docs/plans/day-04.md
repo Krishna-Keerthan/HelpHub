@@ -30,6 +30,6 @@ Irrelevant: 0.3965, 0.4844, 0.4636, 0.4947, 0.4833, 0.4952, 0.4878, 0.4832, 0.40
 
 ## Day 4 checklist
 - [x] Commit 0: hygiene (PDF queue wait 503 + Retry-After; worker import isolation; chunks-list tenant bind; no planner flags in app/)
-- [ ] Commit 1: schema (0006) + providers
+- [x] Commit 1: schema (0006) + providers (one existing assertion changed: SecretStr count 3 -> 4, approved)
 - [ ] Commit 2: prompt + orchestration
 - [ ] Commit 3: API (POST /chat/stream, conversations)

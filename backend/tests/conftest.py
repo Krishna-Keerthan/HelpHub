@@ -11,11 +11,12 @@ from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from app.api.deps import get_embedding_provider
+from app.api.deps import get_embedding_provider, get_llm_provider
 from app.core.config import settings
 from app.core.security import create_access_token, hash_password
 from app.main import app
 from app.services.embeddings import FakeEmbeddingProvider
+from tests.fakes import FakeLLMProvider
 
 SEED_PASSWORD = "Password123!Password"
 EMBEDDING_DIM = 384
@@ -59,6 +60,21 @@ def fake_embedding_provider() -> Iterator[None]:
             app.dependency_overrides.pop(get_embedding_provider, None)
         else:
             app.dependency_overrides[get_embedding_provider] = previous
+
+
+@pytest.fixture(autouse=True)
+def fake_llm() -> Iterator[FakeLLMProvider]:
+    """API tests never call Groq. Restores any prior override."""
+    fake = FakeLLMProvider()
+    previous = app.dependency_overrides.get(get_llm_provider, _MISSING)
+    app.dependency_overrides[get_llm_provider] = lambda: fake
+    try:
+        yield fake
+    finally:
+        if previous is _MISSING:
+            app.dependency_overrides.pop(get_llm_provider, None)
+        else:
+            app.dependency_overrides[get_llm_provider] = previous
 
 
 async def _seed_tenant_slugs() -> set[str]:

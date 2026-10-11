@@ -44,7 +44,7 @@ def test_model_dump_hides_secrets() -> None:
     secret_values = [
         v for v in settings.model_dump().values() if isinstance(v, SecretStr)
     ]
-    assert len(secret_values) == 3
+    assert len(secret_values) == 4
 
 
 def test_attribute_error_message_hides_secrets(monkeypatch: pytest.MonkeyPatch) -> None:

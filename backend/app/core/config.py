@@ -43,6 +43,18 @@ class Settings(BaseSettings):
     pdf_max_concurrency: int = 2
     # Longest an upload waits for a free PDF worker slot before getting 503.
     pdf_queue_wait_seconds: float = 5.0
+    # Empty key is allowed at startup; chat requests then fail with llm_unavailable.
+    groq_api_key: SecretStr = SecretStr("")
+    groq_model: str = "llama-3.3-70b-versatile"
+    llm_timeout_seconds: float = 30.0
+    # Overall budget for retries before the first token.
+    llm_retry_deadline_seconds: float = 20.0
+    max_answer_tokens: int = 800
+    llm_temperature: float = 0.2
+    chat_top_k: int = 5
+    chat_history_messages: int = 6
+    max_context_chars: int = 12_000
+    max_message_chars: int = 2000
     # Below this top-hit score a question gets a refusal and no LLM call
     # (provisional, from scripts/calibrate_threshold.py; see docs/plans/day-04.md).
     min_retrieval_score: float = 0.59
