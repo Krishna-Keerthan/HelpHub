@@ -1,7 +1,10 @@
+import uuid
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Tenant
+from app.db.session import AsyncSessionLocal
 
 
 async def get_by_slug(session: AsyncSession, slug: str) -> Tenant | None:
@@ -14,3 +17,11 @@ async def create(session: AsyncSession, *, name: str, slug: str) -> Tenant:
     session.add(tenant)
     await session.flush()
     return tenant
+
+
+async def list_ids() -> list[uuid.UUID]:
+    """Every tenant id (maintenance scripts). Own session: the tenants table
+    is not tenant-scoped."""
+    async with AsyncSessionLocal() as session:
+        result = await session.scalars(select(Tenant.id).order_by(Tenant.created_at))
+        return list(result)

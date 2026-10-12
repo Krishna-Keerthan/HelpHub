@@ -114,12 +114,14 @@ async def test_es_unreachable_raises_search_unavailable_without_es_text(
             await keyword_search.search(t["id"], "secret query words", 5, dead)
     finally:
         await dead.close()
+    assert str(info.value) == "search unavailable"
     everything = str(info.value) + caplog.text
     for leak in (
         "127.0.0.1",
         "secret query words",
         "Cannot connect",
         "ClientConnector",
+        "Connection error",
     ):
         assert leak not in everything
     assert info.value.__cause__ is None or "127.0.0.1" not in str(info.value)

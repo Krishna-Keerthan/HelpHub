@@ -47,6 +47,6 @@ Variants tried: `preserve_original` only (no `e4012`, so `E4012` would not match
 - [x] Commit 0: hygiene (groq default 120b, kwargs test, amendment tests, CLAUDE.md)
 - [x] Commit 1: infrastructure (compose, client, settings, test prefix)
 - [x] Commit 2: mapping, analyzers, query, hydration
-- [ ] Commit 3: sync (migration 0007, index_document, delete sync, reindex) and API
-- [ ] Stretch: per-tenant filtered aliases
+- [x] Commit 3: sync (migration 0007, index_document, delete sync, reindex) and API
+- [ ] Stretch: per-tenant filtered aliases (skipped)
 - [ ] Final verification V1-V12

@@ -78,3 +78,42 @@ async def upload_and_index(
         )
     await es.indices.refresh(index=alias_name())
     return document_id, rows
+
+
+def dead_client() -> AsyncElasticsearch:
+    """A client for an unreachable ES (connection refused, no retries)."""
+    return AsyncElasticsearch("http://127.0.0.1:1", request_timeout=0.5, max_retries=0)
+
+
+async def doc_index_state(
+    owner_conn: AsyncConnection, document_id: uuid.UUID
+) -> dict[str, Any]:
+    from sqlalchemy import text
+
+    result = await owner_conn.execute(
+        text(
+            "SELECT status, search_index_status, search_index_error "
+            "FROM documents WHERE id = :id"
+        ),
+        {"id": document_id},
+    )
+    row = dict(result.mappings().one())
+    await owner_conn.rollback()
+    return row
+
+
+async def es_ids(
+    es: AsyncElasticsearch,
+    *,
+    tenant_id: uuid.UUID,
+    document_id: uuid.UUID | None = None,
+) -> set[str]:
+    """Ids of ES documents claiming ``tenant_id`` (and ``document_id``)."""
+    await es.indices.refresh(index=alias_name())
+    filters: list[dict[str, Any]] = [{"term": {"tenant_id": str(tenant_id)}}]
+    if document_id is not None:
+        filters.append({"term": {"document_id": str(document_id)}})
+    response = await es.search(
+        index=alias_name(), query={"bool": {"filter": filters}}, size=1000, source=False
+    )
+    return {hit["_id"] for hit in response["hits"]["hits"]}

@@ -255,3 +255,15 @@ async def hydrate_chunks(
     result = await session.execute(hydrate_statement(tenant_id, ids))
     by_id = {row.id: HydratedChunk(*row) for row in result}
     return [by_id[i] for i in ids if i in by_id]
+
+
+async def list_for_indexing(
+    session: AsyncSession, tenant_id: uuid.UUID, document_id: uuid.UUID
+) -> list[tuple[uuid.UUID, int, str]]:
+    """(id, chunk_index, content) of one document, in index order."""
+    result = await session.execute(
+        select(Chunk.id, Chunk.chunk_index, Chunk.content)
+        .where(Chunk.tenant_id == tenant_id, Chunk.document_id == document_id)
+        .order_by(Chunk.chunk_index)
+    )
+    return [(row.id, row.chunk_index, row.content) for row in result]
