@@ -64,9 +64,13 @@ async def isolated_es_indices() -> AsyncIterator[None]:
         yield
     finally:
         try:
-            await es_client.get_es().indices.delete(
-                index=f"{prefix}*", ignore_unavailable=True
+            # Wildcard deletes are refused by ES (destructive_requires_name).
+            es = es_client.get_es()
+            found = await es.indices.get(
+                index=f"{prefix}*", ignore_unavailable=True, allow_no_indices=True
             )
+            if found:
+                await es.indices.delete(index=list(found), ignore_unavailable=True)
         except Exception:  # noqa: BLE001, S110 - cleanup only; ES tests fail loudly
             pass
         await es_client.close_es()

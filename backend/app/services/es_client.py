@@ -13,6 +13,11 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+# The transport logs request bodies (queries, document text) at DEBUG and URLs
+# at INFO. Pin it above that whatever the root level is.
+for _noisy in ("elastic_transport", "elasticsearch"):
+    logging.getLogger(_noisy).setLevel(logging.ERROR)
+
 MAX_RETRIES = 2
 
 _client: AsyncElasticsearch | None = None

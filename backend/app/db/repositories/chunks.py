@@ -217,3 +217,41 @@ async def list_for_document(
         list_for_document_statement(tenant_id, document_id, limit=limit, offset=offset)
     )
     return list(result)
+
+
+@dataclass(frozen=True)
+class HydratedChunk:
+    id: uuid.UUID
+    document_id: uuid.UUID
+    chunk_index: int
+    content: str
+    char_start: int
+    char_end: int
+
+
+def hydrate_statement(
+    tenant_id: uuid.UUID, ids: Sequence[uuid.UUID]
+) -> Select[tuple[uuid.UUID, uuid.UUID, int, str, int, int]]:
+    return select(
+        Chunk.id,
+        Chunk.document_id,
+        Chunk.chunk_index,
+        Chunk.content,
+        Chunk.char_start,
+        Chunk.char_end,
+    ).where(Chunk.tenant_id == tenant_id, Chunk.id.in_(ids))
+
+
+async def hydrate_chunks(
+    session: AsyncSession, tenant_id: uuid.UUID, ids: Sequence[uuid.UUID]
+) -> list[HydratedChunk]:
+    """Rows for the candidate ``ids`` (e.g. from ES), in the order given.
+
+    Ids that do not exist or belong to another tenant are silently dropped:
+    the explicit tenant_id predicate and RLS both apply.
+    """
+    if not ids:
+        return []
+    result = await session.execute(hydrate_statement(tenant_id, ids))
+    by_id = {row.id: HydratedChunk(*row) for row in result}
+    return [by_id[i] for i in ids if i in by_id]
