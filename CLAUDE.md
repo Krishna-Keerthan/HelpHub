@@ -26,3 +26,5 @@ Project lives in WSL2 Ubuntu at ~/projects/helphub. Use bash and Linux paths onl
 - Routes that do slow work (embedding, LLM, streaming) use CurrentPrincipal and short tenant_transactions, never TenantSession.
 ## Tests layout
 New tests go in the matching domain directory under tests/; helpers live in tests/helpers/; isolation tests in tests/isolation/; end-to-end acceptance tests in tests/acceptance/.
+- After any FastAPI upgrade re-run the 3b mutation (function-scoped TenantSession in the chat route).
+- Never commit a red test.

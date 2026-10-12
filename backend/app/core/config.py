@@ -46,8 +46,8 @@ class Settings(BaseSettings):
     # Empty key is allowed at startup; chat requests then fail with llm_unavailable.
     groq_api_key: SecretStr = SecretStr("")
     # Groq retires models without much notice; scripts/smoke_groq.py checks
-    # this id against GET /models. openai/gpt-oss-120b is the larger option.
-    groq_model: str = "openai/gpt-oss-20b"
+    # this id against GET /models. openai/gpt-oss-20b is the smaller option.
+    groq_model: str = "openai/gpt-oss-120b"
     # Sent only to openai/gpt-oss-* models (other models reject or ignore it).
     llm_reasoning_effort: Literal["low", "medium", "high"] = "low"
     # gpt-oss reasoning tokens are billed against max_completion_tokens even
