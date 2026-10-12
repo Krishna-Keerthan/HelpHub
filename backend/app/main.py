@@ -16,6 +16,7 @@ from app.core.config import settings
 from app.db.health import ping
 from app.db.session import get_session
 from app.services.embeddings import warm_up_default_provider
+from app.services.es_client import close_es
 from app.services.llm import close_groq_client
 
 
@@ -25,6 +26,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await warm_up_default_provider()
     yield
     await close_groq_client()
+    await close_es()
 
 
 app = FastAPI(title="HelpHub", lifespan=lifespan)

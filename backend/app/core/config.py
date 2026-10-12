@@ -60,6 +60,12 @@ class Settings(BaseSettings):
     llm_retry_deadline_seconds: float = 20.0
     max_answer_tokens: int = 800
     llm_temperature: float = 0.2
+    # Elasticsearch (dev: single node, security off, 127.0.0.1 only).
+    es_endpoint: str = "http://127.0.0.1:9200"
+    # Prepended to the alias and index names; tests use a per-session prefix.
+    es_index_prefix: str = ""
+    es_timeout_seconds: float = 10.0
+    es_alias: str = "chunks"
     chat_top_k: int = 5
     chat_history_messages: int = 6
     max_context_chars: int = 12_000

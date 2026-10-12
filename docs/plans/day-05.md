@@ -18,7 +18,7 @@ Postgres stays the source of truth. ES is a derived index that returns ids and s
 
 ## Checklist
 - [x] Commit 0: hygiene (groq default 120b, kwargs test, amendment tests, CLAUDE.md)
-- [ ] Commit 1: infrastructure (compose, client, settings, test prefix)
+- [x] Commit 1: infrastructure (compose, client, settings, test prefix)
 - [ ] Commit 2: mapping, analyzers, query, hydration
 - [ ] Commit 3: sync (migration 0007, index_document, delete sync, reindex) and API
 - [ ] Stretch: per-tenant filtered aliases
