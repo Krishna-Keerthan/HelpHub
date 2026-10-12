@@ -141,6 +141,7 @@ async def warm_up_default_provider() -> None:
     try:
         await default_provider().warm_up()
     except Exception:
+        # gate-allow: startup warm-up, no DB or document data
         logger.exception("embedding model warm-up failed; will retry on first use")
 
 

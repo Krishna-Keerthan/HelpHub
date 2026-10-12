@@ -154,7 +154,7 @@ def _retry_after(exc: Exception) -> float | None:
 
 
 def _backoff(attempt: int) -> float:
-    return BASE_BACKOFF_SECONDS * 2**attempt * random.uniform(0.5, 1.0)
+    return BASE_BACKOFF_SECONDS * 2**attempt * random.uniform(0.5, 1.0)  # noqa: S311 (retry jitter)
 
 
 class GroqProvider:

@@ -52,9 +52,7 @@ async def test_upgrade_downgrade_upgrade_roundtrip() -> None:
     try:
         async with admin.connect() as conn:
             await conn.execute(text(f'CREATE DATABASE "{name}"'))
-        scratch = create_async_engine(
-            env["MIGRATION_DATABASE_URL"], poolclass=NullPool
-        )
+        scratch = create_async_engine(env["MIGRATION_DATABASE_URL"], poolclass=NullPool)
 
         _alembic(env, "upgrade", "head")
         _alembic(env, "downgrade", "base")

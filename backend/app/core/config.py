@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 ROOT = Path(__file__).resolve().parents[3] / ".env"
 
 # Value shipped in .env.example; must never be used as a real secret.
-JWT_SECRET_PLACEHOLDER = "change-me-generate-with-openssl-rand-hex-32"
+JWT_SECRET_PLACEHOLDER = "change-me-generate-with-openssl-rand-hex-32"  # noqa: S105 (public placeholder, rejected at startup)
 JWT_SECRET_MIN_LENGTH = 32
 
 

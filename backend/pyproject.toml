@@ -36,6 +36,8 @@ module-root = ""
 dev = [
     "httpx>=0.28.1",
     "hypothesis>=6.168.5",
+    "import-linter>=2.15",
+    "pip-audit>=2.10.1",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "ruff>=0.16.10",
@@ -48,3 +50,60 @@ asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
 addopts = "--strict-markers -m 'not slow'"
 markers = ["slow: loads the real embedding model; run with -m slow"]
+log_level = "INFO"
+
+[tool.ruff.lint]
+extend-select = ["S", "B", "ASYNC"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]
+# Existing tests are not edited; their fixed-SQL f-strings and subprocess calls
+# (argument lists, no shell) are accepted per file.
+"tests/core/test_hygiene_static.py" = ["S603"]
+"tests/documents/test_documents_schema.py" = ["S608"]
+"tests/documents/test_documents_search_index_columns.py" = ["S608"]
+"tests/isolation/test_documents_chunks_rls.py" = ["S608"]
+"tests/search/test_reindex.py" = ["S603"]
+"tests/chat/test_chat_service.py" = ["ASYNC110"]
+"tests/migrations/test_migration_roundtrip.py" = ["S603"]
+"tests/tooling/test_guard_bash.py" = ["S603"]
+
+[tool.importlinter]
+root_package = "app"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "api does not use the database driver directly"
+type = "forbidden"
+source_modules = ["app.api"]
+forbidden_modules = ["sqlalchemy", "asyncpg"]
+allow_indirect_imports = true
+ignore_imports = [
+    # TODO: deps.py only needs AsyncSession for the TenantSession type alias;
+    # re-export the type from app.db and drop this ignore.
+    "app.api.deps -> sqlalchemy",
+]
+
+[[tool.importlinter.contracts]]
+name = "services do not import fastapi"
+type = "forbidden"
+source_modules = ["app.services"]
+forbidden_modules = ["fastapi"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "db does not import api or services"
+type = "forbidden"
+source_modules = ["app.db"]
+forbidden_modules = ["app.api", "app.services"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "core does not import db, services or api"
+type = "forbidden"
+source_modules = ["app.core"]
+forbidden_modules = ["app.db", "app.services", "app.api"]
+allow_indirect_imports = true
+
+# TODO: when app.workers and app.rag exist, add a contract that they import
+# only app.services (import-linter cannot reference modules that do not exist).
