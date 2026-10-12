@@ -29,3 +29,11 @@ New tests go in the matching domain directory under tests/; helpers live in test
 - After any FastAPI upgrade re-run the 3b mutation (function-scoped TenantSession in the chat route).
 - Never commit a red test.
 - Never run two pytest sessions at the same time (shared database).
+
+## Review routine
+- Day end: `scripts/gate.sh --full` must be green, then `/day-review <range>` (default HEAD~1..HEAD).
+- `/day-review` runs the gate first (STOPs if red), then picks agents by changed paths: tenant-reviewer and design-reviewer for app/ or alembic/, test-quality-reviewer for tests/, security-auditor only for auth, upload, chat/LLM, search/ES, config, Docker, dependency or migration changes.
+- Agents are read-only and print at most 12 findings; the skill prints one report of at most 40 lines.
+- Context for reviewers: docs/review/context.md. Accepted risks (stable IDs AR-nn): docs/review/accepted-risks.md; add an entry instead of re-explaining a known risk.
+- `.claude/hooks/guard_bash.py` blocks destructive commands (best-effort); do not work around it.
+- Not built yet (Day 12): CI and production-readiness checks.
