@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncIterator
 from typing import Annotated
 
@@ -13,10 +14,14 @@ from app.db.tenant_context import tenant_transaction
 from app.services.embeddings import EmbeddingProvider, default_provider
 from app.services.llm import GroqProvider, LLMProvider
 
+logger = logging.getLogger(__name__)
+
 bearer = HTTPBearer(auto_error=False)
 
 
-def _unauthorized() -> HTTPException:
+def _unauthorized(reason: str) -> HTTPException:
+    # Reason is a class name or fixed string, never token, claims or email.
+    logger.info("auth_rejected reason=%s", reason)
     return HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Not authenticated",
@@ -29,14 +34,21 @@ async def get_token_subject(
 ) -> TokenSubject:
     """Verified user and tenant ids from the bearer token (claims checked once)."""
     if credentials is None:
-        raise _unauthorized()
+        raise _unauthorized("missing_credentials")
     try:
         return parse_token_subject(credentials.credentials)
-    except InvalidTokenError:
-        raise _unauthorized() from None
+    except InvalidTokenError as exc:
+        raise _unauthorized(exc.reason) from None
 
 
 Subject = Annotated[TokenSubject, Depends(get_token_subject)]
+
+
+def _check_user(user: User | None) -> None:
+    if user is None:
+        raise _unauthorized("user_not_found")
+    if not user.is_active:
+        raise _unauthorized("inactive")
 
 
 async def get_tenant_session(subject: Subject) -> AsyncIterator[AsyncSession]:
@@ -51,8 +63,7 @@ TenantSession = Annotated[AsyncSession, Depends(get_tenant_session, scope="funct
 
 async def get_current_user(subject: Subject, session: TenantSession) -> User:
     user = await users_repo.get_by_id(session, subject.tenant_id, subject.user_id)
-    if user is None or not user.is_active:
-        raise _unauthorized()
+    _check_user(user)
     return user
 
 
@@ -77,8 +88,7 @@ async def get_current_principal(subject: Subject) -> Principal:
     """
     async with tenant_transaction(subject.tenant_id) as session:
         user = await users_repo.get_by_id(session, subject.tenant_id, subject.user_id)
-        if user is None or not user.is_active:
-            raise _unauthorized()
+        _check_user(user)
         return Principal(user_id=user.id, tenant_id=user.tenant_id, role=user.role)
 
 

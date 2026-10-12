@@ -15,7 +15,15 @@ _password_hash = PasswordHash.recommended()
 
 
 class InvalidTokenError(Exception):
-    """Raised for any token that is malformed, expired, forged or incomplete."""
+    """Raised for any token that is malformed, expired, forged or incomplete.
+
+    ``reason`` is a fixed, log-safe label (an exception class name or a fixed
+    string); it never contains token content.
+    """
+
+    def __init__(self, message: str, reason: str = "invalid_token") -> None:
+        super().__init__(message)
+        self.reason = reason
 
 
 def hash_password(password: str) -> str:
@@ -49,7 +57,7 @@ def decode_access_token(token: str) -> dict[str, Any]:
             options={"require": REQUIRED_CLAIMS},
         )
     except jwt.PyJWTError as exc:
-        raise InvalidTokenError(str(exc)) from exc
+        raise InvalidTokenError(str(exc), reason=type(exc).__name__) from exc
 
 
 @dataclass(frozen=True)
@@ -61,13 +69,13 @@ class TokenSubject:
 def _canonical_uuid(value: object) -> uuid.UUID:
     """Only the exact form we issue (str(uuid)): no ints, lists, urn:/braces."""
     if not isinstance(value, str):
-        raise InvalidTokenError("claim is not a string")
+        raise InvalidTokenError("claim is not a string", reason="invalid_claim")
     try:
         parsed = uuid.UUID(value)
     except ValueError:
-        raise InvalidTokenError("claim is not a UUID") from None
+        raise InvalidTokenError("claim is not a UUID", reason="invalid_claim") from None
     if str(parsed) != value:
-        raise InvalidTokenError("claim is not a canonical UUID")
+        raise InvalidTokenError("claim is not a canonical UUID", reason="invalid_claim")
     return parsed
 
 
