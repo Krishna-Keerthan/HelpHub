@@ -24,3 +24,5 @@ Project lives in WSL2 Ubuntu at ~/projects/helphub. Use bash and Linux paths onl
 - Default pytest skips slow tests. Before any Day-end commit, also run: uv run pytest -m "slow or not slow"
 - Never log document content, tokens, passwords, or raw exception messages from the DB driver. Log class name, SQLSTATE, ids, and traceback frames (file:line) only.
 - Routes that do slow work (embedding, LLM, streaming) use CurrentPrincipal and short tenant_transactions, never TenantSession.
+## Tests layout
+New tests go in the matching domain directory under tests/; helpers live in tests/helpers/; isolation tests in tests/isolation/; end-to-end acceptance tests in tests/acceptance/.

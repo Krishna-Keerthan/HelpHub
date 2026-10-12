@@ -66,7 +66,7 @@ Step zero of implementation: copy this plan to `docs/plans/day-03.md` and commit
 ### Re-posting content that is still PENDING (commit 4d)
 - **Behaviour:** `POST /documents` for content whose document is still `PENDING` (another request is ingesting it) runs `ingest_document` again. The `SELECT ... FOR UPDATE` + re-check in the write transaction keeps the data correct (one set of chunks), but the embedding work is done twice.
 - **Accepted until Day 9:** the background worker will dedupe ingestion jobs by document id, after which the route only enqueues.
-- **Related:** re-posting identical content with a different title returns the existing document unchanged (200, original title); pinned by `tests/test_documents_repost.py`.
+- **Related:** re-posting identical content with a different title returns the existing document unchanged (200, original title); pinned by `tests/documents/test_documents_repost.py`.
 
 ### `application_name` on the runtime engine (commit 4d)
 - The runtime engine sets `application_name = helphub-<pid>` (`app/db/session.py`), and the transaction spy tests filter `pg_stat_activity` on it, so other clients of the shared dev database cannot affect them.
@@ -95,7 +95,7 @@ Step zero of implementation: copy this plan to `docs/plans/day-03.md` and commit
   - **B, with the index:** Index Scan on `ix_chunks_tenant_id`, 3 buffers, cost 8.4, **0.06 ms**.
   - **A, no index:** Seq Scan, 2,500 buffers, cost 2,625, **2.78 ms**. Scales with the whole table: ~250k buffers (~2 GB) at 1M rows, per fallback query.
 - **Why B:** the planner already answers small tenants (exactly the diagnosed failure case) with btree + exact sort, so their results are exact by construction; the fallback costs O(tenant rows) instead of O(table); tenant delete cascades stop seq-scanning `chunks`. Large tenants still use HNSW.
-- **Exact statement:** `ORDER BY (embedding <=> :vec) + 0` makes the HNSW index unusable for the ordering, so the fallback is exact without planner flags (pinned by `tests/test_search_statements.py`).
+- **Exact statement:** `ORDER BY (embedding <=> :vec) + 0` makes the HNSW index unusable for the ordering, so the fallback is exact without planner flags (pinned by `tests/search/test_search_statements.py`).
 - **Migration 0005:** plain `CREATE INDEX`. On a populated production table use `CREATE INDEX CONCURRENTLY` (outside a transaction) instead.
 - **Tests:** `tests/isolation/test_search_hermetic.py` (vacuumed state: HNSW path correct, `used_fallback` False); `tests/isolation/test_search_dead_tuples.py` (REINDEX, autovacuum off, 12 churn rounds, precondition raw ANN = 0 hits, then fallback returns A's 3 chunks; cleanup resets reloptions and VACUUMs).
 
@@ -107,7 +107,7 @@ Step zero of implementation: copy this plan to `docs/plans/day-03.md` and commit
   - `.txt`/`.md`/`.pdf` only (415). Text must be UTF-8 (BOM dropped). PDFs need the `%PDF-` signature at byte 0; pypdf would otherwise accept junk-prefixed files. Parsed in `to_thread`, at most 200 pages; encrypted, unreadable or text-less PDFs get 422 before any row exists.
   - Default title: the base name of the filename (either separator, control characters removed), so `../../etc/passwd.txt` becomes `passwd.txt`.
 - `GET /documents/{id}` (no raw_text); `GET /documents/{id}/chunks` (limit 1..100, default 50, offset; never embeddings); `DELETE /documents/{id}` (AdminUser, 204, chunks cascade). Non-UUID ids: 422. Unknown or other tenant's: 404. A document vanishing mid-POST: 409.
-- Acceptance: `tests/test_day3_acceptance.py` (slow, real FastEmbed) registers two tenants through the API, uploads, searches, deletes.
+- Acceptance: `tests/acceptance/test_day3_acceptance.py` (slow, real FastEmbed) registers two tenants through the API, uploads, searches, deletes.
 
 ## Checklist (resume point)
 - [x] Commits 0–4, 4b (token claims), 4d (ingestion hardening)

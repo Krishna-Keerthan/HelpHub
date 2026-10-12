@@ -16,7 +16,7 @@ from app.core.config import settings
 from app.core.security import create_access_token, hash_password
 from app.main import app
 from app.services.embeddings import FakeEmbeddingProvider
-from tests.fakes import FakeLLMProvider
+from tests.helpers.fakes import FakeLLMProvider
 
 SEED_PASSWORD = "Password123!Password"
 EMBEDDING_DIM = 384

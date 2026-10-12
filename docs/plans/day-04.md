@@ -37,13 +37,13 @@ Irrelevant: 0.3965, 0.4844, 0.4636, 0.4947, 0.4833, 0.4952, 0.4878, 0.4832, 0.40
 ## Chat design notes
 - `POST /chat/stream` uses native `fastapi.sse` (`EventSourceResponse`, `ServerSentEvent`); POST works. Events: `sources` (first, with `conversation_id`), `token`, then `done` (`status`, `cited`) or `error` (generic `code`: `internal_error`, `llm_unavailable`, `llm_timeout`, `llm_rate_limited`, `llm_bad_request`, `llm_model_unavailable`, `llm_empty_response`).
 - Conversation ownership is checked in a dependency (`get_chat_context`) before the stream starts, so an unknown or foreign `conversation_id` is a real HTTP 404.
-- How tests read the stream: streams are finite, so `client.post` returns the whole body and `tests/test_chat_api.py` parses the SSE text. httpx's ASGITransport may buffer, so disconnect behaviour is tested on the orchestrator generator directly: cancel the consuming task and `aclose()` after N tokens (`tests/test_chat_service.py`); both leave an `interrupted` row with the partial text.
+- How tests read the stream: streams are finite, so `client.post` returns the whole body and `tests/chat/test_chat_api.py` parses the SSE text. httpx's ASGITransport may buffer, so disconnect behaviour is tested on the orchestrator generator directly: cancel the consuming task and `aclose()` after N tokens (`tests/chat/test_chat_service.py`); both leave an `interrupted` row with the partial text.
 - Output-token parameter: the installed groq 1.7.0 `chat.completions.create` has both `max_completion_tokens` and `max_tokens` (documented as deprecated); we send `max_completion_tokens`.
 - `scripts/smoke_groq.py` is a manual real-Groq check, not part of pytest.
 
 ## Mutation results (chat)
 Killed: 1 gate removed; 2 escaping skipped; 3a transaction held in service (pool counter + pg_stat_activity, service and HTTP); 4 user_id filter dropped (RLS alone does not catch it; user-level tests do); 5 unvalidated [n]; 6 save before stream completes; 7 provider text in error event; 8 tokens before sources; 9 ownership check moved into the generator.
-3b: adding the `TenantSession` alias to the route is a no-op (it is `scope="function"`, closed before the stream starts), so it survives by design. Redefined as the request-scoped `Depends(get_tenant_session)`, which is killed by the HTTP-level test. `tests/test_chat_route_guard.py` additionally bans session dependencies in `app/api/chat.py` statically.
+3b: adding the `TenantSession` alias to the route is a no-op (it is `scope="function"`, closed before the stream starts), so it survives by design. Redefined as the request-scoped `Depends(get_tenant_session)`, which is killed by the HTTP-level test. `tests/chat/test_chat_route_guard.py` additionally bans session dependencies in `app/api/chat.py` statically.
 
 ## 4c: live-model fix, reasoning safety, repository ownership
 - Groq retired llama-3.3-70b-versatile / llama-3.1-8b-instant. Default `groq_model` is `openai/gpt-oss-20b` (checked against GET /models by `scripts/smoke_groq.py`, which fails clearly if the configured model is absent). `openai/gpt-oss-120b` is also served.

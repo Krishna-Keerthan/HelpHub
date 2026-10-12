@@ -6,7 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from app.services import documents as documents_service
 from app.services.embeddings import FakeEmbeddingProvider
 from tests.conftest import SeededTenant
-from tests.ingestion_helpers import CONTENT, SpyProvider, owner_chunks, owner_document
+from tests.helpers.ingestion_helpers import (
+    CONTENT,
+    SpyProvider,
+    owner_chunks,
+    owner_document,
+)
 
 Tenants = dict[str, SeededTenant]
 
