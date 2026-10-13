@@ -209,6 +209,11 @@ async def test_real_bulk_rejections_mark_the_document_failed(
 async def test_unknown_document_is_a_no_op(make_tenant: MakeTenant) -> None:
     tenant = await make_tenant()
     await search_sync.index_document(tenant["id"], uuid.uuid4(), get_es())
+    # Added: it returns False (nothing indexed) and puts nothing in ES.
+    assert (
+        await search_sync.index_document(tenant["id"], uuid.uuid4(), get_es()) is False
+    )
+    assert await es_ids(get_es(), tenant_id=tenant["id"]) == set()
 
 
 async def test_other_tenants_cannot_be_indexed_through_a_foreign_id(

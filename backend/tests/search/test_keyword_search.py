@@ -125,6 +125,8 @@ async def test_es_unreachable_raises_search_unavailable_without_es_text(
     ):
         assert leak not in everything
     assert info.value.__cause__ is None or "127.0.0.1" not in str(info.value)
+    # Added: the chained cause (if any) must not carry the address either.
+    assert "127.0.0.1" not in repr(info.value.__cause__)
 
 
 async def test_no_transaction_is_open_during_the_es_call(
