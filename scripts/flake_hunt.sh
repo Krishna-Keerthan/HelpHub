@@ -1,6 +1,49 @@
+#!/usr/bin/env bash
+# Repeat a pytest command N times and report pass/fail counts.
+# Usage: scripts/flake_hunt.sh [-n N] [--keep-going] [--between-isolation] -- <pytest args>
+#   -n N                 number of runs (default 20)
+#   --keep-going         do not stop at the first failure
+#   --between-isolation  run `pytest -q tests/isolation` before every iteration
+# Holds the pytest session lock (flock) for the whole hunt, so no other session
+# can slip in between iterations; children skip the lock via
+# HELPHUB_PYTEST_LOCK_HOLDER (see backend/tests/conftest.py).
+set -uo pipefail
+
+RUNS=20; KEEP=0; BETWEEN=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -n) RUNS="$2"; shift 2 ;;
+    --keep-going) KEEP=1; shift ;;
+    --between-isolation) BETWEEN=1; shift ;;
+    --) shift; break ;;
+    *) echo "unknown option: $1" >&2; exit 64 ;;
+  esac
+done
+[ $# -gt 0 ] || { echo "usage: $0 [-n N] [--keep-going] [--between-isolation] -- <pytest args>" >&2; exit 64; }
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT/backend"
+CMD=(uv run pytest -q "$@")
+OUT="$(mktemp -d "${TMPDIR:-/tmp}/flake_hunt.XXXXXX")"
+PASS=0; FAIL=0; FAILED_RUNS=()
+
+exec 9>"${HELPHUB_PYTEST_LOCK_FILE:-/tmp/helphub-pytest.lock}"
+flock -n 9 || { echo "another pytest session is running (shared database)" >&2; exit 2; }
+export HELPHUB_PYTEST_LOCK_HOLDER=$$
+
+uptime_s() { cut -d. -f1 /proc/uptime; }
+summary() {
+  echo "hunt: runs=$((PASS + FAIL)) pass=$PASS fail=$FAIL logs=$OUT"
+  [ "$FAIL" -eq 0 ] || echo "failed runs: ${FAILED_RUNS[*]}"
+}
+
 # ---- hunt ------------------------------------------------------------------
 for i in $(seq 1 "$RUNS"); do
   log="$OUT/run_$i.log"
+  if [ "$BETWEEN" -eq 1 ]; then
+    uv run pytest -q tests/isolation > "$OUT/between_$i.log" 2>&1
+    echo "run $i: isolation rc=$?" >> "$OUT/between.log"
+  fi
   w0=$(date +%s); u0=$(uptime_s)
   
   # Run pytest. We temporarily disable pipefail/errexit behavior for the test command evaluation

@@ -1,4 +1,7 @@
 import asyncio
+import fcntl
+import os
+import sys
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from typing import Any, TypedDict
@@ -130,8 +133,82 @@ def _read_seed_slugs() -> set[str] | None:
         return None
 
 
+DEFAULT_LOCK_FILE = "/tmp/helphub-pytest.lock"  # noqa: S108 - single-user dev box
+_lock_fd: int | None = None
+
+
+def _lock_held_by_live_parent() -> bool:
+    """scripts/flake_hunt.sh holds the lock for the whole hunt and says so."""
+    holder = os.environ.get("HELPHUB_PYTEST_LOCK_HOLDER", "")
+    return holder.isdigit() and os.path.exists(f"/proc/{holder}")
+
+
+def _acquire_session_lock() -> None:
+    """One pytest session at a time: the database is shared (see CLAUDE.md)."""
+    global _lock_fd
+    if _lock_held_by_live_parent():
+        return
+    path = os.environ.get("HELPHUB_PYTEST_LOCK_FILE", DEFAULT_LOCK_FILE)
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        os.close(fd)
+        raise pytest.UsageError(
+            "another pytest session is running (shared database)"
+        ) from None
+    _lock_fd = fd
+
+
+def _release_session_lock() -> None:
+    global _lock_fd
+    if _lock_fd is not None:
+        os.close(_lock_fd)  # closing drops the flock
+        _lock_fd = None
+
+
+async def _reset_chunks_reloptions() -> list[str] | None:
+    """Undo a leftover ``autovacuum_enabled=false`` (a killed run never resets it)."""
+    engine = create_async_engine(
+        settings.migration_database_url,
+        poolclass=NullPool,
+        isolation_level="AUTOCOMMIT",
+    )
+    try:
+        async with engine.connect() as conn:
+            found = (
+                await conn.execute(
+                    text(
+                        "SELECT reloptions FROM pg_class "
+                        "WHERE oid = 'public.chunks'::regclass"
+                    )
+                )
+            ).scalar_one()
+            if found is not None:
+                await conn.execute(
+                    text("ALTER TABLE chunks RESET (autovacuum_enabled)")
+                )
+            return found
+    finally:
+        await engine.dispose()
+
+
+def _reset_leftover_reloptions() -> None:
+    try:
+        found = asyncio.run(_reset_chunks_reloptions())
+    except (SQLAlchemyError, OSError):
+        return  # DB unreachable: tests fail on their own, clearly
+    if found is not None:
+        print(
+            f"WARNING: chunks had leftover reloptions {found}; reset them",
+            file=sys.stderr,
+        )
+
+
 def pytest_sessionstart(session: pytest.Session) -> None:
     global _slugs_before
+    _acquire_session_lock()
+    _reset_leftover_reloptions()
     _slugs_before = _read_seed_slugs()
 
 
@@ -140,8 +217,9 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     """Fail the run (non-zero exit status) if it left seeded tenants behind.
 
     Done here, not in a fixture, so no individual test is reported as the
-    one that errored.
+    one that errored. Also releases the single-session lock.
     """
+    _release_session_lock()
     if _slugs_before is None:
         return
     after = _read_seed_slugs()
