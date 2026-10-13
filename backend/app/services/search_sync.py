@@ -11,7 +11,7 @@ import uuid
 from collections.abc import Iterator
 from typing import Any
 
-from elasticsearch import AsyncElasticsearch
+from elasticsearch import AsyncElasticsearch, NotFoundError
 from elasticsearch.helpers import async_bulk
 
 from app.core.config import settings
@@ -63,11 +63,14 @@ async def index_document(
     es: AsyncElasticsearch,
     *,
     index: str | None = None,
+    record_status: bool = True,
 ) -> bool:
     """Index one document's chunks (``_id`` = chunk id); True when INDEXED.
 
     Never raises for ES or indexing problems; a missing document is a no-op.
     ``index`` defaults to the alias (the reindex script targets a new version).
+    ``record_status=False`` leaves ``search_index_status`` alone: a rebuild into
+    a new index must not change what the live index says until it is swapped in.
     """
     async with tenant_transaction(tenant_id) as session:
         titles = await documents_repo.titles_for(session, tenant_id, [document_id])
@@ -75,34 +78,72 @@ async def index_document(
     if document_id not in titles:
         return False
     # No Postgres transaction is open from here until the status update.
-    try:
-        if index is None:
-            await es_index.ensure_index(es)
-        target = index or alias_name()
-        client = es.options(
-            request_timeout=settings.es_timeout_seconds * BULK_TIMEOUT_FACTOR
-        )
-        _, failed = await async_bulk(
-            client,
-            _actions(target, tenant_id, document_id, titles[document_id], chunks),
-            chunk_size=BULK_CHUNK_SIZE,
-            raise_on_error=False,
-            raise_on_exception=True,
-            stats_only=True,
-        )
-        if failed:
-            raise BulkIndexError(f"{failed} chunks rejected")
-    except Exception as exc:  # noqa: BLE001 - any ES failure is recorded, not raised
-        logger.warning(
-            "search indexing failed: %s tenant=%s document=%s",
-            type(exc).__name__,
-            tenant_id,
-            document_id,
-        )
-        await _record(tenant_id, document_id, FAILED, type(exc).__name__)
-        return False
-    await _record(tenant_id, document_id, INDEXED, None)
+    # On the alias path a stale ensure_index cache (index deleted behind our
+    # back) is repaired with one retry; elsewhere a failure is just recorded.
+    attempts = 2 if index is None else 1
+    for attempt in range(1, attempts + 1):
+        try:
+            await _write_chunks(
+                es, tenant_id, document_id, titles[document_id], chunks, index
+            )
+            break
+        except Exception as exc:  # noqa: BLE001 - any ES failure is recorded, not raised
+            if index is None:
+                es_index.reset_ensure_cache()
+            retry = isinstance(exc, BulkIndexError | NotFoundError)
+            if attempt < attempts and retry:
+                continue
+            logger.warning(
+                "search indexing failed: %s tenant=%s document=%s",
+                type(exc).__name__,
+                tenant_id,
+                document_id,
+            )
+            if record_status:
+                await _record(tenant_id, document_id, FAILED, type(exc).__name__)
+            return False
+    if record_status:
+        await _record(tenant_id, document_id, INDEXED, None)
     return True
+
+
+async def record_rebuild_outcome(
+    tenant_id: uuid.UUID, document_id: uuid.UUID, indexed: bool
+) -> None:
+    """Record a document's status after its rebuilt index went live."""
+    if indexed:
+        await _record(tenant_id, document_id, INDEXED, None)
+    else:
+        await _record(tenant_id, document_id, FAILED, "ReindexFailed")
+
+
+async def _write_chunks(
+    es: AsyncElasticsearch,
+    tenant_id: uuid.UUID,
+    document_id: uuid.UUID,
+    title: str,
+    chunks: list[tuple[uuid.UUID, int, str]],
+    index: str | None,
+) -> None:
+    if index is None:
+        await es_index.ensure_index(es)
+    client = es.options(
+        request_timeout=settings.es_timeout_seconds * BULK_TIMEOUT_FACTOR
+    )
+    # require_alias: a missing alias fails instead of auto-creating a plain,
+    # dynamically mapped index named like it.
+    extra = {"require_alias": True} if index is None else {}
+    _, failed = await async_bulk(
+        client,
+        _actions(index or alias_name(), tenant_id, document_id, title, chunks),
+        chunk_size=BULK_CHUNK_SIZE,
+        raise_on_error=False,
+        raise_on_exception=True,
+        stats_only=True,
+        **extra,
+    )
+    if failed:
+        raise BulkIndexError(f"{failed} chunks rejected")
 
 
 async def _record(

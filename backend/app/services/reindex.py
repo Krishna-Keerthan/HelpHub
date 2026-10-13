@@ -8,7 +8,7 @@ idempotent: ``_id`` is the chunk id, so re-running overwrites in place.
 import logging
 import re
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from elasticsearch import AsyncElasticsearch
 
@@ -36,6 +36,9 @@ class ReindexSummary:
     documents: int = 0
     indexed: int = 0
     failed: int = 0
+    # (tenant_id, document_id, indexed) of a rebuild into a new index; their
+    # statuses are recorded only once that index is live.
+    outcomes: list[tuple[uuid.UUID, uuid.UUID, bool]] = field(default_factory=list)
 
     def add(self, indexed: bool) -> None:
         self.documents += 1
@@ -52,7 +55,9 @@ async def reindex_document(
     *,
     index: str | None = None,
 ) -> bool:
-    return await search_sync.index_document(tenant_id, document_id, es, index=index)
+    return await search_sync.index_document(
+        tenant_id, document_id, es, index=index, record_status=index is None
+    )
 
 
 async def reindex_tenant(
@@ -63,7 +68,10 @@ async def reindex_tenant(
         document_ids = await documents_repo.ready_document_ids(session, tenant_id)
     summary = ReindexSummary()
     for document_id in document_ids:
-        summary.add(await reindex_document(es, tenant_id, document_id, index=index))
+        indexed = await reindex_document(es, tenant_id, document_id, index=index)
+        summary.add(indexed)
+        if index is not None:
+            summary.outcomes.append((tenant_id, document_id, indexed))
     return summary
 
 
@@ -102,6 +110,7 @@ async def reindex_all(
             summary.documents += part.documents
             summary.indexed += part.indexed
             summary.failed += part.failed
+            summary.outcomes.extend(part.outcomes)
         if summary.failed and not allow_partial:
             raise ReindexIncompleteError(summary)
         await es.indices.refresh(index=new_index)
@@ -115,6 +124,9 @@ async def reindex_all(
     except BaseException:
         await es.indices.delete(index=new_index, ignore_unavailable=True)
         raise
+    # The new index is live: only now do the documents' statuses change.
+    for tenant_id, document_id, indexed in summary.outcomes:
+        await search_sync.record_rebuild_outcome(tenant_id, document_id, indexed)
     if old:
         await es.indices.delete(index=es_index.index_name(old), ignore_unavailable=True)
     logger.info(

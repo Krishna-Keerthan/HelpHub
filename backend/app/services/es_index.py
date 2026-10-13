@@ -5,6 +5,8 @@ reindexing builds a new version and swaps the alias atomically. Nothing here
 runs at app start: the index is created on first use.
 """
 
+import asyncio
+
 from elasticsearch import AsyncElasticsearch, BadRequestError
 
 from app.core.config import settings
@@ -82,16 +84,39 @@ async def create_index(es: AsyncElasticsearch, name: str) -> None:
     )
 
 
+# Aliases known to exist in this process (keyed by alias name, so a changed
+# prefix or alias setting is never served from a stale entry).
+_ensured: set[str] = set()
+_ensure_lock = asyncio.Lock()
+
+
+def reset_ensure_cache() -> None:
+    """Forget what is known to exist; the next ensure_index asks ES again."""
+    _ensured.clear()
+
+
 async def ensure_index(es: AsyncElasticsearch) -> None:
-    """Create ``chunks-v1`` and the alias if the alias does not exist yet."""
+    """Create ``chunks-v1`` and the alias if the alias does not exist yet.
+
+    Cached per process after the first success (no ES request on later calls).
+    Callers drop the cache with ``reset_ensure_cache`` on connection/not-found
+    failures.
+    """
     alias = alias_name()
-    if await es.indices.exists_alias(name=alias):
+    if alias in _ensured:
         return
-    name = index_name(1)
-    try:
-        await create_index(es, name)
-    except BadRequestError as exc:
-        # A concurrent caller won the race; anything else is a real error.
-        if "resource_already_exists_exception" not in str(exc.error):
-            raise
-    await es.indices.update_aliases(actions=[{"add": {"index": name, "alias": alias}}])
+    async with _ensure_lock:
+        if alias in _ensured:
+            return
+        if not await es.indices.exists_alias(name=alias):
+            name = index_name(1)
+            try:
+                await create_index(es, name)
+            except BadRequestError as exc:
+                # A concurrent process won the race; anything else is real.
+                if "resource_already_exists_exception" not in str(exc.error):
+                    raise
+            await es.indices.update_aliases(
+                actions=[{"add": {"index": name, "alias": alias}}]
+            )
+        _ensured.add(alias)
