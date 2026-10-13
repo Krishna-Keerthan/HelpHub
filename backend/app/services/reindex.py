@@ -23,6 +23,14 @@ logger = logging.getLogger(__name__)
 _VERSION = re.compile(r"-v(\d+)$")
 
 
+class ReindexIncompleteError(RuntimeError):
+    """A rebuild left documents out of the new index; the alias was not swapped."""
+
+    def __init__(self, summary: "ReindexSummary") -> None:
+        super().__init__(f"{summary.failed} of {summary.documents} documents failed")
+        self.summary = summary
+
+
 @dataclass
 class ReindexSummary:
     documents: int = 0
@@ -72,9 +80,16 @@ async def _current_version(es: AsyncElasticsearch) -> int:
 
 
 async def reindex_all(
-    es: AsyncElasticsearch, *, tenant_ids: list[uuid.UUID] | None = None
+    es: AsyncElasticsearch,
+    *,
+    tenant_ids: list[uuid.UUID] | None = None,
+    allow_partial: bool = False,
 ) -> ReindexSummary:
-    """Build ``chunks-v<N+1>`` from Postgres, then swap the alias atomically."""
+    """Build ``chunks-v<N+1>`` from Postgres, then swap the alias atomically.
+
+    Any failed document aborts before the swap (the new index is deleted and the
+    live one is untouched) unless ``allow_partial`` is set.
+    """
     tenants = tenant_ids if tenant_ids is not None else await tenants_repo.list_ids()
     alias = alias_name()
     old = await _current_version(es)
@@ -87,6 +102,8 @@ async def reindex_all(
             summary.documents += part.documents
             summary.indexed += part.indexed
             summary.failed += part.failed
+        if summary.failed and not allow_partial:
+            raise ReindexIncompleteError(summary)
         await es.indices.refresh(index=new_index)
         # One request: the alias never points at zero or two indices.
         actions: list[dict] = [{"add": {"index": new_index, "alias": alias}}]

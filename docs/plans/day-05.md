@@ -49,4 +49,8 @@ Variants tried: `preserve_original` only (no `e4012`, so `E4012` would not match
 - [x] Commit 2: mapping, analyzers, query, hydration
 - [x] Commit 3: sync (migration 0007, index_document, delete sync, reindex) and API
 - [ ] Stretch: per-tenant filtered aliases (skipped)
-- [ ] Final verification V1-V12
+- [x] Day-end gate and `/day-review HEAD~9..HEAD` (2026-10-13): gate green (full, incl. slow); tenant-reviewer 0 findings; design 5, test-quality 8, security 2.
+  - Fixed: `reindex_all` aborts before the alias swap when any document failed (`ReindexIncompleteError`, CLI exit 3, `--allow-partial` to override); real-ES bulk-rejection test.
+  - Checked, no change: reviewer claim that dropping the explicit `tenant_id` predicate in `hydrate_statement` goes undetected is wrong; 2 tests fail under that mutation.
+  - Accepted: refresh per delete and no rate limit on `/search/keyword` (AR-13). Backlog: `ensure_index` per call, FAILED status on throwaway-index reindex, NOT VALID constraint at scale, weaker test assertions listed in the review.
+  - Known flake: `tests/isolation/test_search_dead_tuples.py` failed 13/20 standalone once and 0/60 later; cause is DB-state dependent and not found.

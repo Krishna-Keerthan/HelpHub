@@ -21,6 +21,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--all", action="store_true", help="rebuild everything")
     parser.add_argument("--tenant", type=uuid.UUID)
     parser.add_argument("--document", type=uuid.UUID, help="needs --tenant")
+    parser.add_argument(
+        "--allow-partial",
+        action="store_true",
+        help="with --all: swap the alias even if some documents failed",
+    )
     args = parser.parse_args(argv)
     if args.all == bool(args.tenant) or (args.all and args.document):
         parser.error("use exactly one of --all or --tenant [--document]")
@@ -33,12 +38,15 @@ async def main(args: argparse.Namespace) -> int:
     es = get_es()
     try:
         if args.all:
-            summary = await reindex.reindex_all(es)
+            summary = await reindex.reindex_all(es, allow_partial=args.allow_partial)
         elif args.document:
             ok = await reindex.reindex_document(es, args.tenant, args.document)
             summary = reindex.ReindexSummary(1, int(ok), int(not ok))
         else:
             summary = await reindex.reindex_tenant(es, args.tenant)
+    except reindex.ReindexIncompleteError as exc:
+        print(f"aborted, alias not swapped: {exc}", file=sys.stderr)
+        return 3
     finally:
         await close_es()
     print(

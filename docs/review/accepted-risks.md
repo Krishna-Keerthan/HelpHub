@@ -16,3 +16,4 @@ Read by every reviewer agent. Do not report an entry unless its **Condition** ch
 | AR-10 | Retrieval threshold is provisional | Tuned by hand on a tiny corpus | Day 6 eval |
 | AR-11 | BM25 and vector scores are not comparable | They are never merged or thresholded together; each endpoint returns its own raw score | Hybrid search |
 | AR-12 | Untenanted `get_session` in `GET /health/db` | Connectivity check only; queries no tenant table, returns no row data | Before public deploy |
+| AR-13 | `delete_document_chunks` refreshes the whole alias on every delete; `POST /search/keyword` has no rate limit | Latency only, no data effect; one dev node | Before public deploy (Day 12) |

@@ -185,3 +185,38 @@ def test_cli_requires_exactly_one_mode() -> None:
     assert run_cli().returncode == 2
     assert run_cli("--all", "--tenant", "x").returncode == 2
     assert run_cli("--document", "00000000-0000-0000-0000-000000000000").returncode == 2
+
+
+async def test_rebuild_with_failed_documents_keeps_the_live_index(
+    client: AsyncClient,
+    make_tenant: MakeTenant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "es_index_prefix", settings.es_index_prefix + "rf-")
+    es = get_es()
+    tenant = await make_tenant()
+    await upload(client, tenant, "Keep me", CONTENT + "keepme")
+    before = await es_ids(es, tenant_id=tenant["id"])
+    assert before
+
+    async def always_fails(*args, **kwargs) -> bool:
+        return False
+
+    monkeypatch.setattr(reindex, "reindex_document", always_fails)
+    with pytest.raises(reindex.ReindexIncompleteError) as err:
+        await reindex.reindex_all(es, tenant_ids=[tenant["id"]])
+
+    assert err.value.summary.failed == 1
+    assert list(await es.indices.get_alias(name=alias_name())) == [
+        es_index.index_name(1)
+    ]
+    assert not await es.indices.exists(index=es_index.index_name(2))
+    assert await es_ids(es, tenant_id=tenant["id"]) == before
+
+    summary = await reindex.reindex_all(
+        es, tenant_ids=[tenant["id"]], allow_partial=True
+    )
+    assert summary.failed == 1
+    assert list(await es.indices.get_alias(name=alias_name())) == [
+        es_index.index_name(2)
+    ]

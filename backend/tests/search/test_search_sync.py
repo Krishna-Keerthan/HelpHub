@@ -182,6 +182,30 @@ async def test_partial_bulk_failures_mark_the_document_failed(
     assert state["search_index_error"] == "BulkIndexError"
 
 
+async def test_real_bulk_rejections_mark_the_document_failed(
+    client: AsyncClient, owner_conn: AsyncConnection, make_tenant: MakeTenant
+) -> None:
+    """No stubs: a strict, field-less index rejects every chunk for real."""
+    es = get_es()
+    tenant = await make_tenant()
+    doc_id = await upload(client, tenant, "Reject doc", CONTENT)
+    bare = f"{settings.es_index_prefix}bare-{uuid.uuid4().hex[:8]}"
+    await es.indices.create(index=bare, mappings={"dynamic": "strict"})
+    try:
+        assert (
+            await search_sync.index_document(tenant["id"], doc_id, es, index=bare)
+            is False
+        )
+        await es.indices.refresh(index=bare)
+        assert (await es.count(index=bare))["count"] == 0
+    finally:
+        await es.indices.delete(index=bare, ignore_unavailable=True)
+
+    state = await doc_index_state(owner_conn, doc_id)
+    assert state["search_index_status"] == "FAILED"
+    assert state["search_index_error"] == "BulkIndexError"
+
+
 async def test_unknown_document_is_a_no_op(make_tenant: MakeTenant) -> None:
     tenant = await make_tenant()
     await search_sync.index_document(tenant["id"], uuid.uuid4(), get_es())
