@@ -21,6 +21,7 @@ from tests.conftest import (
     insert_document,
     unit_vector,
 )
+from tests.isolation.ann_helpers import ensure_ann_reachable
 
 Q = unit_vector(1.0)
 
@@ -56,6 +57,7 @@ async def test_hnsw_path_finds_small_tenant_without_fallback(
 ) -> None:
     ta, tb = two_tenants_seeded["tenant_a"], two_tenants_seeded["tenant_b"]
     a_ids = await _seed(owner_conn, ta, tb)
+    await ensure_ann_reachable(owner_conn, list(a_ids), Q)
 
     async with AsyncSession(bind=app_conn) as session:
         await set_tenant(session, ta["id"])

@@ -79,7 +79,7 @@ source_modules = ["app.api"]
 forbidden_modules = ["sqlalchemy", "asyncpg"]
 allow_indirect_imports = true
 ignore_imports = [
-    # TODO: deps.py only needs AsyncSession for the TenantSession type alias;
+    # AR-16. TODO: deps.py only needs AsyncSession for the TenantSession type alias;
     # re-export the type from app.db and drop this ignore.
     "app.api.deps -> sqlalchemy",
 ]

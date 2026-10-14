@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
+from tests.isolation.ann_helpers import LAST_PROBE, probe_reachability
 
 HERMETIC_MODULES = {"test_search_isolation", "test_search_hermetic"}
 # Test-only planner flags per module; kept to the minimum that pins HNSW.
@@ -135,19 +136,89 @@ async def vacuum_chunks() -> dict:
         await engine.dispose()
 
 
-async def _evidence_text() -> str:
-    engine = _owner_engine()
+REACHABILITY_TESTS = {
+    "test_filtered_ann_with_hnsw",
+    "test_hnsw_path_finds_small_tenant_without_fallback",
+}
+_SETTINGS_SQL = text(
+    "SELECT current_setting('hnsw.iterative_scan', true), "
+    "current_setting('hnsw.ef_search', true), "
+    "current_setting('hnsw.max_scan_tuples', true), "
+    "(SELECT extversion FROM pg_extension WHERE extname = 'vector')"
+)
+
+
+async def _classification() -> dict:
+    """Probe the graph again, now: unreachable nodes, or a product-level miss?"""
+    # Transactional (not autocommit): the probe relies on SET LOCAL.
+    engine = create_async_engine(settings.migration_database_url, poolclass=NullPool)
     try:
         async with engine.connect() as conn:
-            return json.dumps(await gather_diagnostics(conn), indent=2, default=str)
+            return await _classify(conn)
     finally:
         await engine.dispose()
 
 
-def _evidence_in_thread() -> str:
+async def _classify(conn: AsyncConnection) -> dict:
+    ef = (await conn.execute(_SETTINGS_SQL)).one()
+    info: dict = {
+        "pgvector": ef[3],
+        "session_defaults": {
+            "hnsw.iterative_scan": ef[0],
+            "hnsw.ef_search": ef[1],
+            "hnsw.max_scan_tuples": ef[2],
+        },
+        "service_settings": "iterative_scan=relaxed_order, ef_search=max(MIN_EF, k)",
+    }
+    targets, vector = LAST_PROBE.get("targets"), LAST_PROBE.get("vector")
+    if not targets or not vector:
+        info["classification"] = "unknown: the reachability helper did not run"
+        return info
+    existing, total = (
+        await conn.execute(
+            text(
+                "SELECT count(*) FILTER (WHERE id = ANY(CAST(:ids AS uuid[]))), "
+                "count(*) FROM chunks"
+            ),
+            {"ids": [str(t) for t in targets]},
+        )
+    ).one()
+    await conn.rollback()
+    ok, returned, found = await probe_reachability(conn, targets, vector)
+    info["reachability_probe"] = {
+        "reachable": "yes" if ok else "no",
+        "rows_returned": returned,
+        "targets_found": f"{found}/{len(targets)}",
+        "targets_existing_in_table": existing,
+        "chunks_in_table": total,
+    }
+    info["classification"] = (
+        "REACHABLE but ANN returned fewer" if ok else "UNREACHABLE graph"
+    )
+    return info
+
+
+async def _evidence_text(item_name: str = "") -> str:
+    engine = _owner_engine()
+    try:
+        async with engine.connect() as conn:
+            data = await gather_diagnostics(conn)
+        if item_name in REACHABILITY_TESTS:
+            data["ann"] = await _classification()
+        text_out = json.dumps(data, indent=2, default=str)
+        if item_name in REACHABILITY_TESTS:
+            text_out += f"\nCLASSIFICATION: {data['ann']['classification']}"
+        return text_out
+    finally:
+        await engine.dispose()
+
+
+def _evidence_in_thread(item_name: str = "") -> str:
     """Fresh owner connection on its own loop (the test loop is not running here)."""
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(lambda: asyncio.run(_evidence_text())).result(timeout=60)
+        return pool.submit(lambda: asyncio.run(_evidence_text(item_name))).result(
+            timeout=60
+        )
 
 
 def _wants_evidence(item: pytest.Item) -> bool:
@@ -162,7 +233,7 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
     if report.failed and _wants_evidence(item):
         try:
             report.sections.append(
-                ("HNSW evidence (at failure)", _evidence_in_thread())
+                ("HNSW evidence (at failure)", _evidence_in_thread(item.name))
             )
         except Exception as exc:  # noqa: BLE001 - diagnostics must never mask the failure
             report.sections.append(

@@ -18,6 +18,7 @@ from tests.conftest import (
     insert_document,
     unit_vector,
 )
+from tests.isolation.ann_helpers import ensure_ann_reachable
 
 SHARED_TEXT = (
     "To reset your password, open the account settings page and choose the "
@@ -142,6 +143,7 @@ async def test_filtered_ann_with_hnsw(owner_conn, app_conn, two_tenants_seeded):
         for i in range(3)
     }
     await owner_conn.commit()
+    await ensure_ann_reachable(owner_conn, [uuid.UUID(i) for i in a_ids], q)
 
     async with AsyncSession(bind=app_conn) as session:
         await set_tenant(session, ta["id"])
