@@ -81,6 +81,7 @@ format_check() {
   uv run ruff format --check $files
 }
 
+step "untracked files" python3 "$ROOT/scripts/gate_checks.py" untracked
 step "ruff check" uv run ruff check .
 step "ruff format (changed files)" format_check
 step "import-linter" uv run lint-imports

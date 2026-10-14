@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Deterministic repo checks used by scripts/gate.sh (stdlib only).
 
-Usage: gate_checks.py [--root DIR] {allows|secrets|ar-register|stamp REPORT}
+Usage: gate_checks.py [--root DIR] {allows|secrets|ar-register|untracked|stamp REPORT}
 Findings print as ``path:line: rule`` and never echo a matched secret value.
 Exit code: 0 clean, 1 findings.
 """
@@ -154,6 +154,36 @@ def ar_register(root: Path) -> list[str]:
     return problems
 
 
+CHECKED_DIRS = (
+    "backend/app",
+    "backend/tests",
+    "backend/eval",
+    "backend/alembic",
+    "scripts",
+    ".claude",
+    "docs",
+)
+
+
+def untracked(root: Path) -> list[str]:
+    """Untracked, non-ignored files under the checked directories.
+
+    The other checks read tracked files only, so an untracked file could make a
+    gate pass that a clean checkout would fail (Day 6: c8551d4..7ebec87).
+    """
+    out = subprocess.run(
+        ["git", "ls-files", "--others", "--exclude-standard", "-z", "--", *CHECKED_DIRS],
+        cwd=root,
+        capture_output=True,
+        check=True,
+    ).stdout
+    return [
+        f"{p.decode()}: untracked file (git add it, or ignore it)"
+        for p in sorted(out.split(b"\0"))
+        if p
+    ]
+
+
 def stamp(root: Path, report: Path) -> None:
     head = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True
@@ -172,7 +202,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument(
         "--root", type=Path, default=Path(__file__).resolve().parents[1]
     )
-    parser.add_argument("check", choices=["allows", "secrets", "ar-register", "stamp"])
+    parser.add_argument("check", choices=["allows", "secrets", "ar-register", "untracked", "stamp"])
     parser.add_argument("report", nargs="?", type=Path)
     args = parser.parse_args(argv)
     if args.check == "stamp":
@@ -182,7 +212,9 @@ def main(argv: list[str]) -> int:
         listing, problems = collect_allows(args.root)
         print("\n".join([*problems, *listing]))
         return 1 if problems else 0
-    problems = {"secrets": secrets, "ar-register": ar_register}[args.check](args.root)
+    problems = {"secrets": secrets, "ar-register": ar_register, "untracked": untracked}[
+        args.check
+    ](args.root)
     for problem in problems:
         print(problem)
     return 1 if problems else 0

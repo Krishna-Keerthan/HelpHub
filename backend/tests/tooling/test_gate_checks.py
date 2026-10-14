@@ -2,6 +2,7 @@
 
 import importlib.util
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -202,3 +203,37 @@ def test_stamp_records_commit_time_and_dirty_flag(tmp_path: Path) -> None:
     (root / "a.txt").write_text("changed\n")
     gc.stamp(root, report)
     assert report.read_text().strip().endswith("dirty=yes")
+
+
+# --- untracked files -----------------------------------------------------------
+
+
+def test_untracked_file_under_a_checked_directory_is_listed(tmp_path: Path) -> None:
+    root = _repo(tmp_path, {"backend/app/a.py": "x = 1\n"})
+    assert gc.untracked(root) == []
+    (root / "backend" / "tests").mkdir(parents=True)
+    (root / "backend" / "tests" / "test_new.py").write_text("x = 1\n")
+    (root / "docs").mkdir()
+    (root / "docs" / "n.md").write_text("n\n")
+    problems = gc.untracked(root)
+    assert [p.split(":")[0] for p in problems] == [
+        "backend/tests/test_new.py",
+        "docs/n.md",
+    ]
+
+
+def test_untracked_ignores_ignored_files_and_other_directories(
+    tmp_path: Path,
+) -> None:
+    root = _repo(tmp_path, {".gitignore": "*.log\n", "backend/app/a.py": "x\n"})
+    (root / "backend" / "app" / "debug.log").write_text("noise\n")
+    (root / "notes.txt").write_text("outside the checked directories\n")
+    assert gc.untracked(root) == []
+
+
+def test_untracked_cli_exit_code(tmp_path: Path) -> None:
+    root = _repo(tmp_path, {"scripts/a.sh": "echo\n"})
+    cmd = [str(ROOT / "scripts" / "gate_checks.py"), "--root", str(root), "untracked"]
+    assert subprocess.run([sys.executable, *cmd], check=False).returncode == 0
+    (root / "scripts" / "b.sh").write_text("echo\n")
+    assert subprocess.run([sys.executable, *cmd], check=False).returncode == 1

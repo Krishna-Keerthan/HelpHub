@@ -24,3 +24,9 @@ Hybrid search that combines BM25 (Elasticsearch) and vector (pgvector) rankings 
 - [ ] Evaluation runner (retrieval-only) and a recorded baseline per branch and for hybrid
 - [ ] Re-tune the provisional retrieval threshold on dev only (AR-10); revisit AR-11
 - [ ] Day-end: `scripts/gate.sh --full` green, then `/day-review`
+
+## Gate history note
+c8551d4..7ebec87 passed the gate only because of untracked files (the checks read tracked files, so a clean checkout would have failed); 0c502ff repaired it. The gate now fails when untracked, non-ignored files exist under app/, tests/, eval/, alembic/, scripts/, .claude/ or docs/.
+
+## Hybrid timeouts
+The query embedding has its own limit (`embedding_timeout_seconds`, default 10 s). The vector branch budget is now `embedding_timeout_seconds + hybrid_branch_timeout_seconds` (10 + 3); the keyword branch stays at 3 s. Worst-case hybrid latency is therefore about 13 s (a slow-but-alive embedder, then a slow search). A branch that exceeds its budget is dropped and reported in `degraded`.

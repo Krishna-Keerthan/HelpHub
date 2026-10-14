@@ -28,6 +28,7 @@ Project lives in WSL2 Ubuntu at ~/projects/helphub. Use bash and Linux paths onl
 New tests go in the matching domain directory under tests/; helpers live in tests/helpers/; isolation tests in tests/isolation/; end-to-end acceptance tests in tests/acceptance/.
 - After any FastAPI upgrade re-run the 3b mutation (function-scoped TenantSession in the chat route).
 - Never commit a red test.
+- Run scripts/gate.sh without pipes and check the exit code.
 - Never run two pytest sessions at the same time (shared database). The lock is automatic: tests/conftest.py holds an flock on /tmp/helphub-pytest.lock and refuses a second session; scripts/flake_hunt.sh holds it for a whole hunt.
 
 ## Review routine

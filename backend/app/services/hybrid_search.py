@@ -9,8 +9,10 @@ ranks enter the fusion, never the raw scores (AR-11).
 
 import asyncio
 import logging
+import traceback
 import uuid
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 from elasticsearch import AsyncElasticsearch
@@ -59,7 +61,11 @@ class HybridResult:
 async def _vector_branch(
     tenant_id: uuid.UUID, query: str, candidates: int, provider: EmbeddingProvider
 ) -> tuple[list[TitledHit], bool]:
-    embedding = await provider.embed_query(query)  # no transaction open
+    # No transaction is open here. The embedding has its own limit, so a model
+    # that is slow but healthy is not cut off by the (shorter) retrieval budget.
+    embedding = await asyncio.wait_for(
+        provider.embed_query(query), settings.embedding_timeout_seconds
+    )
     async with tenant_transaction(tenant_id) as session:
         result = await search_in_session(session, tenant_id, embedding, candidates)
         titles = await documents_repo.titles_for(
@@ -79,10 +85,21 @@ async def _keyword_branch(
     return await keyword_search.search(tenant_id, query, candidates, es)
 
 
-def _failed(branch: Branch, error: BaseException) -> None:
-    # Class name only: backend messages can echo queries or document text.
+def _frames(error: BaseException) -> str:
+    return " > ".join(
+        f"{Path(frame.filename).name}:{frame.lineno} in {frame.name}"
+        for frame in traceback.extract_tb(error.__traceback__)
+    )
+
+
+def _failed(tenant_id: uuid.UUID, branch: Branch, error: BaseException) -> None:
+    # Class name and frames only: backend messages can echo queries or document text.
     logger.warning(
-        "hybrid branch failed: branch=%s error=%s", branch, type(error).__name__
+        "hybrid branch failed: tenant=%s branch=%s error=%s frames=%s",
+        tenant_id,
+        branch,
+        type(error).__name__,
+        _frames(error),
     )
 
 
@@ -99,7 +116,8 @@ async def hybrid_search(
 
     vector, keyword = await asyncio.gather(
         asyncio.wait_for(
-            _vector_branch(tenant_id, query, candidates, provider), budget
+            _vector_branch(tenant_id, query, candidates, provider),
+            settings.embedding_timeout_seconds + budget,
         ),
         asyncio.wait_for(_keyword_branch(tenant_id, query, candidates, es), budget),
         return_exceptions=True,
@@ -114,14 +132,14 @@ async def hybrid_search(
     fallback = False
 
     if isinstance(vector, BaseException):
-        _failed("vector", vector)
+        _failed(tenant_id, "vector", vector)
         degraded.append("vector")
     else:
         vector_hits, fallback = vector
         by_branch["vector"] = {h.hit.chunk_id: h for h in vector_hits}
         ranked.append([h.hit.chunk_id for h in vector_hits])
     if isinstance(keyword, BaseException):
-        _failed("keyword", keyword)
+        _failed(tenant_id, "keyword", keyword)
         degraded.append("keyword")
     else:
         by_branch["keyword"] = {h.hit.chunk_id: h for h in keyword}

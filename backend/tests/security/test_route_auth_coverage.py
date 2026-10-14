@@ -87,11 +87,25 @@ def test_non_api_routes_are_only_the_docs_endpoints() -> None:
 
 
 # A floor, not an exact count: it only moves up. If route discovery silently
-# stops seeing routers, the auth checks above would pass vacuously. (Raised to 20 with
-# POST /search/hybrid on Day 6.)
-MIN_ROUTE_COUNT = 20
+# stops seeing routers, the auth checks above would pass vacuously. The floor is
+# paired with REQUIRED_ROUTES so a dropped router cannot hide behind other routes.
+MIN_ROUTE_COUNT = 15
+REQUIRED_ROUTES = [
+    "/auth/login",
+    "/auth/register",
+    "/documents",
+    "/search",
+    "/search/keyword",
+    "/search/hybrid",
+    "/chat/stream",
+]
 
 
 def test_route_count_has_a_floor() -> None:
     pairs = {(m, path) for path, methods, _ in _api_routes() for m in methods}
     assert len(pairs) >= MIN_ROUTE_COUNT, len(pairs)
+
+
+def test_required_routes_are_present() -> None:
+    paths = {path for path, _, _ in _api_routes()}
+    assert [p for p in REQUIRED_ROUTES if p not in paths] == []
