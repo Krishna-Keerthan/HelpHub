@@ -1,0 +1,21 @@
+# Evaluation questions (retrieval only; no LLM is called). Author-written.
+# Empty on purpose: the questions are written from corpus/INDEX.md.
+#
+# Schema: a YAML list; each item is a mapping with exactly these keys.
+#   id:        unique string, e.g. "dev-001" / "test-001"
+#   split:     dev | test        (24 dev / 16 test planned; test is not looked at while tuning)
+#   category:  paraphrase | code | mixed | keyword | near_miss | off_topic
+#   question:  the text a user would type (1..1000 characters)
+#   answerable: true | false     (false for off_topic: the corpus has no answer)
+#   evidence:  list of exact substrings of corpus chunk text; any ONE found in a retrieved
+#              chunk counts as a relevant hit. Each snippet must match exactly one chunk.
+#              Must be a non-empty list when answerable is true, and [] when false.
+#
+# Example (kept as a comment so the file stays empty):
+# - id: dev-001
+#   split: dev
+#   category: code
+#   question: "What does E-4012 mean?"
+#   answerable: true
+#   evidence: ["Assertion signature invalid"]
+[]
