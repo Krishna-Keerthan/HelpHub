@@ -67,3 +67,6 @@ Thumbs.db
 .hypothesis/
 .docs/
 PROJECT_REPORT.md
+# ---------- Evaluation harness ----------
+backend/eval/results/.eval-active.json
+backend/eval/results/.eval-active.json.*.tmp

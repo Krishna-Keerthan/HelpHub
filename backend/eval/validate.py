@@ -7,8 +7,8 @@ own Elasticsearch index prefix ``eval-<uuid>-``, checks every question's
 evidence, and prints counts. The tenant and the indices are always removed.
 ``--fake`` uses fake embeddings (no model download). No LLM is ever called.
 
-The tenant is created and deleted with the owner role (MIGRATION_DATABASE_URL),
-like the test fixtures do; everything else goes through the app services.
+The tenant is registered through the auth service (reserved slug namespace) and
+removed by id; all Elasticsearch access goes through ``eval.guard.GuardedEs``.
 """
 
 import argparse
@@ -23,18 +23,15 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from elasticsearch import AsyncElasticsearch
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.pool import NullPool
 
-from app.core.config import settings
 from app.db.repositories import chunks as chunks_repo
 from app.db.tenant_context import tenant_transaction
 from app.services import documents as documents_service
-from app.services import es_index
 from app.services.embeddings import EmbeddingProvider, FakeEmbeddingProvider
-from app.services.es_client import alias_name, get_es
+from app.services.es_client import alias_name
+from eval import guard, lifecycle
+from eval.guard import GuardedEs
+from eval.lock import LockHeld, hold_lock
 
 EVAL_DIR = Path(__file__).resolve().parent
 VALID_SPLITS = {"dev", "test"}
@@ -182,84 +179,21 @@ def relevant_ids(
 # --- throw-away tenant and index prefix -----------------------------------------------
 
 
-def _owner_engine() -> Any:
-    return create_async_engine(settings.migration_database_url, poolclass=NullPool)
-
-
-async def _create_tenant() -> EvalEnv:
-    slug = f"eval-{uuid.uuid4().hex[:12]}"
-    engine = _owner_engine()
-    try:
-        async with engine.begin() as conn:
-            tenant_id = (
-                await conn.execute(
-                    text(
-                        "INSERT INTO tenants (slug, name) VALUES (:s, :s) RETURNING id"
-                    ),
-                    {"s": slug},
-                )
-            ).scalar_one()
-            user_id = (
-                await conn.execute(
-                    text(
-                        "INSERT INTO users (tenant_id, email, password_hash, role, is_active) "
-                        "VALUES (:t, :e, 'unusable', 'admin', false) RETURNING id"
-                    ),
-                    {"t": tenant_id, "e": f"eval@{slug}.example.com"},
-                )
-            ).scalar_one()
-        return EvalEnv(tenant_id, user_id)
-    finally:
-        await engine.dispose()
-
-
-async def _delete_tenant(tenant_id: uuid.UUID) -> None:
-    engine = _owner_engine()
-    try:
-        async with engine.begin() as conn:
-            await conn.execute(
-                text("DELETE FROM tenants WHERE id = :id"), {"id": tenant_id}
-            )
-    finally:
-        await engine.dispose()
-
-
-async def _delete_indices(es: AsyncElasticsearch, prefix: str) -> None:
-    found = await es.indices.get(
-        index=f"{prefix}*", ignore_unavailable=True, allow_no_indices=True
-    )
-    if found:
-        await es.indices.delete(index=list(found), ignore_unavailable=True)
-
-
 @asynccontextmanager
-async def eval_environment(es: AsyncElasticsearch) -> AsyncIterator[EvalEnv]:
-    """A dedicated tenant and ``eval-<uuid>-`` index prefix; always cleaned up."""
-    previous_prefix = settings.es_index_prefix
-    prefix = f"eval-{uuid.uuid4().hex[:12]}-"
-    env: EvalEnv | None = None
-    settings.es_index_prefix = prefix
-    es_index.reset_ensure_cache()
-    try:
-        env = await _create_tenant()
-        yield env
-    finally:
-        try:
-            await _delete_indices(es, prefix)
-        finally:
-            try:
-                if env is not None:
-                    await _delete_tenant(env.tenant_id)
-            finally:
-                es_index.reset_ensure_cache()
-                settings.es_index_prefix = previous_prefix
+async def eval_environment(es: Any) -> AsyncIterator[EvalEnv]:
+    """A dedicated tenant and ``eval-<12 hex>-`` index prefix, journalled and
+    always cleaned up (see ``eval.lifecycle``)."""
+    async with lifecycle.eval_run(es) as run:
+        if run.tenant_id is None or run.user_id is None:
+            raise RuntimeError("eval run has no tenant")
+        yield EvalEnv(run.tenant_id, run.user_id)
 
 
 async def ingest_corpus(
     env: EvalEnv,
     docs: Sequence[CorpusDoc],
     provider: EmbeddingProvider,
-    es: AsyncElasticsearch,
+    es: Any,
 ) -> list[IngestedChunk]:
     """Create, embed, store and index every document; return all its chunks."""
     chunks: list[IngestedChunk] = []
@@ -289,7 +223,7 @@ async def run(use_fake: bool) -> int:
     docs = load_corpus(EVAL_DIR / "corpus")
     rows = load_questions(EVAL_DIR / "questions.yaml")
     errors = validate_schema(rows)
-    es = get_es()
+    es = GuardedEs.connect()
     provider: EmbeddingProvider
     if use_fake:
         provider = FakeEmbeddingProvider()
@@ -315,7 +249,17 @@ async def run(use_fake: bool) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fake", action="store_true", help="fake embeddings")
-    return asyncio.run(run(parser.parse_args().fake))
+    fake = parser.parse_args().fake
+    try:
+        guard.assert_not_production()
+        with hold_lock():
+            return asyncio.run(run(fake))
+    except guard.ProductionRefused as exc:
+        print(f"refusing to run: {exc}", file=sys.stderr)
+        return 2
+    except LockHeld as exc:
+        print(f"refusing to start: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

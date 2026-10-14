@@ -1,6 +1,5 @@
 """Eval safety: prefix guard, guarded ES client, stale-selection logic, lock."""
 
-import uuid
 from pathlib import Path
 from typing import Any
 
@@ -54,35 +53,35 @@ class FakeEs:
         return self
 
 
-async def test_guarded_es_blocks_writes_under_a_bad_prefix_but_allows_reads(
+async def test_guarded_es_blocks_every_operation_under_a_bad_prefix(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake = FakeEs()
     es: Any = guard.GuardedEs(fake)
     monkeypatch.setattr(settings, "es_index_prefix", "")
-    assert await es.search(index="x") == "hits"
-    assert await es.indices.get(index="x") == "got"
+    with pytest.raises(guard.UnsafePrefix):
+        await es.search(index="eval-aaaaaaaaaaaa-chunks")
     with pytest.raises(guard.UnsafePrefix):
         await es.bulk(operations=[])
     with pytest.raises(guard.UnsafePrefix):
         await es.indices.refresh(index="chunks")
-    assert fake.log == ["search", "get"]
+    assert fake.log == []
 
 
-async def test_guarded_es_asserts_again_before_every_write(
+async def test_guarded_es_asserts_again_before_every_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake = FakeEs()
     es: Any = guard.GuardedEs(fake)
     monkeypatch.setattr(settings, "es_index_prefix", "eval-aaaaaaaaaaaa-")
-    assert await es.bulk(operations=[]) == "ok"
+    assert await es.search(index="eval-aaaaaaaaaaaa-chunks") == "hits"
     monkeypatch.setattr(settings, "es_index_prefix", "other-")  # changed mid-run
     with pytest.raises(guard.UnsafePrefix):
-        await es.bulk(operations=[])
-    assert fake.log == ["bulk"]
+        await es.search(index="eval-aaaaaaaaaaaa-chunks")
+    assert fake.log == ["search"]
 
 
-async def test_guarded_es_refuses_a_write_aimed_at_a_non_eval_index(
+async def test_guarded_es_refuses_an_index_outside_eval(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "es_index_prefix", "eval-aaaaaaaaaaaa-")
@@ -90,10 +89,9 @@ async def test_guarded_es_refuses_a_write_aimed_at_a_non_eval_index(
     with pytest.raises(guard.UnsafePrefix):
         await es.indices.refresh(index="chunks")
     assert await es.indices.refresh(index="eval-aaaaaaaaaaaa-chunks") == "ok"
-    assert await es.options(request_timeout=5).bulk() == "ok"
-    monkeypatch.setattr(settings, "es_index_prefix", "")
-    with pytest.raises(guard.UnsafePrefix):
-        await es.options(request_timeout=5).bulk()  # options() stays guarded
+    assert await es.options(request_timeout=5).search(index="eval-a-x") == "hits"
+    with pytest.raises(guard.UnsafePrefix):  # options() stays guarded
+        await es.options(request_timeout=5).search(index="chunks")
 
 
 def test_only_old_eval_indices_are_selected() -> None:
@@ -109,12 +107,6 @@ def test_only_old_eval_indices_are_selected() -> None:
         "eval-a-chunks-v1",
         "eval-b-chunks-v1",
     ]
-
-
-def test_only_eval_slugs_are_selected_for_deletion() -> None:
-    a, b, c = (uuid.UUID(int=i) for i in (1, 2, 3))
-    rows = [(a, "eval-0123456789ab"), (b, "acme"), (c, "my-eval-corp")]
-    assert cleanup.select_eval_tenants(rows) == [a]
 
 
 def test_lock_refuses_a_second_holder(tmp_path: Path) -> None:

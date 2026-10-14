@@ -22,6 +22,10 @@ async def register(data: RegisterRequest) -> RegisterResponse:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, detail="Registration is disabled"
         ) from None
+    except auth_service.ReservedSlug:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, detail="slug not available"
+        ) from None
     except auth_service.TenantSlugTaken:
         raise HTTPException(
             status.HTTP_409_CONFLICT, detail="Tenant slug already taken"

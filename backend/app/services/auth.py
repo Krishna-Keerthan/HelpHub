@@ -27,14 +27,28 @@ class TenantSlugTaken(Exception):
     pass
 
 
+class ReservedSlug(Exception):
+    """The slug is in a namespace reserved for internal tooling."""
+
+
+RESERVED_SLUG_PREFIX = "eval-"
+
+
 def issue_token(user: User) -> str:
     return create_access_token({"sub": str(user.id), "tid": str(user.tenant_id)})
 
 
-async def register_tenant(data: RegisterRequest) -> tuple[User, str]:
-    """Create a tenant and its first admin in one transaction."""
+async def register_tenant(
+    data: RegisterRequest, *, reserved_ok: bool = False
+) -> tuple[User, str]:
+    """Create a tenant and its first admin in one transaction.
+
+    ``reserved_ok`` is for the evaluation harness only; no API schema carries it.
+    """
     if not settings.allow_public_registration:
         raise RegistrationDisabled
+    if data.tenant_slug.startswith(RESERVED_SLUG_PREFIX) and not reserved_ok:
+        raise ReservedSlug
 
     password_hash = hash_password(data.password)
     async with AsyncSessionLocal() as session:

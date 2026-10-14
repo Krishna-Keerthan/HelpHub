@@ -16,33 +16,28 @@ import hashlib
 import json
 import os
 import platform
-import secrets
 import subprocess
 import sys
 import time
 import uuid
 from collections import Counter
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import elasticsearch
 from sqlalchemy import text
 
 from app.core.config import settings
 from app.db.repositories import chunks as chunks_repo
 from app.db.session import AsyncSessionLocal
 from app.db.tenant_context import tenant_transaction
-from app.schemas.auth import RegisterRequest
-from app.services import auth as auth_service
 from app.services import chunker, es_index, hybrid_search, keyword_search
 from app.services.embeddings import EmbeddingProvider, default_provider
-from app.services.es_client import alias_name, get_es
+from app.services.es_client import alias_name
 from app.services.search import search_in_session
-from eval import analysis, cleanup, integrity, report, validate
-from eval.guard import GuardedEs, assert_eval_prefix
+from eval import analysis, guard, integrity, lifecycle, report, validate
+from eval.guard import GuardedEs
 from eval.lock import LockHeld, hold_lock
 from eval.records import Ranking, Record, to_json
 
@@ -79,6 +74,20 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _file_state() -> tuple[str, str, str, dict[str, str], str]:
+    """Blocking git and file reads; run through ``asyncio.to_thread``."""
+    corpus = {
+        p.name: _sha256(p)[:16] for p in sorted((EVAL_DIR / "corpus").glob("*.md"))
+    }
+    return (
+        _git("status", "--porcelain", "--untracked-files=no"),
+        _git("ls-files", "--others", "--exclude-standard"),
+        _git("rev-parse", "HEAD")[:12],
+        corpus,
+        _sha256(EVAL_DIR / "questions.yaml"),
+    )
+
+
 async def _db_environment() -> dict[str, Any]:
     async with AsyncSessionLocal() as session:
         pgvector = (
@@ -104,17 +113,13 @@ async def environment(
     es: Any, provider: EmbeddingProvider, n_docs: int, n_chunks: int
 ) -> dict[str, Any]:
     info = await es.info()
-    dirty = _git("status", "--porcelain", "--untracked-files=no")
-    untracked = _git("ls-files", "--others", "--exclude-standard")
-    corpus = {
-        p.name: _sha256(p)[:16] for p in sorted((EVAL_DIR / "corpus").glob("*.md"))
-    }
+    dirty, untracked, sha, corpus, questions_sha = await asyncio.to_thread(_file_state)
     env: dict[str, Any] = {
-        "git_sha": _git("rev-parse", "HEAD")[:12],
+        "git_sha": sha,
         "dirty (tracked modifications only)": "yes" if dirty else "no",
         "untracked files": untracked.replace("\n", ", ") or "none",
         "elasticsearch server": info["version"]["number"],
-        "elasticsearch client": elasticsearch.__version__,
+        "elasticsearch client": guard.CLIENT_VERSION,
         **await _db_environment(),
         "embedding model": provider.model_name,
         "documents": n_docs,
@@ -126,25 +131,12 @@ async def environment(
         "python": platform.python_version(),
         "cpu_count": os.cpu_count(),
         "machine": f"{platform.system()} {platform.release()} {platform.machine()}",
-        "questions.yaml sha256": _sha256(EVAL_DIR / "questions.yaml"),
+        "questions.yaml sha256": questions_sha,
         "corpus files sha256 (first 16)": ", ".join(
             f"{k}={v}" for k, v in corpus.items()
         ),
     }
     return env
-
-
-async def create_env() -> Env:
-    slug = f"eval-{uuid.uuid4().hex[:12]}"
-    user, _ = await auth_service.register_tenant(
-        RegisterRequest(
-            tenant_name=slug,
-            tenant_slug=slug,
-            email=f"eval@{slug}.example.com",
-            password=secrets.token_urlsafe(24),
-        )
-    )
-    return Env(user.tenant_id, user.id)
 
 
 async def _timed_vector(
@@ -234,49 +226,7 @@ def snippet_matches(
     return out
 
 
-async def teardown(
-    *,
-    keep: bool,
-    prefix: str,
-    tenant_id: uuid.UUID | None,
-    raw_es: Any,
-    es: Any,
-    delete_tenant: Callable[[uuid.UUID], Awaitable[None]],
-) -> None:
-    """Remove the eval indices, then the tenant (cascade), unless ``keep``.
-
-    The tenant is deleted even when the index deletion fails.
-    """
-    if keep:
-        print(f"--keep: tenant {tenant_id}, prefix {prefix} retained")
-        return
-    try:
-        found = await raw_es.indices.get(
-            index=f"{prefix}*", ignore_unavailable=True, allow_no_indices=True
-        )
-        if found:
-            await es.indices.delete(index=list(found), ignore_unavailable=True)
-    finally:
-        if tenant_id is not None:
-            await delete_tenant(tenant_id)
-
-
-async def leak_counts(es: Any, tenant_id: uuid.UUID | None) -> dict[str, int]:
-    tenants = len(await cleanup.eval_tenants())
-    found = await es.indices.get(
-        index="eval-*", ignore_unavailable=True, allow_no_indices=True
-    )
-    chunk_rows = 0
-    if tenant_id is not None:
-        async with tenant_transaction(tenant_id) as session:
-            chunk_rows = (
-                await session.execute(text("SELECT count(*) FROM chunks"))
-            ).scalar_one()
-    return {
-        "eval tenants": tenants,
-        "eval indices": len(found),
-        "chunk rows": chunk_rows,
-    }
+teardown = lifecycle.teardown  # kept here for the runner's tests
 
 
 def print_summary(
@@ -311,106 +261,107 @@ def print_summary(
 async def run(
     keep: bool, with_ablation: bool, baseline: bool, out: Path, results_dir: Path
 ) -> int:
-    rows = validate.load_questions(EVAL_DIR / "questions.yaml")
+    guard.assert_not_production()
+    rows = await asyncio.to_thread(validate.load_questions, EVAL_DIR / "questions.yaml")
     errors = validate.validate_schema(rows)
     if errors:
         print("questions.yaml FAILED validation (not edited):")
         print("\n".join(errors[:20]))
         return 1
-    docs = validate.load_corpus(EVAL_DIR / "corpus")
-    previous_prefix = settings.es_index_prefix
-    prefix = f"eval-{uuid.uuid4().hex[:12]}-"
-    raw_es = get_es()
-    es: Any = GuardedEs(raw_es)
-    settings.es_index_prefix = prefix
-    es_index.reset_ensure_cache()
-    assert_eval_prefix()
-    env: Env | None = None
+    docs = await asyncio.to_thread(validate.load_corpus, EVAL_DIR / "corpus")
+    es: Any = GuardedEs.connect()
+    audit = es.without_run_prefix()  # after the run the prefix is restored
     status = 0
+    summary: tuple[Any, ...] | None = None
+    run_ids: tuple[str, list[uuid.UUID]] | None = None
     try:
-        removed = await cleanup.cleanup(es)
-        if any(removed):
-            print(f"startup cleanup removed tenants={removed[0]} indices={removed[1]}")
-        provider = default_provider()
-        await provider.warm_up()
-        env = await create_env()
-        # Harness only: no automatic refresh while ingesting, so the corpus lands in
-        # one segment in ingestion order (ingest_corpus refreshes once at the end).
-        # Exactly tied BM25 scores then keep the same order in every run.
-        await es_index.ensure_index(es)
-        await es.indices.put_settings(
-            index=alias_name(), settings={"index": {"refresh_interval": "-1"}}
-        )
-        chunks = await validate.ingest_corpus(env, docs, provider, es)  # type: ignore[arg-type]
-        if errors := validate.check_evidence(rows, chunks):
-            print("evidence FAILED (questions not edited):\n" + "\n".join(errors[:20]))
-            return 1
-        indexed = (await raw_es.count(index=alias_name()))["count"]
-        records, degraded = await measure(env, es, provider, rows, chunks)
-        categories = dict(Counter(r["category"] for r in rows))
-        checks = {
-            "hybrid == fuse_rrf(branches)": integrity.check_fusion(
-                records, settings.rrf_k
-            ),
-            "evidence resolves": integrity.check_evidence_resolves(
-                snippet_matches(rows, chunks)
-            ),
-            "answerable have relevant chunks": integrity.check_relevance(records),
-            "splits 24/16 and categories": integrity.check_splits(records, categories),
-            "ES chunk count == DB chunk count": []
-            if indexed == len(chunks)
-            else [f"{indexed} != {len(chunks)}"],
-            "no degraded branch": degraded,
-        }
-        contents = {c.chunk_id: c.content for c in chunks}
-        environment_block = await environment(raw_es, provider, len(docs), len(chunks))
-        text_md, extra = report.render(
-            date=datetime.now(UTC).strftime("%Y-%m-%d"),
-            env=environment_block, records=records, contents=contents,
-            n_docs=len(docs), checks=checks, warmups=WARMUPS, with_ablation=with_ablation,
-        )  # fmt: skip
-        payload = json.dumps(
-            {
-                "env": environment_block, "checks": checks, **extra,
-                "chunks": {str(c.chunk_id): {"slug": c.slug, "index": c.chunk_index, "content": c.content} for c in chunks},
-                "records": [to_json(r) for r in records],
-            },
-            indent=1, sort_keys=True, default=str,
-        )  # fmt: skip
-        files = {
-            out: text_md,
-            results_dir / f"{environment_block['git_sha']}.json": payload,
-        }
-        if baseline:
-            files[results_dir / "baseline.json"] = payload
-        await asyncio.to_thread(write_files, files)
-        failed = [n for n, p in checks.items() if p]
-        if failed:
-            print("INTEGRITY CHECKS FAILED: " + ", ".join(failed))
-            status = 1
-        summary = (environment_block, records, checks, extra, out)
-    finally:
-        leaks: dict[str, int] = {}
         try:
-            await teardown(
-                keep=keep,
-                prefix=prefix,
-                tenant_id=env.tenant_id if env else None,
-                raw_es=raw_es,
-                es=es,
-                delete_tenant=cleanup.delete_tenant,
-            )
-            leaks = await leak_counts(
-                raw_es, None if keep else (env.tenant_id if env else None)
-            )
+            async with lifecycle.eval_run(es, keep=keep) as eval_env:
+                if eval_env.tenant_id is None or eval_env.user_id is None:
+                    raise RuntimeError("eval run has no tenant")
+                env = Env(eval_env.tenant_id, eval_env.user_id)
+                run_ids = (eval_env.prefix, [env.tenant_id])
+                provider = default_provider()
+                await provider.warm_up()
+                # Harness only: no automatic refresh while ingesting, so the corpus
+                # lands in one segment in ingestion order (ingest_corpus refreshes
+                # once at the end). Exactly tied BM25 scores then keep the same
+                # order in every run.
+                await es_index.ensure_index(es)
+                await es.indices.put_settings(
+                    index=alias_name(), settings={"index": {"refresh_interval": "-1"}}
+                )
+                chunks = await validate.ingest_corpus(env, docs, provider, es)  # type: ignore[arg-type]
+                if errors := validate.check_evidence(rows, chunks):
+                    print(
+                        "evidence FAILED (questions not edited):\n"
+                        + "\n".join(errors[:20])
+                    )
+                    return 1
+                indexed = (await es.count(index=alias_name()))["count"]
+                records, degraded = await measure(env, es, provider, rows, chunks)
+                categories = dict(Counter(r["category"] for r in rows))
+                checks = {
+                    "hybrid == fuse_rrf(branches)": integrity.check_fusion(
+                        records, settings.rrf_k
+                    ),
+                    "evidence resolves": integrity.check_evidence_resolves(
+                        snippet_matches(rows, chunks)
+                    ),
+                    "answerable have relevant chunks": integrity.check_relevance(
+                        records
+                    ),
+                    "splits 24/16 and categories": integrity.check_splits(
+                        records, categories
+                    ),
+                    "ES chunk count == DB chunk count": []
+                    if indexed == len(chunks)
+                    else [f"{indexed} != {len(chunks)}"],
+                    "no degraded branch": degraded,
+                }
+                contents = {c.chunk_id: c.content for c in chunks}
+                environment_block = await environment(
+                    es, provider, len(docs), len(chunks)
+                )
+                text_md, extra = report.render(
+                    date=datetime.now(UTC).strftime("%Y-%m-%d"),
+                    env=environment_block, records=records, contents=contents,
+                    n_docs=len(docs), checks=checks, warmups=WARMUPS, with_ablation=with_ablation,
+                )  # fmt: skip
+                payload = json.dumps(
+                    {
+                        "env": environment_block, "checks": checks, **extra,
+                        "chunks": {str(c.chunk_id): {"slug": c.slug, "index": c.chunk_index, "content": c.content} for c in chunks},
+                        "records": [to_json(r) for r in records],
+                    },
+                    indent=1, sort_keys=True, default=str,
+                )  # fmt: skip
+                files = {
+                    out: text_md,
+                    results_dir / f"{environment_block['git_sha']}.json": payload,
+                }
+                if baseline:
+                    files[results_dir / "baseline.json"] = payload
+                await asyncio.to_thread(write_files, files)
+                failed = [n for n, p in checks.items() if p]
+                if failed:
+                    print("INTEGRITY CHECKS FAILED: " + ", ".join(failed))
+                    status = 1
+                summary = (environment_block, records, checks, extra, out)
+        except lifecycle.CleanupFailed as exc:
+            print(str(exc))
+            status = 3
+        leaks: dict[str, int] = {}
+        if run_ids is not None:
+            leaks = await lifecycle.scoped_leaks(audit, *run_ids)
             if not keep and any(leaks.values()):
                 print(f"G14: eval cleanup incomplete: {leaks}")
                 status = 3
-        finally:
-            es_index.reset_ensure_cache()
-            settings.es_index_prefix = previous_prefix
-            await raw_es.close()
-    if "summary" in locals():
+        info = await lifecycle.global_counts(audit)
+        print(f"informational, all eval- leftovers (any origin): {info}")
+    finally:
+        await es.close()
+    if summary is not None:
         print_summary(summary[0], summary[1], summary[2], summary[3], leaks, summary[4])
     return status
 
@@ -430,6 +381,7 @@ def main() -> int:
     parser.add_argument("--results-dir", type=Path, default=EVAL_DIR / "results")
     args = parser.parse_args()
     try:
+        guard.assert_not_production()
         with hold_lock():
             return asyncio.run(
                 run(
@@ -440,6 +392,9 @@ def main() -> int:
                     args.results_dir,
                 )
             )
+    except guard.ProductionRefused as exc:
+        print(f"refusing to run: {exc}", file=sys.stderr)
+        return 2
     except LockHeld as exc:
         print(f"refusing to start: {exc}", file=sys.stderr)
         return 2
