@@ -334,6 +334,13 @@ async def run(
         provider = default_provider()
         await provider.warm_up()
         env = await create_env()
+        # Harness only: no automatic refresh while ingesting, so the corpus lands in
+        # one segment in ingestion order (ingest_corpus refreshes once at the end).
+        # Exactly tied BM25 scores then keep the same order in every run.
+        await es_index.ensure_index(es)
+        await es.indices.put_settings(
+            index=alias_name(), settings={"index": {"refresh_interval": "-1"}}
+        )
         chunks = await validate.ingest_corpus(env, docs, provider, es)  # type: ignore[arg-type]
         if errors := validate.check_evidence(rows, chunks):
             print("evidence FAILED (questions not edited):\n" + "\n".join(errors[:20]))
