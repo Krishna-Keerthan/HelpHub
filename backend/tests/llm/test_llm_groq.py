@@ -22,6 +22,7 @@ from app.services.llm import (
 )
 from tests.helpers.fakes import FakeClient, FakeStream, chunk
 
+# gate-allow: secret fake value used only by this test
 SECRET = "PROVIDER-SECRET-TEXT"
 REQ = httpx.Request("POST", "https://example.invalid/chat")
 

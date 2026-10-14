@@ -57,7 +57,7 @@ def decode_access_token(token: str) -> dict[str, Any]:
             options={"require": REQUIRED_CLAIMS},
         )
     except jwt.PyJWTError as exc:
-        # gate-allow: stored in the exception, never logged (reason is logged)
+        # gate-allow: str-exc stored in the exception, never logged (reason is logged)
         raise InvalidTokenError(str(exc), reason=type(exc).__name__) from exc
 
 

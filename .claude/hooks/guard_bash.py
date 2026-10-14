@@ -6,7 +6,8 @@ the real protection for .env is the permissions.deny Read/Edit rules.
 
 Input: hook JSON on stdin (tool_input.command). No network.
 Exit codes: 0 = allowed (no output); 2 = blocked, reason on stderr (fed back
-to Claude); 1 = unreadable input (non-blocking).
+to Claude). Fails closed: unreadable hook input and unparseable commands are
+blocked (exit 2), never allowed.
 """
 
 import json
@@ -57,6 +58,13 @@ def _after(tokens: list[str], *words: str) -> list[str] | None:
     return None
 
 
+def _is_volumes_flag(token: str) -> bool:
+    """``-v``, ``--volumes`` or a short-flag cluster containing v (``-fv``)."""
+    if token == "--volumes":
+        return True
+    return bool(re.fullmatch(r"-[a-zA-Z]+", token)) and "v" in token
+
+
 def _is_env_file(token: str) -> bool:
     token = token.lstrip("<>")
     name = token.rsplit("/", 1)[-1]
@@ -93,15 +101,13 @@ def _check_segment(seg: list[str]) -> str | None:
 
     if "docker" in seg or "docker-compose" in seg:
         down = _after(seg, "down")
-        if down is not None and any(t in ("-v", "--volumes") for t in down):
+        if down is not None and any(_is_volumes_flag(t) for t in down):
             return "docker compose down with volumes deletes the database volume"
-        if _after(seg, "volume", "rm") is not None or _after(seg, "volume", "remove"):
-            return "docker volume rm is blocked"
-        if _after(seg, "volume", "prune") is not None:
-            return "docker volume prune is blocked"
-        prune = _after(seg, "system", "prune")
-        if prune is not None and "--volumes" in prune:
-            return "docker system prune --volumes is blocked"
+        for verb in ("rm", "remove", "prune"):
+            if _after(seg, "volume", verb) is not None:
+                return f"docker volume {verb} is blocked"
+        if _after(seg, "system", "prune") is not None:
+            return "docker system prune is blocked"
 
     if "git" in seg:
         push = _after(seg, "push")
@@ -157,26 +163,62 @@ def _check_segment(seg: list[str]) -> str | None:
     return None
 
 
+_HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_]\w*)\1")
+
+
+def _split_heredocs(command: str) -> tuple[str, list[str]]:
+    """The command without heredoc bodies (they are data, not shell), and the bodies."""
+    lines = command.split("\n")
+    kept: list[str] = []
+    bodies: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        kept.append(line)
+        i += 1
+        for match in _HEREDOC.finditer(line):
+            body: list[str] = []
+            while i < len(lines) and lines[i].strip() != match[2]:
+                body.append(lines[i])
+                i += 1
+            i += 1  # the terminator line
+            bodies.append("\n".join(body))
+    return "\n".join(kept), bodies
+
+
 def check(command: str) -> str | None:
     """Return the reason ``command`` must be blocked, or None if allowed."""
+    stripped, bodies = _split_heredocs(command)
     try:
-        segments = _segments(_tokenize(command))
-    except ValueError:  # unbalanced quotes: fall back to whitespace split
-        segments = _segments(command.split())
+        segments = _segments(_tokenize(stripped))
+    except ValueError:  # unbalanced quotes: fail closed
+        return "unparseable command (cannot be inspected)"
     for seg in segments:
         reason = _check_segment(seg)
         if reason:
             return reason
+    # A heredoc fed to a shell is code: inspect it too.
+    if bodies and any(seg[0] in _SHELLS or seg[0] == "eval" for seg in segments):
+        for body in bodies:
+            reason = check(body)
+            if reason:
+                return reason
     return None
 
 
 def main() -> int:
     try:
         data = json.load(sys.stdin)
-        command = data.get("tool_input", {}).get("command", "")
-    except (json.JSONDecodeError, AttributeError) as exc:
-        print(f"guard_bash: unreadable hook input: {exc}", file=sys.stderr)
-        return 1
+        tool_input = data["tool_input"]
+        command = tool_input.get("command", "")
+        if not isinstance(command, str):
+            raise TypeError("command is not a string")
+    except (ValueError, KeyError, TypeError, AttributeError) as exc:
+        print(
+            f"guard_bash: unreadable hook input ({type(exc).__name__}); blocked",
+            file=sys.stderr,
+        )
+        return 2
     try:
         reason = check(command)
     except Exception as exc:  # fail closed: a guard bug must not allow a command

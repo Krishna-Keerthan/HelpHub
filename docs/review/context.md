@@ -28,7 +28,7 @@ Multi-tenant support knowledge engine: FastAPI, async SQLAlchemy 2.0, Postgres +
 
 ## Gate
 - From the repo root: `scripts/gate.sh` (fast, fail-fast, summary on the terminal, details in `/tmp/gate-report.txt`); `scripts/gate.sh --full` also runs the whole test suite.
-- The gate covers ruff, format of changed files, import-linter, `alembic check`, skip/xfail scan, forbidden patterns, pip-audit (warn-only). Reviewers focus on what it cannot see.
+- The gate covers ruff, format of changed files, import-linter, `alembic check`, skip/xfail scan, forbidden patterns, `# gate-allow: <rule-id> <reason>` format (every allow is listed), a secret scan of tracked files, the accepted-risk register (unique, sequential ids; every `AR-nn` reference exists), `tests/security/`, and pip-audit (warn-only). The first line of `/tmp/gate-report.txt` stamps the commit, time and dirty flag. Reviewers focus on what it cannot see.
 
 ## Known and accepted
 - See `docs/review/accepted-risks.md` (stable IDs AR-nn). Do not re-report them unless the condition changed.

@@ -161,7 +161,7 @@ async def upload_document(
         extraction.check_extension(upload.filename)
         content = await extraction.extract_text(upload.filename, upload.data)
     except extraction.UnsupportedFileType as exc:
-        # gate-allow: our own UnsupportedFileType message
+        # gate-allow: str-exc our own UnsupportedFileType message
         raise _unsupported_media_type(str(exc)) from None
     except extraction.ExtractedTextTooLarge:
         raise HTTPException(
@@ -176,7 +176,7 @@ async def upload_document(
     except extraction.UnreadableDocument as exc:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
-            # gate-allow: our own UnreadableDocument message
+            # gate-allow: str-exc our own UnreadableDocument message
             detail=str(exc),
         ) from None
 

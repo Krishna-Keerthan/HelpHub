@@ -13,6 +13,7 @@ from app.core.security import DUMMY_HASH, create_access_token
 from app.services import auth as auth_service
 from tests.conftest import MakeTenant
 
+# gate-allow: secret fake value used only by this test
 PASSWORD = "correct-horse-battery"
 
 

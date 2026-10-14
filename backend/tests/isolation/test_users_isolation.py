@@ -12,6 +12,7 @@ from app.core.security import create_access_token
 from app.main import app
 from tests.conftest import SEED_PASSWORD, SeededTenant
 
+# gate-allow: secret fake value used only by this test
 NEW_PASSWORD = "Another-Password-123"
 SET_TENANT = "SELECT set_config('app.tenant_id', :tid, false)"
 

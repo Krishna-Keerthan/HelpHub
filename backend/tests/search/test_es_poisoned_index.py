@@ -12,6 +12,7 @@ from app.services.es_client import get_es
 from tests.conftest import MakeTenant
 from tests.helpers.es_helpers import index_raw, upload_and_index
 
+# gate-allow: secret fake value used only by this test
 SECRET = "zq-secret-of-tenant-b"
 
 

@@ -129,6 +129,7 @@ async def test_unexpected_provider_error_text_never_reaches_stream_or_logs(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     tenant = await seeded(owner_conn, make_tenant)
+    # gate-allow: secret fake value used only by this test
     secret = "PROVIDER-SECRET-BODY"
     llm = FakeLLMProvider(tokens=TOKENS, fail_at=1, error=RuntimeError(secret))
     _, stream = await start(tenant, llm)

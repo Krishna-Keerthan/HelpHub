@@ -118,7 +118,7 @@ def _log_failure(
     traceback ends with the message line.
     """
     detail = (
-        # gate-allow: own exception types only
+        # gate-allow: str-exc own exception types only
         f" message={exc}" if isinstance(exc, _SAFE_MESSAGE_ERRORS) and str(exc) else ""
     )
     logger.error(
@@ -139,7 +139,7 @@ def content_hash(text: str) -> str:
 
 def error_summary(exc: BaseException) -> str:
     name = type(exc).__name__
-    # gate-allow: own exception types only
+    # gate-allow: str-exc own exception types only
     if isinstance(exc, _SAFE_MESSAGE_ERRORS) and str(exc):
         return f"{name}: {exc}"[:ERROR_MAX_CHARS]
     return name[:ERROR_MAX_CHARS]

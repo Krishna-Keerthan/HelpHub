@@ -4,6 +4,7 @@ from pydantic import ValidationError
 from app.schemas.auth import LoginRequest, RegisterRequest
 from app.schemas.user import UserCreate, UserRead
 
+# gate-allow: secret fake value used only by this test
 PASSWORD = "a-long-enough-password"
 
 

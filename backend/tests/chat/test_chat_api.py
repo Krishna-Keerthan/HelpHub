@@ -142,6 +142,7 @@ async def test_llm_failure_is_a_generic_error_event(
 ) -> None:
     tenant = await make_tenant()
     await seed_chunk(owner_conn, tenant)
+    # gate-allow: secret fake value used only by this test
     secret = "PROVIDER-SECRET-TEXT"
     fake_llm.tokens, fake_llm.fail_at, fake_llm.error = TOKENS, 1, RuntimeError(secret)
     response = await stream(client, tenant, {"message": "q"})

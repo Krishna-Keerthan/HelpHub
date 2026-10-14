@@ -25,6 +25,24 @@ BLOCKED = [
     "docker volume rm helphub_pgdata",
     "docker volume prune -f",
     "docker system prune --volumes",
+    "docker system prune",
+    "docker system prune -af",
+    "docker system  prune --all --volumes",
+    "docker volume remove helphub_pgdata",
+    "docker volume remove",
+    "docker volume rm -f helphub_pgdata",
+    "docker volume prune",
+    "docker volume prune --all",
+    "docker --context x volume rm v",
+    "docker-compose volume rm v",
+    "docker compose down -fv",
+    "docker compose down -vf",
+    "docker compose down --rmi all --volumes",
+    "echo hi; docker volume rm v",
+    "true && docker system prune",
+    'bash -c "docker volume rm v"',
+    "echo 'unterminated",
+    'git commit -m "unterminated',
     "git push --force",
     "git push -f origin main",
     "git push origin main --force",
@@ -145,8 +163,14 @@ ALLOWED = [
     "scripts/gate.sh --full",
     "psql -c 'select 1'",
     "curl -s localhost:9200",
+    "cat <<'EOF'\nit's fine; docker volume rm v\nEOF",
+    "python3 - <<'PY'\nprint(\"don't\")\nPY",
+    "cat > f.py <<'EOF'\nx = 'git reset --hard'\nEOF\nuv run pytest",
+    "docker volume inspect helphub_pgdata",
+    "docker system df",
+    "docker system info",
+    "docker image prune -f",
     "",
-    "echo 'unterminated",
 ]
 
 
@@ -183,8 +207,22 @@ def test_exit_code_0_and_silent_when_allowed() -> None:
     assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
 
 
-def test_unreadable_input_is_non_blocking() -> None:
-    assert _run("not json").returncode == 1
+@pytest.mark.parametrize(
+    "payload",
+    ["not json", "", "[]", '"a string"', "null", '{"tool_input": "x"}',
+     '{"tool_input": {"command": 5}}'],
+)  # fmt: skip
+def test_unreadable_input_fails_closed(payload: str) -> None:
+    result = _run(payload)
+    assert result.returncode == 2
+    assert "guard_bash" in result.stderr
+    assert result.stdout == ""
+
+
+def test_unparseable_command_is_blocked_with_exit_2() -> None:
+    result = _run(json.dumps({"tool_input": {"command": "echo 'oops"}}))
+    assert result.returncode == 2
+    assert "unparseable" in result.stderr
 
 
 def test_missing_command_is_allowed() -> None:

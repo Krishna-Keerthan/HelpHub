@@ -12,6 +12,7 @@ Run `scripts/gate.sh` from the repo root (never in parallel with another pytest 
 ## 2. Choose agents
 Run `git diff --name-only <range>`. If empty, say "Empty range" and stop. Pick:
 - `tenant-reviewer` and `design-reviewer`: any path under `backend/app/` or `backend/alembic/`.
+- `security-auditor` and `design-reviewer` also run for any path under `.claude/`, `scripts/`, `.github/`, or named `pyproject.toml` or `docker-compose*.yaml` (tooling, hooks and infrastructure changes).
 - `test-quality-reviewer`: any path under `backend/tests/`.
 - `security-auditor`, ONLY if a changed path matches one of: `app/api/`, `app/core/`, `app/services/documents`, upload or extraction code (`uploads`, `extraction`, `pdf_worker`), chat or LLM code (`chat`, `llm`, `prompts`), search or ES code (`search`, `es_`, `reindex`), config (`config.py`, `.env.example`), Docker or compose files, dependencies (`pyproject.toml`, `uv.lock`), or `alembic/`.
 

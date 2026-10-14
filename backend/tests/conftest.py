@@ -22,6 +22,7 @@ from app.services import es_client
 from app.services.embeddings import FakeEmbeddingProvider
 from tests.helpers.fakes import FakeLLMProvider
 
+# gate-allow: secret fake value used only by this test
 SEED_PASSWORD = "Password123!Password"
 EMBEDDING_DIM = 384
 TEST_EMBEDDING_MODEL = "test-model"

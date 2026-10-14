@@ -80,3 +80,71 @@ async def test_upgrade_downgrade_upgrade_roundtrip() -> None:
         async with admin.connect() as conn:
             await conn.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
         await admin.dispose()
+
+
+# Tables that carry tenant_id must have RLS enabled and at least one policy.
+_RLS_GAPS = text(
+    "SELECT c.relname FROM pg_class c "
+    "JOIN pg_namespace n ON n.oid = c.relnamespace "
+    "WHERE n.nspname = 'public' AND c.relkind = 'r' "
+    "AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid "
+    "AND a.attname = 'tenant_id' AND NOT a.attisdropped) "
+    "AND (NOT c.relrowsecurity "
+    "OR NOT EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = c.oid)) "
+    "ORDER BY 1"
+)
+
+
+@pytest.mark.slow
+async def test_every_tenant_table_has_rls_and_a_policy_after_upgrade() -> None:
+    name = f"helphub_migtest_{uuid.uuid4().hex}"
+    owner_url = settings.migration_database_url
+    admin = create_async_engine(
+        owner_url, poolclass=NullPool, isolation_level="AUTOCOMMIT"
+    )
+    env = {
+        **os.environ,
+        "MIGRATION_DATABASE_URL": _url_for(owner_url, name),
+        "DATABASE_URL": _url_for(settings.database_url, name),
+    }
+    scratch = None
+    try:
+        async with admin.connect() as conn:
+            await conn.execute(text(f'CREATE DATABASE "{name}"'))
+        _alembic(env, "upgrade", "head")
+        scratch = create_async_engine(env["MIGRATION_DATABASE_URL"], poolclass=NullPool)
+
+        async with scratch.begin() as conn:
+            tenant_tables = (
+                (
+                    await conn.execute(
+                        text(
+                            "SELECT table_name FROM information_schema.columns "
+                            "WHERE table_schema = 'public' AND column_name = 'tenant_id'"
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            gaps = (await conn.execute(_RLS_GAPS)).scalars().all()
+        # Guard against a vacuous pass: the real schema has tenant tables.
+        assert len(tenant_tables) >= 5, tenant_tables
+        assert list(gaps) == []
+
+        # The check itself must bite: a table without RLS, then one with RLS but
+        # no policy, are both reported.
+        async with scratch.begin() as conn:
+            await conn.execute(text("CREATE TABLE zz_no_rls (tenant_id uuid)"))
+            await conn.execute(text("CREATE TABLE zz_no_policy (tenant_id uuid)"))
+            await conn.execute(
+                text("ALTER TABLE zz_no_policy ENABLE ROW LEVEL SECURITY")
+            )
+            reported = (await conn.execute(_RLS_GAPS)).scalars().all()
+        assert list(reported) == ["zz_no_policy", "zz_no_rls"]
+    finally:
+        if scratch is not None:
+            await scratch.dispose()
+        async with admin.connect() as conn:
+            await conn.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+        await admin.dispose()

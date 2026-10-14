@@ -64,6 +64,7 @@ extend-select = ["S", "B", "ASYNC"]
 "tests/documents/test_documents_search_index_columns.py" = ["S608"]
 "tests/isolation/test_documents_chunks_rls.py" = ["S608"]
 "tests/search/test_reindex.py" = ["S603"]
+"tests/tooling/test_gate_checks.py" = ["S603", "S607"]  # git with argument lists, no shell
 "tests/chat/test_chat_service.py" = ["ASYNC110"]
 "tests/migrations/test_migration_roundtrip.py" = ["S603"]
 "tests/tooling/test_guard_bash.py" = ["S603"]
