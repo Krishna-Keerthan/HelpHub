@@ -41,6 +41,18 @@ class TenantRef:
     slug: str
 
 
+async def _passes_user_check(
+    tenant_id: uuid.UUID, *, max_users: int, email_suffix: str
+) -> bool:
+    """1..max_users users, all with the harness email suffix. A tenant whose
+    users cannot be read (none visible) fails: the check never fails open."""
+    async with tenant_transaction(tenant_id) as session:
+        emails = list(await session.scalars(select(User.email).limit(max_users + 1)))
+    return 1 <= len(emails) <= max_users and all(
+        e.lower().endswith(email_suffix.lower()) for e in emails
+    )
+
+
 async def list_candidates(
     *,
     slug_regex: str,
@@ -48,10 +60,12 @@ async def list_candidates(
     max_users: int,
     email_suffix: str,
     limit: int = MAX_DELETE_IDS,
+    scan_limit: int = 200,
 ) -> list[TenantRef]:
     """Tenants a cleanup may remove: slug matches ``slug_regex``, created before
-    ``now - older_than``, with at most ``max_users`` users, every one of whose
-    emails ends with ``email_suffix``. Oldest first, at most ``limit``.
+    ``now - older_than``, with 1..``max_users`` users, every one of whose emails
+    ends with ``email_suffix``. Oldest first, at most ``limit``; at most
+    ``scan_limit`` slug matches are examined.
 
     Users are read per tenant inside a tenant transaction (users is under RLS).
     """
@@ -62,19 +76,45 @@ async def list_candidates(
             select(Tenant.id, Tenant.slug)
             .where(Tenant.slug.op("~")(slug_regex), Tenant.created_at < cutoff)
             .order_by(Tenant.created_at)
+            .limit(scan_limit)
         )
         found = [TenantRef(r[0], r[1]) for r in rows if pattern.search(r[1])]
     out: list[TenantRef] = []
     for ref in found:
         if len(out) >= limit:
             break
-        async with tenant_transaction(ref.id) as session:
-            emails = list(
-                await session.scalars(select(User.email).limit(max_users + 1))
-            )
-        if len(emails) <= max_users and all(e.endswith(email_suffix) for e in emails):
+        if await _passes_user_check(
+            ref.id, max_users=max_users, email_suffix=email_suffix
+        ):
             out.append(ref)
     return out
+
+
+async def delete_if_candidate(
+    tenant_id: uuid.UUID,
+    *,
+    slug_regex: str,
+    older_than: timedelta,
+    max_users: int,
+    email_suffix: str,
+) -> int:
+    """Delete one tenant only if it STILL satisfies the candidate rules (slug, age,
+    users), checked immediately before the delete; returns 0 otherwise. A tenant
+    that gained a real user since it was listed is therefore kept."""
+    cutoff = datetime.now(UTC) - older_than
+    async with AsyncSessionLocal() as session:
+        slug = await session.scalar(
+            select(Tenant.slug).where(
+                Tenant.id == tenant_id, Tenant.created_at < cutoff
+            )
+        )
+    if slug is None or not re.search(slug_regex, slug):
+        return 0
+    if not await _passes_user_check(
+        tenant_id, max_users=max_users, email_suffix=email_suffix
+    ):
+        return 0
+    return await delete_by_ids([tenant_id])
 
 
 async def delete_by_ids(ids: Sequence[uuid.UUID]) -> int:

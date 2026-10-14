@@ -61,14 +61,21 @@ async def stale_run_indices(es: Any) -> list[str]:
     return [n for n in names if RUN_INDEX_RE.match(n)][:MAX_PER_RUN]
 
 
+CRITERIA = {
+    "slug_regex": journal.SLUG_RE.pattern,
+    "older_than": timedelta(seconds=MIN_AGE_SECONDS),
+    "max_users": MAX_USERS,
+    "email_suffix": lifecycle.HARNESS_EMAIL_SUFFIX,
+}
+
+
+async def delete_if_still_candidate(ids: list[uuid.UUID]) -> int:
+    """Re-checks the candidate rules for each id right before deleting it."""
+    return sum([await tenants_repo.delete_if_candidate(i, **CRITERIA) for i in ids])  # type: ignore[arg-type]
+
+
 async def candidates() -> list[tenants_repo.TenantRef]:
-    return await tenants_repo.list_candidates(
-        slug_regex=journal.SLUG_RE.pattern,
-        older_than=timedelta(seconds=MIN_AGE_SECONDS),
-        max_users=MAX_USERS,
-        email_suffix=lifecycle.HARNESS_EMAIL_SUFFIX,
-        limit=MAX_PER_RUN,
-    )
+    return await tenants_repo.list_candidates(limit=MAX_PER_RUN, **CRITERIA)  # type: ignore[arg-type]
 
 
 @dataclass
@@ -83,9 +90,7 @@ async def cleanup(
     *,
     yes: bool,
     path: Path = journal.JOURNAL_PATH,
-    delete_ids: Callable[
-        [list[uuid.UUID]], Awaitable[int]
-    ] = tenants_repo.delete_by_ids,
+    delete_ids: Callable[[list[uuid.UUID]], Awaitable[int]] = delete_if_still_candidate,
 ) -> Summary:
     """Dry run unless ``yes``. Deletes one tenant id at a time so one failure
     does not hide the others; every failure is listed in the summary."""

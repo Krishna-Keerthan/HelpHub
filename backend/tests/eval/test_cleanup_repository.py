@@ -5,6 +5,8 @@ from collections.abc import Awaitable, Callable
 from datetime import timedelta
 
 import pytest
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.db.repositories import tenants as tenants_repo
 
@@ -41,6 +43,7 @@ async def test_matching_tenant_is_a_candidate(make: Make) -> None:
         (None, [f"admin{SUFFIX}", "x@acme.example.com"], 60),  # one foreign user
         (None, [f"{i}{SUFFIX}" for i in range(4)], 60),  # too many users
         (None, [f"admin{SUFFIX}"], 2),  # too young
+        (None, [], 60),  # no users at all: never fails open
     ],
 )
 async def test_non_matching_tenants_are_never_candidates(
@@ -68,3 +71,50 @@ async def test_limit_caps_the_candidate_list(make: Make) -> None:
     for _ in range(3):
         await make(_slug(), [f"a{SUFFIX}"])
     assert len(await _list(limit=2)) <= 2
+
+
+CRITERIA = {
+    "slug_regex": SLUG_RE,
+    "older_than": timedelta(minutes=10),
+    "max_users": 3,
+    "email_suffix": SUFFIX,
+}
+
+
+async def test_delete_if_candidate_deletes_a_current_candidate(make: Make) -> None:
+    tid = await make(_slug(), [f"admin{SUFFIX}"])
+    assert await tenants_repo.delete_if_candidate(tid, **CRITERIA) == 1  # type: ignore[arg-type]
+    assert await tenants_repo.existing_ids([tid]) == set()
+
+
+async def test_delete_if_candidate_keeps_a_tenant_that_stopped_matching(
+    make: Make, owner_conn: AsyncConnection
+) -> None:
+    tid = await make(_slug(), [f"admin{SUFFIX}"])
+    assert tid in {c.id for c in await _list()}  # listed ...
+    await owner_conn.execute(  # ... then a real user appears
+        text(
+            "INSERT INTO users (tenant_id, email, password_hash, role, is_active) "
+            "VALUES (:t, 'real@acme.example.com', 'x', 'admin', true)"
+        ),
+        {"t": tid},
+    )
+    await owner_conn.commit()
+    assert await tenants_repo.delete_if_candidate(tid, **CRITERIA) == 0  # type: ignore[arg-type]
+    assert await tenants_repo.existing_ids([tid]) == {tid}
+
+
+@pytest.mark.parametrize(
+    ("slug", "emails", "age"),
+    [
+        ("eval-corp", [f"admin{SUFFIX}"], 60),
+        (None, [], 60),
+        (None, [f"admin{SUFFIX}"], 1),
+    ],
+)
+async def test_delete_if_candidate_refuses_non_candidates(
+    make: Make, slug: str | None, emails: list[str], age: int
+) -> None:
+    tid = await make(slug or _slug(), emails, age)
+    assert await tenants_repo.delete_if_candidate(tid, **CRITERIA) == 0  # type: ignore[arg-type]
+    assert await tenants_repo.existing_ids([tid]) == {tid}

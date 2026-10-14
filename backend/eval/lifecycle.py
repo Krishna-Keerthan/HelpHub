@@ -216,7 +216,10 @@ async def eval_run(
                 es=es,
                 verify_tenant=_tenant_gone,
             )
-            if status.ok and not keep:
+            if status.ok:
+                # Verified cleanup, or --keep: the run is over either way. A kept
+                # tenant must not be deleted later through a stale journal; the
+                # (dry-run by default) eval.cleanup lists it once it is old enough.
                 journal.remove(path)
         except BaseException as cleanup_error:
             if body_error is not None:

@@ -171,3 +171,14 @@ async def test_production_is_refused_before_anything_happens(
         async with lifecycle.eval_run(FakeEs(), path=tmp_path / "j.json"):
             pass
     assert db.deleted == [] and not (tmp_path / "j.json").exists()
+
+
+async def test_keep_removes_the_journal_and_deletes_nothing(
+    db: FakeDb, tmp_path: Path
+) -> None:
+    path, es = tmp_path / "j.json", FakeEs()
+    async with lifecycle.eval_run(es, keep=True, path=path):
+        assert path.exists()
+    assert not path.exists()  # a later run must not clean the kept tenant
+    assert db.deleted == [] and es.indices.deleted == []
+    assert await lifecycle.startup_cleanup(es, path) is False

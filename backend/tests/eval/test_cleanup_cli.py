@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.core.config import settings
 from app.db.repositories import tenants as tenants_repo
@@ -131,3 +133,34 @@ def test_entry_points_refuse_production(
     assert entry() == 2
     with pytest.raises(guard.ProductionRefused):
         guard.assert_not_production()
+
+
+async def test_yes_keeps_a_candidate_that_gained_a_real_user_after_listing(
+    make: Make,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    owner_conn: AsyncConnection,
+) -> None:
+    tid = await make(_slug(), [f"admin{SUFFIX}"])
+    real = cleanup.candidates
+
+    async def listed_then_changed() -> list[tenants_repo.TenantRef]:
+        listed = [c for c in await real() if c.id == tid]
+        await owner_conn.execute(
+            text(
+                "INSERT INTO users (tenant_id, email, password_hash, role, "
+                "is_active) VALUES (:t, 'real@acme.example.com', 'x', 'admin', true)"
+            ),
+            {"t": tid},
+        )
+        await owner_conn.commit()
+        return listed
+
+    async def no_indices(_: Any) -> list[str]:
+        return []
+
+    monkeypatch.setattr(cleanup, "candidates", listed_then_changed)
+    monkeypatch.setattr(cleanup, "stale_run_indices", no_indices)
+    summary = await cleanup.cleanup(FakeEs(), yes=True, path=tmp_path / "j.json")
+    assert summary.tenants_removed == 0
+    assert await tenants_repo.existing_ids([tid]) == {tid}
