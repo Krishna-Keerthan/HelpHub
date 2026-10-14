@@ -87,9 +87,9 @@ def test_non_api_routes_are_only_the_docs_endpoints() -> None:
 
 
 # A floor, not an exact count: it only moves up. If route discovery silently
-# stops seeing routers, the auth checks above would pass vacuously. (The Day 6
-# plan raises it to 20 with POST /search/hybrid.)
-MIN_ROUTE_COUNT = 19
+# stops seeing routers, the auth checks above would pass vacuously. (Raised to 20 with
+# POST /search/hybrid on Day 6.)
+MIN_ROUTE_COUNT = 20
 
 
 def test_route_count_has_a_floor() -> None:

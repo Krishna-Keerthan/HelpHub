@@ -66,6 +66,11 @@ class Settings(BaseSettings):
     es_index_prefix: str = ""
     es_timeout_seconds: float = 10.0
     es_alias: str = "chunks"
+    # Hybrid search: reciprocal rank fusion constant, candidates per branch, and
+    # the budget of each branch (embedding + vector, or Elasticsearch + hydration).
+    rrf_k: int = Field(default=60, ge=1)
+    hybrid_candidates: int = Field(default=50, ge=1)
+    hybrid_branch_timeout_seconds: float = Field(default=3.0, gt=0)
     chat_top_k: int = 5
     chat_history_messages: int = 6
     max_context_chars: int = 12_000
