@@ -24,6 +24,8 @@ FAKE_TOKENS = {
     "BEGIN": "-----" + "BEGIN PRIVATE KEY-----",
 }
 REGISTER = "docs/review/accepted-risks.md"
+URL_VALUE = "postgresql://" + "u:pw@host/db-long-enough"
+LONG = "abcdefghijklmnopqrstuvwxyz"  # 26 chars: long enough to be flagged
 
 
 def _repo(tmp_path: Path, files: dict[str, str]) -> Path:
@@ -72,11 +74,11 @@ def test_malformed_allow_is_flagged(tmp_path: Path, comment: str) -> None:
 @pytest.mark.parametrize(
     "line",
     [
-        'API_KEY = "abcdefghijklmnopqrstuvwxyz"',
-        "client_secret: 'abcdefghijklmnopqrstuvwxyz'",
-        'password = "correct-horse-battery-staple"',
-        'db_dsn = "postgresql://u:pw@host/db-long-enough-here"',
-        'refresh_token="abcdefghijklmnopqrst"',
+        f'API_KEY = "{LONG}"',
+        f"client_secret: '{LONG}'",
+        f'password = "{LONG}-staple"',
+        f'db_dsn = "{URL_VALUE}"',
+        f'refresh_token="{LONG[:20]}"',
     ],
 )
 def test_long_literal_assignments_are_flagged(tmp_path: Path, line: str) -> None:
@@ -121,10 +123,10 @@ def test_allow_marker_with_secret_rule_silences_a_hit(tmp_path: Path) -> None:
     root = _repo(
         tmp_path,
         {
-            "a.py": f'{ALLOW} secret fake value for this test\nPASSWORD = "abcdefghijklmnopqrstuv"\n',
-            "b.py": f'PASSWORD = "abcdefghijklmnopqrstuv"  {ALLOW} secret fake value for this test\n',
-            "c.py": f'{ALLOW} str-exc wrong rule for a secret\nPASSWORD = "abcdefghijklmnopqrstuv"\n',
-            "d.py": f'{ALLOW} secret short\nPASSWORD = "abcdefghijklmnopqrstuv"\n',
+            "a.py": f'{ALLOW} secret fake value for this test\nPASSWORD = "{LONG}"\n',
+            "b.py": f'PASSWORD = "{LONG}"  {ALLOW} secret fake value for this test\n',
+            "c.py": f'{ALLOW} str-exc wrong rule for a secret\nPASSWORD = "{LONG}"\n',
+            "d.py": f'{ALLOW} secret short\nPASSWORD = "{LONG}"\n',
         },
     )
     assert gc.secrets(root) == [
@@ -134,7 +136,7 @@ def test_allow_marker_with_secret_rule_silences_a_hit(tmp_path: Path) -> None:
 
 
 def test_dotenv_and_lockfiles_are_not_scanned(tmp_path: Path) -> None:
-    line = 'API_KEY = "abcdefghijklmnopqrstuvwxyz"\n'
+    line = f'API_KEY = "{LONG}"\n'
     root = _repo(tmp_path, {".env": line, "uv.lock": line})
     assert gc.secrets(root) == []
 

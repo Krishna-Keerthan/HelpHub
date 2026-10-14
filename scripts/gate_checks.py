@@ -34,6 +34,7 @@ TOKEN_PATTERNS = {
     "sk-": re.compile(r"\bsk-[A-Za-z0-9_-]{20,}"),
     "AKIA": re.compile(r"\bAKIA[0-9A-Z]{12,}"),
     "eyJ": re.compile(r"\beyJ[A-Za-z0-9_-]{10,}"),
+    # gate-allow: secret pattern definition, no secret
     "BEGIN": re.compile(r"-----BEGIN"),
 }
 SKIP_SUFFIXES = {".lock", ".png", ".jpg", ".pdf", ".ico", ".gz"}
@@ -59,23 +60,31 @@ def _lines(root: Path, rel: Path) -> list[str] | None:
         return None
 
 
-def allows(root: Path) -> list[str]:
-    """List every gate-allow; return findings for malformed ones."""
+def collect_allows(root: Path) -> tuple[list[str], list[str]]:
+    """(one line per valid gate-allow, findings for malformed ones)."""
+    listing: list[str] = []
     problems: list[str] = []
     for rel in tracked(root):
-        if rel.suffix != ".py":
+        if rel.suffix != ".py" or rel.name == "gate_checks.py":  # defines the marker
             continue
         for n, line in enumerate(_lines(root, rel) or [], 1):
             if not ALLOW_MARKER.search(line):
                 continue
             match = ALLOW_VALID.search(line.strip()[line.strip().index("#") :])
             if match:
-                print(f"allow {rel}:{n} [{match['rule']}] {match['reason']}")
+                listing.append(f"allow {rel}:{n} [{match['rule']}] {match['reason']}")
             else:
                 problems.append(
                     f"{rel}:{n}: malformed gate-allow "
                     "(want '# gate-allow: <rule-id> <reason of 10+ chars>')"
                 )
+    return listing, problems
+
+
+def allows(root: Path) -> list[str]:
+    """Print every gate-allow; return the malformed ones."""
+    listing, problems = collect_allows(root)
+    print("\n".join(listing))
     return problems
 
 
@@ -169,9 +178,11 @@ def main(argv: list[str]) -> int:
     if args.check == "stamp":
         stamp(args.root, args.report)
         return 0
-    problems = {"allows": allows, "secrets": secrets, "ar-register": ar_register}[
-        args.check
-    ](args.root)
+    if args.check == "allows":  # problems first: the gate shows only the head
+        listing, problems = collect_allows(args.root)
+        print("\n".join([*problems, *listing]))
+        return 1 if problems else 0
+    problems = {"secrets": secrets, "ar-register": ar_register}[args.check](args.root)
     for problem in problems:
         print(problem)
     return 1 if problems else 0
