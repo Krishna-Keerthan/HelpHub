@@ -18,4 +18,321 @@
 #   question: "What does E-4012 mean?"
 #   answerable: true
 #   evidence: ["Assertion signature invalid"]
-[]
+
+# --- PARAPHRASE (10 total: 6 dev, 4 test) ---
+- id: q-001
+  split: dev
+  category: paraphrase
+  answerable: true
+  question: "I switched my mobile device and now I am completely locked out of my workspace"
+  evidence:
+    - "If you lost the phone or the security key that generates your sign-in codes, use one of the ten backup codes you saved when you turned on two-factor authentication."
+
+- id: q-002
+  split: dev
+  category: paraphrase
+  answerable: true
+  question: "How long can I still get my files after cancelling my subscription?"
+  evidence:
+    - "Data is kept for 90 days after the downgrade."
+
+- id: q-003
+  split: dev
+  category: paraphrase
+  answerable: true
+  question: "What is the maximum file storage capacity available for a single team tier member?"
+  evidence:
+    - "Team | 8 USD | 100 GB | up to 50 | email, 2 business days"
+
+- id: q-004
+  split: dev
+  category: paraphrase
+  answerable: true
+  question: "What steps should I take if my desktop sync keeps dropping mid-transfer?"
+  evidence:
+    - "The connection to our servers was reset in the middle of a transfer."
+
+- id: q-005
+  split: dev
+  category: paraphrase
+  answerable: true
+  question: "How do I create a personal credential for my automated scripts?"
+  evidence:
+    - "Create one under Profile, Developer, New token."
+
+- id: q-006
+  split: dev
+  category: paraphrase
+  answerable: true
+  question: "My team is running out of disk space, can we buy extra capacity without switching tiers?"
+  evidence:
+    - "When a workspace runs short of space you can buy extra capacity without changing plan."
+
+- id: q-007
+  split: test
+  category: paraphrase
+  answerable: true
+  question: "Is there any way to get my money back if I am unhappy with my first subscription payment?"
+  evidence:
+    - "The first purchase of any paid plan is covered by a 30-day money-back guarantee."
+
+- id: q-008
+  split: test
+  category: paraphrase
+  answerable: true
+  question: "How can I check who is uploading the most data in my workspace?"
+  evidence:
+    - "Settings, Storage shows total usage, the biggest folders and the members who upload the most."
+
+- id: q-009
+  split: test
+  category: paraphrase
+  answerable: true
+  question: "What happens if I try to sign into my account incorrectly too many times in a row?"
+  evidence:
+    - "After ten wrong passwords in a row, the account is locked for 30 minutes."
+
+- id: q-010
+  split: test
+  category: paraphrase
+  answerable: true
+  question: "Can I choose how long my developer access tokens stay valid before expiring?"
+  evidence:
+    - "Tokens can be given an expiry of 7, 30 or 90 days, or no expiry on Business and Enterprise plans."
+
+# --- CODE (8 total: 5 dev, 3 test) ---
+- id: q-011
+  split: dev
+  category: code
+  answerable: true
+  question: "E-4012"
+  evidence:
+    - "Assertion signature invalid: the signing certificate does not match the fingerprint stored for your workspace"
+
+- id: q-012
+  split: dev
+  category: code
+  answerable: true
+  question: "E-4013"
+  evidence:
+    - "Assertion expired or not yet valid: the clocks of the identity provider and Acme Cloud differ by more than five minutes"
+
+- id: q-013
+  split: dev
+  category: code
+  answerable: true
+  question: "ERR_CONN_RESET"
+  evidence:
+    - "The connection to our servers was reset in the middle of a transfer."
+
+- id: q-014
+  split: dev
+  category: code
+  answerable: true
+  question: "E-5001"
+  evidence:
+    - "When the pool is full the API and the apps return error E-5001 on upload."
+
+- id: q-015
+  split: dev
+  category: code
+  answerable: true
+  question: "AB-1234-XL"
+  evidence:
+    - "SKU AB-1234-XL adds 50 TB and is the largest standard pack; smaller packs are listed on the pricing page."
+
+- id: q-016
+  split: test
+  category: code
+  answerable: true
+  question: "SYNC_ERR_409"
+  evidence:
+    - "The same file was changed in two places before they could sync."
+
+- id: q-017
+  split: test
+  category: code
+  answerable: true
+  question: "CD-7781-M"
+  evidence:
+    - "Storage add-ons. When a workspace runs short of space you can buy extra capacity without changing plan. Add-ons are sold as stock keeping units (SKUs): AB-1234-M adds 1 TB, AB-1234-L adds 10 TB and AB-1234-XL adds 50 TB of pooled storage. Add-ons renew with your plan and can be removed at the next renewal date.\n\nSecurity keys. The hardware security key for two-factor sign-in is SKU CD-7781-M and ships in a pack of two."
+
+- id: q-018
+  split: test
+  category: code
+  answerable: true
+  question: "ACME-AUTH-0042"
+  evidence:
+    - "ACME-AUTH-0042 means the token has expired, and the fix is to create a new token or refresh the OAuth token."
+
+# --- MIXED (8 total: 5 dev, 3 test) ---
+- id: q-019
+  split: dev
+  category: mixed
+  answerable: true
+  question: "Why am I getting E-4012 when trying to log in via single sign-on?"
+  evidence:
+    - "E-4012 | Assertion signature invalid: the signing certificate does not match the fingerprint stored for your workspace"
+
+- id: q-020
+  split: dev
+  category: mixed
+  answerable: true
+  question: "What does code E-4013 mean for our SAML configuration?"
+  evidence:
+    - "E-4013 | Assertion expired or not yet valid: the clocks of the identity provider and Acme Cloud differ by more than five minutes"
+
+- id: q-021
+  split: dev
+  category: mixed
+  answerable: true
+  question: "How do I fix the ERR_CONN_RESET error on the desktop client?"
+  evidence:
+    - "Switch to a wired connection, add sync.acmecloud.example to the proxy allow-list and retry."
+
+- id: q-022
+  split: dev
+  category: mixed
+  answerable: true
+  question: "What should I do if uploads fail with error E-5001?"
+  evidence:
+    - "To continue you can delete files and empty the trash, shorten version history from 100 to 10 versions, upgrade the plan, or buy a storage add-on."
+
+- id: q-023
+  split: dev
+  category: mixed
+  answerable: true
+  question: "How much extra pooled capacity does SKU AB-1234-XL provide?"
+  evidence:
+    - "SKU AB-1234-XL adds 50 TB and is the largest standard pack; smaller packs are listed on the pricing page."
+
+- id: q-024
+  split: test
+  category: mixed
+  answerable: true
+  question: "What does SYNC_ERR_409 mean in the desktop sync client?"
+  evidence:
+    - "The client keeps both versions: yours is renamed with the suffix conflicted copy and the cloud version is downloaded."
+
+- id: q-025
+  split: test
+  category: mixed
+  answerable: true
+  question: "How many hardware security keys come with SKU CD-7781-M?"
+  evidence:
+    - "Storage add-ons. When a workspace runs short of space you can buy extra capacity without changing plan. Add-ons are sold as stock keeping units (SKUs): AB-1234-M adds 1 TB, AB-1234-L adds 10 TB and AB-1234-XL adds 50 TB of pooled storage. Add-ons renew with your plan and can be removed at the next renewal date.\n\nSecurity keys. The hardware security key for two-factor sign-in is SKU CD-7781-M and ships in a pack of two."
+    
+- id: q-026
+  split: test
+  category: mixed
+  answerable: true
+  question: "What error code indicates that my personal access token has expired during API requests?"
+  evidence:
+    - "ACME-AUTH-0042 means the token has expired, and the fix is to create a new token or refresh the OAuth token."
+
+# --- KEYWORD (6 total: 4 dev, 2 test) ---
+- id: q-027
+  split: dev
+  category: keyword
+  answerable: true
+  question: "What is the validity duration of a password reset link?"
+  evidence:
+    - "3. Open the email titled Reset your Acme Cloud password. The link is valid for 60 minutes and can be used once."
+
+- id: q-028
+  split: dev
+  category: keyword
+  answerable: true
+  question: "How many backup codes are provided when turning on two-factor authentication?"
+  evidence:
+    - "use one of the ten backup codes you saved when you turned on two-factor authentication."
+
+- id: q-029
+  split: dev
+  category: keyword
+  answerable: true
+  question: "What is the request limit per minute for the Business plan API?"
+  evidence:
+    - "Business | 1,200 | 200 | 500,000"
+
+- id: q-030
+  split: dev
+  category: keyword
+  answerable: true
+  question: "How long do OAuth access tokens last before expiring?"
+  evidence:
+    - "Access tokens last one hour; refresh tokens last 60 days."
+
+- id: q-031
+  split: test
+  category: keyword
+  answerable: true
+  question: "What percentage discount do non-profit and education organisations receive?"
+  evidence:
+    - "Non-profit and education organisations receive a 30 percent discount on request."
+
+- id: q-032
+  split: test
+  category: keyword
+  answerable: true
+  question: "What is the maximum character length requirement for a new password?"
+  evidence:
+    - "Choose a new password with at least 12 characters that is not one of your last five."
+
+# --- NEAR-MISS (4 total: 2 dev, 2 test) ---
+- id: q-033
+  split: dev
+  category: near_miss
+  answerable: false
+  question: "How long is the refund window for the Enterprise plan?"
+  evidence: []
+
+- id: q-034
+  split: dev
+  category: near_miss
+  answerable: false
+  question: "Can I pay for my subscription using cryptocurrency or Bitcoin?"
+  evidence: []
+
+- id: q-035
+  split: test
+  category: near_miss
+  answerable: false
+  question: "Is there a phone number I can call for immediate 24/7 customer support on the Team plan?"
+  evidence: []
+
+- id: q-036
+  split: test
+  category: near_miss
+  answerable: false
+  question: "How do I configure Google Authenticator as my primary two-factor app?"
+  evidence: []
+
+# --- OFF-TOPIC (4 total: 2 dev, 2 test) ---
+- id: q-037
+  split: dev
+  category: off_topic
+  answerable: false
+  question: "What is the recipe for making traditional Italian lasagna?"
+  evidence: []
+
+- id: q-038
+  split: dev
+  category: off_topic
+  answerable: false
+  question: "How do I fix a flat tire on a mountain bicycle?"
+  evidence: []
+
+- id: q-039
+  split: test
+  category: off_topic
+  answerable: false
+  question: "What are the best tourist attractions to visit in Tokyo during autumn?"
+  evidence: []
+
+- id: q-040
+  split: test
+  category: off_topic
+  answerable: false
+  question: "Can you write a Python script to scrape weather data from public news websites?"
+  evidence: []
