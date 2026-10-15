@@ -93,7 +93,7 @@ async def test_a_failing_tenant_does_not_hide_the_others(
     async def flaky(ids: list[uuid.UUID]) -> int:
         if ids == [a]:
             raise TimeoutError("db down")
-        return await tenants_repo.delete_by_ids(ids)
+        return await cleanup.delete_if_still_candidate(ids)
 
     summary = await cleanup.cleanup(
         FakeEs(), yes=True, path=tmp_path / "j.json", delete_ids=flaky

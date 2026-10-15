@@ -11,6 +11,7 @@ import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,14 @@ from eval import guard, journal
 
 HARNESS_EMAIL_SUFFIX = "@eval-harness.example.com"
 HARNESS_EMAIL = f"admin{HARNESS_EMAIL_SUFFIX}"
+
+HARNESS_MAX_USERS = 3
+# What every automated tenant delete must still satisfy (see delete_if_candidate).
+CANDIDATE_CRITERIA = {
+    "slug_regex": journal.SLUG_RE.pattern,
+    "max_users": HARNESS_MAX_USERS,
+    "email_suffix": HARNESS_EMAIL_SUFFIX,
+}
 
 DeleteTenant = Callable[[uuid.UUID], Awaitable[None]]
 VerifyTenant = Callable[[uuid.UUID], Awaitable[bool]]
@@ -63,7 +72,12 @@ class EvalRun:
 
 
 async def _delete_tenant(tenant_id: uuid.UUID) -> None:
-    await tenants_repo.delete_by_ids([tenant_id])
+    """The run's own tenant (any age) through the same predicate as cleanup."""
+    await tenants_repo.delete_if_candidate(
+        tenant_id,
+        older_than=timedelta(0),
+        **CANDIDATE_CRITERIA,  # type: ignore[arg-type]
+    )
 
 
 async def _tenant_gone(tenant_id: uuid.UUID) -> bool:

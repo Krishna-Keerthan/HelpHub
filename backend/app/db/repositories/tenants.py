@@ -1,15 +1,21 @@
+import logging
 import re
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Tenant, User
 from app.db.session import AsyncSessionLocal
-from app.db.tenant_context import tenant_transaction
+from app.db.tenant_context import set_tenant, tenant_transaction
+
+logger = logging.getLogger(__name__)
+LOCK_NOT_AVAILABLE = "55P03"
+LOCK_TIMEOUT_MS = 5000
 
 
 async def get_by_slug(session: AsyncSession, slug: str) -> Tenant | None:
@@ -47,7 +53,13 @@ async def _passes_user_check(
     """1..max_users users, all with the harness email suffix. A tenant whose
     users cannot be read (none visible) fails: the check never fails open."""
     async with tenant_transaction(tenant_id) as session:
-        emails = list(await session.scalars(select(User.email).limit(max_users + 1)))
+        emails = list(
+            await session.scalars(
+                select(User.email)
+                .where(User.tenant_id == tenant_id)
+                .limit(max_users + 1)
+            )
+        )
     return 1 <= len(emails) <= max_users and all(
         e.lower().endswith(email_suffix.lower()) for e in emails
     )
@@ -90,6 +102,13 @@ async def list_candidates(
     return out
 
 
+def _sqlstate(exc: DBAPIError) -> str | None:
+    orig = exc.orig
+    return getattr(orig, "sqlstate", None) or getattr(
+        getattr(orig, "__cause__", None), "sqlstate", None
+    )
+
+
 async def delete_if_candidate(
     tenant_id: uuid.UUID,
     *,
@@ -98,36 +117,58 @@ async def delete_if_candidate(
     max_users: int,
     email_suffix: str,
 ) -> int:
-    """Delete one tenant only if it STILL satisfies the candidate rules (slug, age,
-    users), checked immediately before the delete; returns 0 otherwise. A tenant
-    that gained a real user since it was listed is therefore kept."""
-    cutoff = datetime.now(UTC) - older_than
+    """Delete one tenant only if it satisfies the candidate rules (slug, age,
+    users); returns 0 otherwise. This is the only function that deletes tenants.
+
+    One transaction: the tenant row is locked ``FOR UPDATE`` first, so a user
+    insert (which takes a ``FOR KEY SHARE`` lock on the tenant through its
+    foreign key) either committed before the lock and is seen by the re-check,
+    or waits until this transaction ends and then fails with 23503. A lock that
+    cannot be had within ``LOCK_TIMEOUT_MS`` skips the tenant (returns 0).
+    """
     async with AsyncSessionLocal() as session:
-        slug = await session.scalar(
-            select(Tenant.slug).where(
-                Tenant.id == tenant_id, Tenant.created_at < cutoff
+        try:
+            await session.execute(
+                text(f"SET LOCAL lock_timeout = '{int(LOCK_TIMEOUT_MS)}ms'")
             )
-        )
-    if slug is None or not re.search(slug_regex, slug):
-        return 0
-    if not await _passes_user_check(
-        tenant_id, max_users=max_users, email_suffix=email_suffix
-    ):
-        return 0
-    return await delete_by_ids([tenant_id])
-
-
-async def delete_by_ids(ids: Sequence[uuid.UUID]) -> int:
-    """Delete exactly these tenants (cascade). Needs 1..MAX_DELETE_IDS distinct ids."""
-    unique = set(ids)
-    if not unique:
-        raise ValueError("delete_by_ids needs at least one id")
-    if len(unique) > MAX_DELETE_IDS:
-        raise ValueError(f"delete_by_ids is capped at {MAX_DELETE_IDS} ids")
-    async with AsyncSessionLocal() as session:
-        result = await session.execute(delete(Tenant).where(Tenant.id.in_(unique)))
-        await session.commit()
-        return int(result.rowcount)  # type: ignore[attr-defined]
+            row = (
+                await session.execute(
+                    select(Tenant.slug, Tenant.created_at, func.now())
+                    .where(Tenant.id == tenant_id)
+                    .with_for_update()
+                )
+            ).one_or_none()
+            if row is None:
+                return 0
+            slug, created_at, now = row
+            if not re.search(slug_regex, slug) or created_at >= now - older_than:
+                return 0
+            await set_tenant(session, tenant_id)
+            emails = list(
+                await session.scalars(
+                    select(User.email)
+                    .where(User.tenant_id == tenant_id)
+                    .limit(max_users + 1)
+                )
+            )
+            if not (1 <= len(emails) <= max_users) or not all(
+                e.lower().endswith(email_suffix.lower()) for e in emails
+            ):
+                return 0
+            result = await session.execute(delete(Tenant).where(Tenant.id == tenant_id))
+            await session.commit()
+            return int(result.rowcount)  # type: ignore[attr-defined]
+        except DBAPIError as exc:
+            if _sqlstate(exc) != LOCK_NOT_AVAILABLE:
+                raise
+            logger.warning(
+                "tenant delete skipped: tenant=%s sqlstate=%s",
+                tenant_id,
+                LOCK_NOT_AVAILABLE,
+            )
+            return 0
+        finally:
+            await session.rollback()  # no-op after commit; ends a skipped transaction
 
 
 async def existing_ids(ids: Sequence[uuid.UUID]) -> set[uuid.UUID]:

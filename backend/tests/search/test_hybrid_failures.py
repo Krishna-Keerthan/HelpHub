@@ -35,15 +35,17 @@ class _ExplodingProvider(FakeEmbeddingProvider):
 
 
 class _SlowProvider(FakeEmbeddingProvider):
-    delay = 0.3
+    delay = 1.5  # over the branch budget (1.0), 20x under the embedding limit (30)
 
     async def embed_query(self, text: str) -> list[float]:
         await asyncio.sleep(self.delay)
         return await super().embed_query(text)
 
 
-class _TooSlowProvider(_SlowProvider):
-    delay = 0.8
+class _TooSlowProvider(FakeEmbeddingProvider):
+    async def embed_query(self, text: str) -> list[float]:
+        await asyncio.Event().wait()  # never returns: only the timeout ends it
+        raise AssertionError("unreachable")
 
 
 async def test_branch_failure_log_has_tenant_branch_class_and_frames_but_no_message(
@@ -73,9 +75,9 @@ async def test_embedding_slower_than_the_branch_budget_but_under_its_own_succeed
 ) -> None:
     tenant = await make_tenant()
     await _seed(client, tenant)
-    monkeypatch.setattr(settings, "embedding_timeout_seconds", 0.5)
-    monkeypatch.setattr(settings, "hybrid_branch_timeout_seconds", 0.2)
-    app.dependency_overrides[get_embedding_provider] = _SlowProvider  # 0.3 s
+    monkeypatch.setattr(settings, "embedding_timeout_seconds", 30)
+    monkeypatch.setattr(settings, "hybrid_branch_timeout_seconds", 1.0)
+    app.dependency_overrides[get_embedding_provider] = _SlowProvider  # 1.5 s
 
     body = (await _post(client, tenant)).json()
 
@@ -88,9 +90,9 @@ async def test_embedding_over_its_limit_degrades_to_keyword_only(
 ) -> None:
     tenant = await make_tenant()
     await _seed(client, tenant)
-    monkeypatch.setattr(settings, "embedding_timeout_seconds", 0.5)
-    monkeypatch.setattr(settings, "hybrid_branch_timeout_seconds", 0.2)
-    app.dependency_overrides[get_embedding_provider] = _TooSlowProvider  # 0.8 s
+    monkeypatch.setattr(settings, "embedding_timeout_seconds", 0.3)
+    monkeypatch.setattr(settings, "hybrid_branch_timeout_seconds", 2.0)
+    app.dependency_overrides[get_embedding_provider] = _TooSlowProvider  # hangs
 
     body = (await _post(client, tenant)).json()
 

@@ -47,7 +47,19 @@ def test_report_has_every_section_with_counts_next_to_percentages() -> None:
         "## Gate analysis", "## Ablations", "## Limitations",
     ):  # fmt: skip
         assert heading in text
-    assert "3/3 = 100%" in text or "2/3 = 67%" in text
+    lines = text.splitlines()
+    assert (
+        "| vector | ALL | 3 | 3/3 = 100% | 3/3 = 100% | 3/3 = 100% | 1.000 | 1.000 |"
+        in lines
+    )
+    assert (
+        "| keyword | ALL | 3 | 0/3 = 0% | 2/3 = 67% | 2/3 = 67% | 0.333 | 0.667 |"
+        in lines
+    )
+    assert (
+        "| hybrid | ALL | 3 | 2/3 = 67% | 2/3 = 67% | 2/3 = 67% | 0.667 | 0.667 |"
+        in lines
+    )
     assert "Wilson" in text and "FAIL: z: bad" in text
     assert "only 4 unanswerable" in text
     assert "worse" in text  # failure list names the question

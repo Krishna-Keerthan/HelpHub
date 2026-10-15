@@ -179,3 +179,7 @@ def test_choose_requires_at_most_one_false_answer_and_may_find_none() -> None:
     assert gr.choose([_res("R1", 0.5, 0, 2), _res("R2", 0.5, 0, 3)]) is None
     choice = gr.choose([_res("R1", 0.5, 0, 2), _res("R1", 0.52, 3, 1)])
     assert choice is not None and choice.threshold == 0.52
+
+
+def test_choose_of_no_results_is_none() -> None:
+    assert gr.choose([]) is None

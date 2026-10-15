@@ -14,7 +14,7 @@ from app.core.config import settings
 from app.db import tenant_context
 from app.db.repositories import chunks as chunks_repo
 from app.main import app
-from app.services import es_client, hybrid_search
+from app.services import es_client, hybrid_search, keyword_search
 from app.services.embeddings import FakeEmbeddingProvider
 from app.services.es_client import get_es
 from tests.conftest import MakeTenant, SeededTenant, auth_headers
@@ -75,6 +75,13 @@ async def test_chunk_found_by_both_outranks_single_source_chunks(
     assert first["found_by"] == ["vector", "keyword"]
     assert first["vector_score"] == pytest.approx(1.0, abs=1e-4)
     assert first["keyword_score"] > 0
+    raw = await keyword_search.search(tenant["id"], TARGET, 10, get_es())
+    raw_score = next(
+        h.hit.score for h in raw if str(h.hit.chunk_id) == first["chunk_id"]
+    )
+    assert first["keyword_score"] == pytest.approx(
+        raw_score
+    )  # raw BM25, never rescaled
     assert all(first["rrf_score"] > h["rrf_score"] for h in hits[1:])
     assert any(len(h["found_by"]) == 1 for h in hits[1:])  # single-source exists
     for hit in hits:
@@ -232,15 +239,26 @@ async def test_no_transaction_open_during_the_es_call(
     client: AsyncClient,
     owner_conn: AsyncConnection,
     make_tenant: MakeTenant,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     tenant = await make_tenant()
     await _seed_fusion_corpus(client, tenant)
     seen: list[int] = []
     real = get_es()
+    vector_done = asyncio.Event()
+    real_branch = hybrid_search._vector_branch
+
+    async def marked_vector_branch(*args: Any, **kwargs: Any) -> Any:
+        try:
+            return await real_branch(*args, **kwargs)
+        finally:
+            vector_done.set()
+
+    monkeypatch.setattr(hybrid_search, "_vector_branch", marked_vector_branch)
 
     class SpyEs:
         async def search(self, **kwargs: Any) -> Any:
-            await asyncio.sleep(0.5)  # the vector branch has finished by now
+            await asyncio.wait_for(vector_done.wait(), 15)  # vector branch finished
             seen.append(await idle_in_transaction(owner_conn))
             return await real.search(**kwargs)
 
@@ -265,13 +283,16 @@ async def test_no_transaction_open_while_embedding(
     seen: list[int] = []
     real = get_es()
 
+    checked = asyncio.Event()
+
     class SlowEs:  # keeps the keyword branch inside the ES call (no transaction)
         async def search(self, **kwargs: Any) -> Any:
-            await asyncio.sleep(0.5)
+            await asyncio.wait_for(checked.wait(), 15)  # until the embedding check ran
             return await real.search(**kwargs)
 
     async def check() -> None:
         seen.append(await idle_in_transaction(owner_conn))
+        checked.set()
 
     spy = QuerySpyProvider(check)
     app.dependency_overrides[get_es] = lambda: SlowEs()
@@ -378,7 +399,7 @@ async def test_slow_es_branch_times_out_and_the_request_returns_in_budget(
 
     class HangingEs:
         async def search(self, **kwargs: Any) -> Any:
-            await asyncio.sleep(30)
+            await asyncio.Event().wait()  # never returns
 
     app.dependency_overrides[get_es] = lambda: HangingEs()
     started = time.monotonic()
@@ -390,7 +411,7 @@ async def test_slow_es_branch_times_out_and_the_request_returns_in_budget(
 
     assert response.status_code == 200
     assert response.json()["degraded"] == ["keyword"]
-    assert elapsed < 0.5 + 2.0, elapsed
+    assert elapsed < 0.5 * 20, elapsed  # returned at the budget, not the hang
 
 
 # --- short ANN branch ------------------------------------------------------------

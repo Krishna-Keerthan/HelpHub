@@ -2,6 +2,7 @@
 
 import os
 import uuid
+from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -46,12 +47,14 @@ class FakeDb:
         assert reserved_ok and data.email == lifecycle.HARNESS_EMAIL
         return SimpleNamespace(tenant_id=TENANT, id=USER), "token"
 
-    async def delete_by_ids(self, ids: list[uuid.UUID]) -> int:
+    async def delete_if_candidate(self, tenant_id: uuid.UUID, **criteria: Any) -> int:
         if self.fail_delete:
             raise TimeoutError("db down")
-        self.deleted.append(list(ids))
-        self.alive -= set(ids)
-        return len(ids)
+        assert criteria["older_than"] == timedelta(0)  # the run's own tenant, any age
+        assert criteria["slug_regex"] == journal.SLUG_RE.pattern
+        self.deleted.append([tenant_id])
+        self.alive -= {tenant_id}
+        return 1
 
     async def existing_ids(self, ids: list[uuid.UUID]) -> set[uuid.UUID]:
         return set(ids) & self.alive
@@ -64,7 +67,7 @@ class FakeDb:
 def db(monkeypatch: pytest.MonkeyPatch) -> FakeDb:
     fake = FakeDb()
     monkeypatch.setattr(auth_service, "register_tenant", fake.register_tenant)
-    for name in ("delete_by_ids", "existing_ids", "id_for_slug"):
+    for name in ("delete_if_candidate", "existing_ids", "id_for_slug"):
         monkeypatch.setattr(tenants_repo, name, getattr(fake, name))
     monkeypatch.setattr(settings, "app_env", "local")
     return fake

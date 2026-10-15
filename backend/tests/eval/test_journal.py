@@ -23,7 +23,14 @@ def test_round_trip_leaves_no_temporary_file(tmp_path: Path) -> None:
     assert journal.read(path) == ENTRY
     assert [p.name for p in path.parent.iterdir()] == [".eval-active.json"]
     journal.write(journal.Entry(**{**ENTRY.__dict__, "tenant_id": None}), path)
-    assert journal.read(path) is not None
+    assert json.loads(path.read_text()) == {
+        "es_prefix": "eval-0123456789ab-",
+        "pid": 4242,
+        "slug": "eval-0123456789ab",
+        "started_at": "2026-10-14T00:00:00+00:00",
+        "tenant_id": None,
+    }  # the rewrite replaced the old content, it did not append or merge
+    assert journal.read(path) == journal.Entry(**{**ENTRY.__dict__, "tenant_id": None})
     journal.remove(path)
     journal.remove(path)  # removing twice is fine
     assert journal.read(path) is None

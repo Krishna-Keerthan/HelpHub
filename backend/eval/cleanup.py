@@ -30,7 +30,7 @@ from eval.guard import EVAL_PREFIX, GuardedEs
 from eval.lock import LockHeld, hold_lock
 
 MIN_AGE_SECONDS = 600
-MAX_USERS = 3
+MAX_USERS = lifecycle.HARNESS_MAX_USERS
 MAX_PER_RUN = tenants_repo.MAX_DELETE_IDS
 RUN_INDEX_RE = re.compile(r"^eval-[0-9a-f]{12}-")
 

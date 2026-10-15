@@ -1,9 +1,14 @@
 """Static check: repository functions are tenant-scoped.
 
-Every public function in app/db/repositories/*.py (except tenants.py, the one
+Every public function in app/db/repositories/*.py (except in tenants.py, the one
 untenanted table) takes a ``tenant_id`` parameter, and every statement it builds
 (select/update/delete/insert/text) references ``tenant_id`` -- directly, or
 through a name earlier built from a statement that does.
+
+In EVERY file, tenants.py included, private functions too, any statement that
+mentions a tenant-owned model (User, Document, Chunk, Conversation, ChatMessage)
+must reference ``tenant_id``. There is no per-function allowlist: a function in
+tenants.py may omit the filter only on statements that touch ``Tenant`` alone.
 """
 
 import ast
@@ -15,15 +20,12 @@ REPOSITORIES = Path(__file__).resolve().parents[2] / "app" / "db" / "repositorie
 BUILDERS = {"select", "update", "delete", "insert", "pg_insert", "text"}
 # Pure helpers: they take an already-built tenant statement or only clamp a number.
 EXEMPT = {"chunks.clamp_k", "chunks.explain_statement"}
+MODELS = {"User", "Document", "Chunk", "Conversation", "ChatMessage"}
 SIMPLE = (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.Return, ast.Expr)
 
 
 def _repo_files() -> list[Path]:
-    return sorted(
-        p
-        for p in REPOSITORIES.glob("*.py")
-        if p.name not in {"tenants.py", "__init__.py"}
-    )
+    return sorted(p for p in REPOSITORIES.glob("*.py") if p.name != "__init__.py")
 
 
 def _constants(tree: ast.Module) -> dict[str, str]:
@@ -84,10 +86,39 @@ def _simple_statements(func: ast.AST) -> list[ast.stmt]:
     return sorted(stmts, key=lambda n: (n.lineno, n.col_offset))
 
 
-def violations(source: str, module: str) -> list[str]:
+def _mentions_model(node: ast.AST) -> bool:
+    return any(isinstance(n, ast.Name) and n.id in MODELS for n in ast.walk(node))
+
+
+def _model_violations(source: str, module: str) -> list[str]:
+    """Statement-level, model-based rule; applies to every function."""
     tree = ast.parse(source)
     constants = _constants(tree)
     problems: list[str] = []
+    for func in tree.body:
+        if not isinstance(func, ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        tainted: set[str] = set()
+        for stmt in _simple_statements(func):
+            if not _mentions_model(stmt):
+                continue
+            refs = _names(stmt, constants)
+            if "tenant_id" not in refs and not refs & tainted:
+                problems.append(
+                    f"{module}.{func.name}:{stmt.lineno}: tenant model "
+                    "without tenant_id"
+                )
+            if isinstance(stmt, ast.Assign):
+                tainted |= {t.id for t in stmt.targets if isinstance(t, ast.Name)}
+    return problems
+
+
+def violations(source: str, module: str) -> list[str]:
+    problems = _model_violations(source, module)
+    if module == "tenants":
+        return problems
+    tree = ast.parse(source)
+    constants = _constants(tree)
     for func in tree.body:
         if not isinstance(func, ast.FunctionDef | ast.AsyncFunctionDef):
             continue
@@ -114,12 +145,16 @@ def violations(source: str, module: str) -> list[str]:
 def test_repository_files_are_discovered() -> None:
     names = {p.stem for p in _repo_files()}
     assert {"chunks", "documents", "users", "conversations", "chat_messages"} <= names
-    assert "tenants" not in names
+    assert "tenants" in names  # scanned too: no file-wide exemption
 
 
 @pytest.mark.parametrize("path", _repo_files(), ids=lambda p: p.stem)
 def test_repository_functions_are_tenant_scoped(path: Path) -> None:
     assert violations(path.read_text(), path.stem) == []
+
+
+def test_tenants_module_has_no_function_allowlist() -> None:
+    assert not any(e.startswith("tenants.") for e in EXEMPT)
 
 
 def test_exempt_helpers_still_exist() -> None:
@@ -184,3 +219,33 @@ def test_checker_accepts_scoped_code() -> None:
 )
 def test_checker_rejects_unscoped_code(source: str, expected: str) -> None:
     assert expected in violations(source, "m")
+
+
+MODEL_UNFILTERED = """
+async def _users(tenant_id, session):
+    return list(await session.scalars(select(User.email).limit(4)))
+"""
+MODEL_FILTERED = MODEL_UNFILTERED.replace(
+    "select(User.email)", "select(User.email).where(User.tenant_id == tenant_id)"
+)
+TENANT_ONLY = """
+async def get(session, slug):
+    return await session.execute(select(Tenant).where(Tenant.slug == slug))
+"""
+
+
+def test_model_rule_flags_private_functions_in_tenants_module() -> None:
+    assert violations(MODEL_UNFILTERED, "tenants") == [
+        "tenants._users:3: tenant model without tenant_id"
+    ]
+    assert violations(MODEL_FILTERED, "tenants") == []
+
+
+def test_model_rule_lets_tenants_only_statements_omit_the_filter() -> None:
+    assert violations(TENANT_ONLY, "tenants") == []
+
+
+def test_model_rule_applies_to_every_tenant_model() -> None:
+    for model in sorted(MODELS):
+        src = MODEL_UNFILTERED.replace("User", model)
+        assert violations(src, "tenants"), model
