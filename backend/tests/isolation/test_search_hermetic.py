@@ -9,11 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from app.db.repositories.chunks import (
     CHUNKS_EMBEDDING_INDEX,
-    explain_statement,
-    vector_search_statement,
+    search_statement,
 )
-from app.db.tenant_context import set_tenant
-from app.services.search import search_chunks, search_in_session
+from app.db.tenant_context import set_tenant, tenant_transaction
+from app.services.search import search_in_session
 from tests.conftest import (
     SeededTenant,
     insert_chunk,
@@ -21,6 +20,7 @@ from tests.conftest import (
     insert_document,
     unit_vector,
 )
+from tests.helpers.plans import explain_statement
 from tests.isolation.ann_helpers import ensure_ann_reachable
 
 Q = unit_vector(1.0)
@@ -64,10 +64,10 @@ async def test_hnsw_path_finds_small_tenant_without_fallback(
         # Test-only: pins the HNSW plan (see tests/isolation/conftest.py).
         await session.execute(text("SET LOCAL enable_sort = off"))
         plan = await session.execute(
-            explain_statement(vector_search_statement(ta["id"], Q, 3))
+            explain_statement(search_statement(ta["id"], Q, "", [], 3))
         )
         plan_text = "\n".join(row[0] for row in plan)
-        result = await search_in_session(session, ta["id"], Q, 3)
+        result = await search_in_session(session, ta["id"], "", Q, 3)
 
     assert CHUNKS_EMBEDDING_INDEX in plan_text, plan_text
     assert {hit.chunk_id for hit in result.hits} == a_ids
@@ -80,7 +80,8 @@ async def test_production_config_search_without_fallback(
     ta, tb = two_tenants_seeded["tenant_a"], two_tenants_seeded["tenant_b"]
     a_ids = await _seed(owner_conn, ta, tb)
 
-    result = await search_chunks(ta["id"], Q, 3)
+    async with tenant_transaction(ta["id"]) as session:
+        result = await search_in_session(session, ta["id"], "", Q, 3)
 
     assert {hit.chunk_id for hit in result.hits} == a_ids
     assert result.used_fallback is False

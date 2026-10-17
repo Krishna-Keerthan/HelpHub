@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.api.deps import Principal
 from app.core.config import settings
+from app.db.tenant_context import tenant_transaction
 from app.services import chat
 from app.services.chat import (
     REFUSAL_TEXT,
@@ -17,7 +18,7 @@ from app.services.chat import (
     TokenEvent,
 )
 from app.services.embeddings import FakeEmbeddingProvider
-from app.services.search import search_chunks
+from app.services.search import search_in_session
 from tests.conftest import (
     MakeTenant,
     SeededTenant,
@@ -74,12 +75,8 @@ async def seed_chunk(
 
 
 async def ask(tenant: SeededTenant, llm: FakeLLMProvider) -> list[Any]:
-    return [
-        event
-        async for event in chat.chat_events(
-            principal_of(tenant), None, QUESTION, AxisQueryEmbedder(), llm
-        )
-    ]
+    ctx = await chat.prepare_chat(principal_of(tenant), None, QUESTION)
+    return [event async for event in chat.stream_answer(ctx, AxisQueryEmbedder(), llm)]
 
 
 async def rows(owner_conn: AsyncConnection, tenant: SeededTenant) -> list[Any]:
@@ -136,8 +133,9 @@ async def test_empty_tenant_gets_the_same_refusal(
 
 
 async def measured_score(tenant: SeededTenant) -> float:
-    hits = await search_chunks(tenant["id"], unit_vector(1.0), 1)
-    return hits.hits[0].score
+    async with tenant_transaction(tenant["id"]) as session:
+        result = await search_in_session(session, tenant["id"], "", unit_vector(1.0), 1)
+    return result.hits[0].score
 
 
 async def test_score_exactly_at_threshold_calls_the_llm_once(

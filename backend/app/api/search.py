@@ -18,6 +18,8 @@ def _read(results: list[search_service.TitledHit]) -> list[SearchHitRead]:
             char_start=r.hit.char_start,
             char_end=r.hit.char_end,
             score=r.hit.score,
+            rrf_score=r.hit.rrf_score,
+            found_by=list(r.hit.found_by),  # type: ignore[arg-type]
         )
         for r in results
     ]

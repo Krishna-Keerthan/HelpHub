@@ -1,5 +1,5 @@
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints
 
@@ -26,4 +26,6 @@ class SearchHitRead(BaseModel):
     content: str
     char_start: int
     char_end: int
-    score: float
+    score: float  # cosine similarity to the query
+    rrf_score: float  # orders the results
+    found_by: list[Literal["vector", "keyword"]]

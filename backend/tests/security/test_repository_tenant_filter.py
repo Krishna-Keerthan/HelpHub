@@ -19,7 +19,7 @@ import pytest
 REPOSITORIES = Path(__file__).resolve().parents[2] / "app" / "db" / "repositories"
 BUILDERS = {"select", "update", "delete", "insert", "pg_insert", "text"}
 # Pure helpers: they take an already-built tenant statement or only clamp a number.
-EXEMPT = {"chunks.clamp_k", "chunks.explain_statement"}
+EXEMPT = {"chunks.clamp_k"}
 MODELS = {"User", "Document", "Chunk", "Conversation", "ChatMessage"}
 SIMPLE = (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.Return, ast.Expr)
 

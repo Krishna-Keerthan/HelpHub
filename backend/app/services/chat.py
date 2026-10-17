@@ -173,18 +173,6 @@ async def stream_answer(
         )
 
 
-async def chat_events(
-    principal: Principal,
-    conversation_id: uuid.UUID | None,
-    question: str,
-    embedder: EmbeddingProvider,
-    llm: LLMProvider,
-) -> AsyncIterator[ChatEvent]:
-    ctx = await prepare_chat(principal, conversation_id, question)
-    async for event in stream_answer(ctx, embedder, llm):
-        yield event
-
-
 async def _run(
     ctx: ChatContext,
     embedder: EmbeddingProvider,
@@ -195,7 +183,7 @@ async def _run(
     embedding = await embedder.embed_query(ctx.question)  # no transaction open
     async with tenant_transaction(tenant_id) as session:
         result = await search_in_session(
-            session, tenant_id, embedding, settings.chat_top_k
+            session, tenant_id, ctx.question, embedding, settings.chat_top_k
         )
         titles = await documents_repo.titles_for(
             session, tenant_id, list({hit.document_id for hit in result.hits})

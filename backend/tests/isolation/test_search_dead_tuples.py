@@ -16,9 +16,8 @@ from sqlalchemy.pool import NullPool
 from app.core.config import settings
 from app.db.repositories.chunks import (
     CHUNKS_EMBEDDING_INDEX,
-    explain_statement,
-    vector_search,
-    vector_search_statement,
+    search,
+    search_statement,
 )
 from app.db.tenant_context import set_tenant
 from app.services.search import search_in_session
@@ -29,6 +28,7 @@ from tests.conftest import (
     insert_document,
     unit_vector,
 )
+from tests.helpers.plans import explain_statement
 from tests.isolation.conftest import gather_diagnostics
 
 Q = unit_vector(1.0)
@@ -78,10 +78,10 @@ async def _probe(app_conn: AsyncConnection, ta: SeededTenant) -> tuple[list, lis
         plan = [
             row[0]
             for row in await session.execute(
-                explain_statement(vector_search_statement(ta["id"], Q, 3))
+                explain_statement(search_statement(ta["id"], Q, "", [], 3))
             )
         ]
-        raw = await vector_search(session, ta["id"], Q, 3)
+        raw = (await search(session, ta["id"], Q, "", [], 3)).hits
     return raw, plan
 
 
@@ -154,22 +154,22 @@ async def test_dead_tuples_fallback_returns_small_tenant(
             # Test-only: pins the HNSW plan (see tests/isolation/conftest.py).
             await session.execute(text("SET LOCAL enable_sort = off"))
             # The precondition below only means something if the raw ANN
-            # statement goes through the HNSW index, not the tenant btree.
+            # statement goes through the HNSW index. (The final join may use the
+            # tenant btree; only the vector branch is under test.)
             plan = "\n".join(
                 row[0]
                 for row in await session.execute(
-                    explain_statement(vector_search_statement(ta["id"], Q, 3))
+                    explain_statement(search_statement(ta["id"], Q, "", [], 3))
                 )
             )
             assert CHUNKS_EMBEDDING_INDEX in plan, plan
-            assert "ix_chunks_tenant_id" not in plan, plan
-            raw = await vector_search(session, ta["id"], Q, 3)
+            raw = (await search(session, ta["id"], Q, "", [], 3)).hits
             assert raw == [], (
                 "PRECONDITION FAILED: churn did not reproduce the unreachable-"
                 f"graph state (raw ANN returned {len(raw)} hits); this test "
                 "would not exercise the fallback"
             )
-            result = await search_in_session(session, ta["id"], Q, 3)
+            result = await search_in_session(session, ta["id"], "", Q, 3)
 
         assert {hit.chunk_id for hit in result.hits} == a_ids
         assert result.used_fallback is True

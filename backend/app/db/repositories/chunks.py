@@ -24,24 +24,54 @@ MAX_K = 50
 MIN_EF_SEARCH = 40
 MAX_EF_SEARCH = 1000
 
-# The ANN scan sits in a MATERIALIZED CTE with an explicit tenant_id filter
-# (RLS also applies). The outer query re-sorts by distance: with
+# One statement, two candidate sets, fused by reciprocal rank in SQL. Both
+# branches filter by the same TENANT_FILTER (RLS also applies), and so does the
+# final join. The vector branch is a MATERIALIZED CTE: with
 # hnsw.iterative_scan = relaxed_order the index may return results slightly out
-# of order, and PG17+ needs ORDER BY distance + 0 to keep them re-sortable.
+# of order, so ranks are taken from ``distance + 0`` (PG17+ needs that to keep
+# them re-sortable). Only ranks enter the fusion, never raw scores (AR-11).
+TSCONFIG = "english"  # must match the generated column (migration 0009)
+TENANT_FILTER = "tenant_id = :tid"
+CANDIDATES = 50  # per branch
+RRF_K = 60
+
 _SEARCH_SQL = """
-WITH ann AS MATERIALIZED (
-    SELECT id, document_id, chunk_index, text AS content, char_start, char_end,
-           embedding <=> :vec AS distance
+WITH q AS MATERIALIZED (SELECT {tsquery} AS tsq),
+vec AS MATERIALIZED (
+    SELECT id, embedding <=> :vec AS distance
     FROM chunks
-    WHERE tenant_id = :tid
+    WHERE {tenant}
     ORDER BY {order_by}
+    LIMIT :cand
+),
+kw AS MATERIALIZED (
+    SELECT c.id, ts_rank_cd(c.search_tsv, q.tsq) AS rank_value
+    FROM chunks c, q
+    WHERE c.{tenant} AND c.search_tsv @@ q.tsq
+    ORDER BY rank_value DESC, c.id
+    LIMIT :cand
+),
+ranked AS (
+    SELECT id, 'vector' AS source, row_number() OVER (ORDER BY distance + 0, id) AS pos
+    FROM vec
+    UNION ALL
+    SELECT id, 'keyword' AS source, row_number() OVER (ORDER BY rank_value DESC, id) AS pos
+    FROM kw
+),
+fused AS (
+    SELECT id, sum(1.0 / (:rrf_k + pos))::float8 AS rrf_score, min(pos) AS best_pos,
+           array_agg(source ORDER BY source DESC) AS found_by
+    FROM ranked
+    GROUP BY id
+    ORDER BY rrf_score DESC, best_pos, id
     LIMIT :k
 )
-SELECT id AS chunk_id, document_id, chunk_index, content, char_start, char_end,
-       1 - distance AS score
-FROM ann
-ORDER BY distance + 0
-LIMIT :k
+SELECT c.id AS chunk_id, c.document_id, c.chunk_index, c.text AS content,
+       c.char_start, c.char_end, 1 - (c.embedding <=> :vec) AS score,
+       f.rrf_score, f.found_by, (SELECT count(*) FROM vec) AS vector_candidates
+FROM fused f
+JOIN chunks c ON c.id = f.id AND c.{tenant}
+ORDER BY f.rrf_score DESC, f.best_pos, c.id
 """
 # ANN: the HNSW index can supply this order.
 _ANN_ORDER = "embedding <=> :vec"
@@ -59,67 +89,101 @@ class SearchHit:
     content: str
     char_start: int
     char_end: int
-    score: float
+    score: float  # cosine similarity to the query, whichever branch found it
+    rrf_score: float  # orders the results
+    found_by: tuple[str, ...]  # "vector", "keyword" or both
+
+
+@dataclass(frozen=True)
+class SearchRows:
+    hits: list[SearchHit]
+    vector_candidates: int  # size of the vector branch (ANN completeness check)
 
 
 def clamp_k(k: int) -> int:
     return max(1, min(k, MAX_K))
 
 
-def vector_search_statement(
-    tenant_id: uuid.UUID, embedding: list[float], k: int
+def _tsquery_sql(code_count: int) -> str:
+    """OR of the plain words and of each identifier as an exact phrase.
+
+    plainto_tsquery ANDs its terms; the words are turned into an OR so one
+    unmatched word does not hide a chunk. An identifier such as E-4012 parses to
+    adjacent tokens, and the quoted websearch form matches them as a phrase, so
+    it does not match E-4013 through a shared fragment.
+    """
+    parts = [
+        f"replace(plainto_tsquery('{TSCONFIG}', :words)::text, ' & ', ' | ')::tsquery"
+    ]
+    parts += [
+        f"websearch_to_tsquery('{TSCONFIG}', :code{i})" for i in range(code_count)
+    ]
+    return " || ".join(parts)
+
+
+def search_statement(
+    tenant_id: uuid.UUID,
+    embedding: list[float],
+    words: str,
+    codes: Sequence[str],
+    k: int,
+    *,
+    exact: bool = False,
 ) -> TextClause:
-    """The one ANN statement, shared by ``vector_search`` and EXPLAIN checks."""
-    return _search_statement(_ANN_ORDER, tenant_id, embedding, k)
+    """The one search statement, shared by ``search`` and EXPLAIN checks.
 
-
-def exact_search_statement(
-    tenant_id: uuid.UUID, embedding: list[float], k: int
-) -> TextClause:
-    """Exact top-k of the tenant (never HNSW); the fallback for ANN misses."""
-    return _search_statement(_EXACT_ORDER, tenant_id, embedding, k)
-
-
-def _search_statement(
-    order_by: str, tenant_id: uuid.UUID, embedding: list[float], k: int
-) -> TextClause:
-    return text(_SEARCH_SQL.format(order_by=order_by)).bindparams(
+    ``exact`` replaces the ANN order by a full computation over the tenant's
+    rows; it is the fallback when ANN misses some of them.
+    """
+    params = [
         bindparam("vec", embedding, type_=Vector(EMBEDDING_DIM)),
         bindparam("tid", tenant_id),
         bindparam("k", clamp_k(k)),
-    )
+        bindparam("cand", CANDIDATES),
+        bindparam("rrf_k", RRF_K),
+        bindparam("words", words),
+    ]
+    params += [bindparam(f"code{i}", f'"{code}"') for i, code in enumerate(codes)]
+    return text(
+        _SEARCH_SQL.format(
+            tsquery=_tsquery_sql(len(codes)),
+            tenant=TENANT_FILTER,
+            order_by=_EXACT_ORDER if exact else _ANN_ORDER,
+        )
+    ).bindparams(*params)
 
 
-def explain_statement(statement: TextClause) -> TextClause:
-    """EXPLAIN of ``statement`` with the same bound parameters."""
-    return text("EXPLAIN " + statement.text).bindparams(*statement._bindparams.values())
-
-
-async def vector_search(
-    session: AsyncSession, tenant_id: uuid.UUID, embedding: list[float], k: int
-) -> list[SearchHit]:
-    """Top-``k`` chunks of ``tenant_id`` by cosine similarity.
+async def search(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    embedding: list[float],
+    words: str,
+    codes: Sequence[str],
+    k: int,
+    *,
+    exact: bool = False,
+) -> SearchRows:
+    """Top-``k`` chunks of ``tenant_id`` by fused vector and full-text rank.
 
     Runs in the caller's tenant transaction: set_config(..., true) is lost on
     commit, so tenant setup and search must share one transaction.
     """
     k = clamp_k(k)
-    await session.execute(
-        text("SELECT set_config('hnsw.iterative_scan', 'relaxed_order', true)")
+    if not exact:
+        await session.execute(
+            text("SELECT set_config('hnsw.iterative_scan', 'relaxed_order', true)")
+        )
+        await session.execute(
+            text("SELECT set_config('hnsw.ef_search', :ef, true)"),
+            {"ef": str(min(max(MIN_EF_SEARCH, CANDIDATES), MAX_EF_SEARCH))},
+        )
+    rows = list(
+        await session.execute(
+            search_statement(tenant_id, embedding, words, codes, k, exact=exact)
+        )
     )
-    await session.execute(
-        text("SELECT set_config('hnsw.ef_search', :ef, true)"),
-        {"ef": str(min(max(MIN_EF_SEARCH, k), MAX_EF_SEARCH))},
-    )
-    rows = await session.execute(vector_search_statement(tenant_id, embedding, k))
-    return [SearchHit(*row) for row in rows]
-
-
-async def exact_search(
-    session: AsyncSession, tenant_id: uuid.UUID, embedding: list[float], k: int
-) -> list[SearchHit]:
-    rows = await session.execute(exact_search_statement(tenant_id, embedding, k))
-    return [SearchHit(*row) for row in rows]
+    hits = [SearchHit(*row[:8], tuple(row[8])) for row in rows]
+    return SearchRows(hits, rows[0][9] if rows else 0)
 
 
 async def count_for_tenant(
