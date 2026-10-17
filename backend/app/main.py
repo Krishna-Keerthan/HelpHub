@@ -1,10 +1,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Annotated
 
-from fastapi import Depends, FastAPI, HTTPException
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import FastAPI
 
 from app.api.auth import router as auth_router
 from app.api.chat import router as chat_router
@@ -13,8 +10,6 @@ from app.api.documents import router as documents_router
 from app.api.search import router as search_router
 from app.api.users import router as users_router
 from app.core.config import settings
-from app.db.health import ping
-from app.db.session import get_session
 from app.services.embeddings import warm_up_default_provider
 from app.services.es_client import close_es
 from app.services.llm import close_groq_client
@@ -40,17 +35,4 @@ app.include_router(conversations_router)
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok"}
-
-
-@app.get("/health/db")
-async def health_db(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> dict[str, str]:
-    try:
-        ok = await ping(session)
-    except (SQLAlchemyError, OSError) as exc:
-        raise HTTPException(status_code=503, detail="database unavailable") from exc
-    if not ok:
-        raise HTTPException(status_code=503, detail="database unavailable")
     return {"status": "ok"}

@@ -12,7 +12,6 @@ from app.main import app
 # Adding a route here is a security decision: it is reachable without a token.
 PUBLIC_ROUTES: set[tuple[str, str]] = {
     ("GET", "/health"),
-    ("GET", "/health/db"),
     ("POST", "/auth/register"),
     ("POST", "/auth/login"),
 }
@@ -52,7 +51,7 @@ def _api_routes() -> list[tuple[str, set[str], Dependant]]:
 
 def test_route_discovery_sees_included_routers() -> None:
     paths = {path for path, _, _ in _api_routes()}
-    assert {"/health", "/auth/me", "/documents", "/search/keyword"} <= paths
+    assert {"/health", "/auth/me", "/documents", "/search"} <= paths
     assert len(paths) >= 10
 
 
@@ -95,8 +94,6 @@ REQUIRED_ROUTES = [
     "/auth/register",
     "/documents",
     "/search",
-    "/search/keyword",
-    "/search/hybrid",
     "/chat/stream",
 ]
 

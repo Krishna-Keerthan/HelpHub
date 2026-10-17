@@ -13,7 +13,7 @@ from app.api.uploads import (
     read_bounded,
 )
 from app.core.config import settings
-from app.schemas.document import ChunkRead, DocumentCreate, DocumentRead
+from app.schemas.document import DocumentCreate, DocumentRead
 from app.services import documents as documents_service
 from app.services import extraction
 from app.services.embeddings import EmbeddingProvider
@@ -215,24 +215,6 @@ async def get_document(
     except documents_service.DocumentNotFound:
         raise _not_found() from None
     return DocumentRead.model_validate(document)
-
-
-@router.get("/{document_id}/chunks", response_model=list[ChunkRead])
-async def list_chunks(
-    document_id: uuid.UUID,
-    principal: CurrentPrincipal,
-    limit: Annotated[
-        int, Query(ge=1, le=documents_service.MAX_LIMIT)
-    ] = documents_service.DEFAULT_LIMIT,
-    offset: Annotated[int, Query(ge=0)] = 0,
-) -> list[ChunkRead]:
-    try:
-        chunks = await documents_service.list_chunks(
-            principal.tenant_id, document_id, limit=limit, offset=offset
-        )
-    except documents_service.DocumentNotFound:
-        raise _not_found() from None
-    return [ChunkRead.model_validate(chunk) for chunk in chunks]
 
 
 @router.delete(

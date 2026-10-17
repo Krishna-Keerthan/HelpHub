@@ -183,31 +183,6 @@ async def test_search_raw_sql_no_tenant_context(
     assert result.scalar_one() == 1
 
 
-@pytest.mark.asyncio
-async def test_get_other_tenant_chunks_returns_404(
-    client, owner_conn, two_tenants_seeded
-):
-    ta = two_tenants_seeded["tenant_a"]
-    tb = two_tenants_seeded["tenant_b"]
-    doc_a = await insert_document(owner_conn, ta["id"], created_by=ta["user_id"])
-    doc_b = await insert_document(owner_conn, tb["id"], created_by=tb["user_id"])
-    await insert_chunk(owner_conn, ta["id"], doc_a)
-    await insert_chunk(owner_conn, tb["id"], doc_b)
-    await owner_conn.commit()
-    headers = auth_headers(ta)
-
-    # A real tenant-B document id is a 404 for tenant A, same as a random id.
-    response = await client.get(f"/documents/{doc_b}/chunks", headers=headers)
-    assert response.status_code == 404
-    unknown = await client.get(f"/documents/{uuid.uuid4()}/chunks", headers=headers)
-    assert unknown.status_code == 404
-
-    # Positive control: A can read its own document's chunks.
-    own = await client.get(f"/documents/{doc_a}/chunks", headers=headers)
-    assert own.status_code == 200
-    assert len(own.json()) == 1
-
-
 @pytest.mark.parametrize("k", [0, 51])
 @pytest.mark.asyncio
 async def test_search_k_outside_1_to_50_is_422(client, two_tenants_seeded, k):

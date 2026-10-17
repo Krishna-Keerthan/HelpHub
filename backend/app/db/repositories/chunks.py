@@ -5,7 +5,6 @@ from typing import TypedDict
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
-    Row,
     Select,
     TextClause,
     bindparam,
@@ -188,35 +187,6 @@ async def count_for_document(
         .where(Chunk.tenant_id == tenant_id, Chunk.document_id == document_id)
     )
     return result.scalar_one()
-
-
-def list_for_document_statement(
-    tenant_id: uuid.UUID, document_id: uuid.UUID, *, limit: int, offset: int
-) -> Select[tuple[uuid.UUID, int, str, int, int]]:
-    return (
-        select(
-            Chunk.id, Chunk.chunk_index, Chunk.content, Chunk.char_start, Chunk.char_end
-        )
-        .where(Chunk.tenant_id == tenant_id, Chunk.document_id == document_id)
-        .order_by(Chunk.chunk_index)
-        .limit(limit)
-        .offset(offset)
-    )
-
-
-async def list_for_document(
-    session: AsyncSession,
-    tenant_id: uuid.UUID,
-    document_id: uuid.UUID,
-    *,
-    limit: int,
-    offset: int,
-) -> list[Row[tuple[uuid.UUID, int, str, int, int]]]:
-    """Chunk text and offsets in index order; embeddings are never selected."""
-    result = await session.execute(
-        list_for_document_statement(tenant_id, document_id, limit=limit, offset=offset)
-    )
-    return list(result)
 
 
 @dataclass(frozen=True)
