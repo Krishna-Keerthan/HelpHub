@@ -38,6 +38,3 @@ New tests go in the matching domain directory under tests/; helpers live in test
 - Context for reviewers: docs/review/context.md. Accepted risks (stable IDs AR-nn): docs/review/accepted-risks.md; add an entry instead of re-explaining a known risk.
 - `.claude/hooks/guard_bash.py` blocks destructive commands (best-effort); do not work around it.
 - Not built yet (Day 12): CI and production-readiness checks.
-
-
-*”Project status comes from git log and the checklists in docs/plans/, never from README.md or any _REPORT.md. Don’t regenerate full status reports. Read only the files you need.” (A whole-project status request reads many files, which burns your Pro budget for little value.) Move the “Review backlog” into one file, docs/review/backlog.md, with IDs, so statuses are never reconstructed from memory.
