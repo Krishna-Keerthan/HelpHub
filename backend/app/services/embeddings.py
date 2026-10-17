@@ -143,16 +143,3 @@ async def warm_up_default_provider() -> None:
     except Exception:
         # gate-allow: str-exc startup warm-up, no DB or document data
         logger.exception("embedding model warm-up failed; will retry on first use")
-
-
-# --- Synchronous helpers -------------------------------------------------
-# For tests and scripts ONLY. They block on model inference: never call them
-# from async code (use an EmbeddingProvider there).
-
-
-def get_embedding(text: str) -> list[float]:
-    return FastEmbedProvider._passages([text])[0]
-
-
-def get_embeddings_batch(texts: Sequence[str]) -> list[list[float]]:
-    return FastEmbedProvider._passages(texts) if texts else []

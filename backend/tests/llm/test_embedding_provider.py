@@ -15,7 +15,6 @@ from app.services.embeddings import (
     EmbeddingError,
     FakeEmbeddingProvider,
     FastEmbedProvider,
-    get_embedding,
 )
 from tests import conftest as conftest_module
 
@@ -78,10 +77,6 @@ async def test_real_async_embed_query_semantic_ranking():
     )
     assert len(query) == provider.dim
     assert np.dot(query, related) > np.dot(query, unrelated)
-    # The async and sync paths agree on passage embeddings.
-    np.testing.assert_allclose(
-        related, get_embedding("Steps to change your account password"), atol=1e-6
-    )
 
 
 async def test_lifespan_skips_warm_up_when_flag_is_false(monkeypatch):
