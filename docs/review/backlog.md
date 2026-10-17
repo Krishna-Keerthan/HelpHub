@@ -7,8 +7,8 @@ Sources: docs/plans/day-05.md, docs/plans/day-06.md (items copied as recorded th
 |---|---|---|---|---|
 | BL-01 | `eval/run_eval.py:92` uses untenanted `AsyncSessionLocal` for extension/index lookups; candidate: read-only `app/db/introspection.py` | day-06 | LOW | Open |
 | BL-02 | `count_ids` review finding (wording as reported, not re-verified) | day-06 | LOW | Open |
-| BL-03 | `list_candidates` opens one transaction per slug match (slow for many candidates; delete re-checks) | day-06 | LOW | Open (code now in eval/tenant_queries.py) |
-| BL-04 | Regex dialect mismatch: `list_candidates` uses PG `~` then Python `re`; `delete_if_candidate` Python `re` only | day-06 | LOW | Open (code now in eval/tenant_queries.py) |
+| BL-03 | `list_candidates` opens one transaction per slug match (slow for many candidates; delete re-checks) | day-06 | LOW | Obsolete: code deleted in B0 (recoverable from tag pre-lean) |
+| BL-04 | Regex dialect mismatch: `list_candidates` uses PG `~` then Python `re`; `delete_if_candidate` Python `re` only | day-06 | LOW | Obsolete: code deleted in B0 (recoverable from tag pre-lean) |
 | BL-05 | Remaining LOW test-quality items not covered by the assertion pass (details not recorded in repo) | day-06 | LOW | Open |
 | BL-06 | `ensure_index` per call | day-05 | LOW | Obsolete when ES is removed (A2.2) |
 | BL-07 | FAILED status on throwaway-index reindex | day-05 | LOW | Obsolete when ES is removed (A2.2) |

@@ -33,6 +33,6 @@ Setup: local WSL2 box, `uvicorn app.main:app` single process (not a container), 
 - No spike contradicted D1-D9. Spikes 1-4 could not be run, so D2/D5 assumptions about Supabase remain unverified.
 
 ## A2 decisions recorded (2026-10-17)
-- `eval-` reserved slug (app/services/auth.py): **stays.** Registration is public until the end of the project, and the Session D eval runner will create throw-away `eval-<hex>` tenants that the moved cleanup queries (`eval/tenant_queries.py`) sweep by slug regex. Without the reservation a real tenant could match that regex. Revisit when the runner exists; the gate 0 item 6 exception is this one line.
+- `eval-` reserved slug (app/services/auth.py): **stays.** Registration is public until the end of the project, and the Session D eval runner will create throw-away `eval-<hex>` tenants that a cleanup will sweep by slug regex (the moved queries were deleted in B0 as caller-less; recoverable from `pre-lean`). Without the reservation a real tenant could match that regex. Revisit when the runner exists; the gate 0 item 6 exception is this one line.
 - ES-bound eval code (guard, run_eval, lifecycle, journal, cleanup) deleted, not kept: owner decision during Session A (plan did not cover it). Recoverable from tag `pre-lean`. Session D rebuilds the slim eval.
 - AR-04, 06, 12, 14 are CLOSED tombstone rows (gate_checks requires a gap-free id sequence): AR-12 and AR-14 beyond the plan, because their trigger no longer exists (`/health/db` route deleted in A2.1; the 0007 CHECK dropped by 0008).
