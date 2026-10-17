@@ -153,36 +153,3 @@ async def delete_document(
         )
     )
     return result.rowcount == 1
-
-
-async def set_search_index_status(
-    session: AsyncSession,
-    tenant_id: uuid.UUID,
-    document_id: uuid.UUID,
-    search_index_status: str,
-    *,
-    error: str | None = None,
-) -> bool:
-    """Record the ES copy's state; ``status`` and ``error`` are never touched."""
-    result = await session.execute(
-        update(Document)
-        .where(Document.tenant_id == tenant_id, Document.id == document_id)
-        .values(
-            search_index_status=search_index_status,
-            search_index_error=error,
-            updated_at=func.now(),
-        )
-        .execution_options(synchronize_session=False)
-    )
-    return result.rowcount > 0
-
-
-async def ready_document_ids(
-    session: AsyncSession, tenant_id: uuid.UUID
-) -> list[uuid.UUID]:
-    result = await session.scalars(
-        select(Document.id)
-        .where(Document.tenant_id == tenant_id, Document.status == "READY")
-        .order_by(Document.created_at, Document.id)
-    )
-    return list(result)

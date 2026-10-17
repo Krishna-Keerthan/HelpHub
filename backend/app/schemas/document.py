@@ -5,7 +5,6 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, StringConstraints
 
 Status = Literal["PENDING", "READY", "FAILED"]
-SearchIndexStatus = Literal["PENDING", "INDEXED", "FAILED"]
 
 
 class DocumentCreate(BaseModel):
@@ -24,7 +23,6 @@ class DocumentRead(BaseModel):
     id: uuid.UUID
     title: str
     status: Status
-    search_index_status: SearchIndexStatus
     error: str | None
     created_by: uuid.UUID | None
     created_at: datetime
