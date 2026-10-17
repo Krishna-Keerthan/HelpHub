@@ -1,4 +1,4 @@
-"""drop documents.search_index_status and search_index_error (Elasticsearch removed)
+"""drop documents.search_index_status and search_index_error (search index removed)
 
 Revision ID: 0008
 Revises: 0007
