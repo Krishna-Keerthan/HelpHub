@@ -20,6 +20,7 @@ dist/
 .coverage.*
 htmlcov/
 coverage.xml
+.import_linter_cache/
 
 # ---------- Node / Next.js (frontend) ----------
 node_modules/
