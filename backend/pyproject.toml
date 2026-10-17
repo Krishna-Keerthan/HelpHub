@@ -78,11 +78,13 @@ type = "forbidden"
 source_modules = ["app.api"]
 forbidden_modules = ["sqlalchemy", "asyncpg"]
 allow_indirect_imports = true
-ignore_imports = [
-    # AR-16. TODO: deps.py only needs AsyncSession for the TenantSession type alias;
-    # re-export the type from app.db and drop this ignore.
-    "app.api.deps -> sqlalchemy",
-]
+
+[[tool.importlinter.contracts]]
+name = "services do not use the database driver directly"
+type = "forbidden"
+source_modules = ["app.services"]
+forbidden_modules = ["sqlalchemy", "asyncpg"]
+allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
 name = "services do not import fastapi"

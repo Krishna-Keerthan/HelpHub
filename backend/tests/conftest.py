@@ -16,6 +16,7 @@ from sqlalchemy.pool import NullPool
 
 from app.api.deps import get_embedding_provider, get_llm_provider
 from app.core.config import settings
+from app.core.errors import sqlstate_of
 from app.core.security import create_access_token, hash_password
 from app.main import app
 from app.services.embeddings import FakeEmbeddingProvider
@@ -361,10 +362,7 @@ def auth_headers(tenant: SeededTenant) -> dict[str, str]:
 
 
 def sqlstate(exc: DBAPIError) -> str | None:
-    orig = exc.orig
-    return getattr(orig, "sqlstate", None) or getattr(
-        getattr(orig, "__cause__", None), "sqlstate", None
-    )
+    return sqlstate_of(exc)
 
 
 def constraint_name(exc: DBAPIError) -> str | None:

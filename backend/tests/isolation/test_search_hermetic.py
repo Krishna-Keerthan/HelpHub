@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from app.db.repositories.chunks import (
     CHUNKS_EMBEDDING_INDEX,
+    SearchQuery,
     search_statement,
 )
 from app.db.tenant_context import set_tenant, tenant_transaction
@@ -64,7 +65,7 @@ async def test_hnsw_path_finds_small_tenant_without_fallback(
         # Test-only: pins the HNSW plan (see tests/isolation/conftest.py).
         await session.execute(text("SET LOCAL enable_sort = off"))
         plan = await session.execute(
-            explain_statement(search_statement(ta["id"], Q, "", [], 3))
+            explain_statement(search_statement(ta["id"], SearchQuery(Q, "", (), 3)))
         )
         plan_text = "\n".join(row[0] for row in plan)
         result = await search_in_session(session, ta["id"], "", Q, 3)

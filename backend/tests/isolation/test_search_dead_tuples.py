@@ -16,6 +16,7 @@ from sqlalchemy.pool import NullPool
 from app.core.config import settings
 from app.db.repositories.chunks import (
     CHUNKS_EMBEDDING_INDEX,
+    SearchQuery,
     search,
     search_statement,
 )
@@ -78,10 +79,10 @@ async def _probe(app_conn: AsyncConnection, ta: SeededTenant) -> tuple[list, lis
         plan = [
             row[0]
             for row in await session.execute(
-                explain_statement(search_statement(ta["id"], Q, "", [], 3))
+                explain_statement(search_statement(ta["id"], SearchQuery(Q, "", (), 3)))
             )
         ]
-        raw = (await search(session, ta["id"], Q, "", [], 3)).hits
+        raw = (await search(session, ta["id"], SearchQuery(Q, "", (), 3))).hits
     return raw, plan
 
 
@@ -159,11 +160,13 @@ async def test_dead_tuples_fallback_returns_small_tenant(
             plan = "\n".join(
                 row[0]
                 for row in await session.execute(
-                    explain_statement(search_statement(ta["id"], Q, "", [], 3))
+                    explain_statement(
+                        search_statement(ta["id"], SearchQuery(Q, "", (), 3))
+                    )
                 )
             )
             assert CHUNKS_EMBEDDING_INDEX in plan, plan
-            raw = (await search(session, ta["id"], Q, "", [], 3)).hits
+            raw = (await search(session, ta["id"], SearchQuery(Q, "", (), 3))).hits
             assert raw == [], (
                 "PRECONDITION FAILED: churn did not reproduce the unreachable-"
                 f"graph state (raw ANN returned {len(raw)} hits); this test "

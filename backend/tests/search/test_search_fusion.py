@@ -87,7 +87,7 @@ async def test_identifier_is_found_by_text_search_when_vectors_miss(
     assert result.hits[0].chunk_id == exact.chunk_id  # found by both: ranked first
 
 
-async def test_chunk_found_by_both_branches_outranks_single_branch_chunks(
+async def test_chunk_found_by_both_branches_outranks_a_vector_only_neighbour(
     owner_conn: AsyncConnection,
     app_conn: AsyncConnection,
     two_tenants_seeded: dict[str, SeededTenant],
@@ -97,23 +97,25 @@ async def test_chunk_found_by_both_branches_outranks_single_branch_chunks(
         owner_conn,
         ta,
         [
-            ("zebra quasar procedure", unit_vector(1.0, 0.05)),  # both branches
-            ("unrelated vector neighbour", unit_vector(1.0, 0.01)),  # vector only
-            ("another zebra quasar note", FAR),  # text only
+            ("zebra quasar procedure", unit_vector(1.0, 0.05)),  # vector rank 2 + text
+            ("unrelated vector neighbour", unit_vector(1.0, 0.01)),  # vector rank 1
+            ("nothing to see", FAR),  # vector rank 3, no text match
         ],
     )
 
     result = await _search(app_conn, ta, "zebra quasar")
 
-    assert result.hits[0].chunk_id == ids["zebra quasar procedure"]
-    scores = [hit.rrf_score for hit in result.hits]
-    assert scores == sorted(scores, reverse=True)
-    # score is always the cosine similarity, whichever branch found the chunk.
-    text_only = next(
-        h for h in result.hits if h.chunk_id == ids["another zebra quasar note"]
-    )
-    assert text_only.found_by == ("keyword",) or "keyword" in text_only.found_by
-    assert -1.0 <= text_only.score <= 1.0
+    assert [hit.chunk_id for hit in result.hits] == [
+        ids["zebra quasar procedure"],
+        ids["unrelated vector neighbour"],
+        ids["nothing to see"],
+    ]
+    both, neighbour, last = result.hits
+    assert set(both.found_by) == {"vector", "keyword"}
+    assert neighbour.found_by == last.found_by == ("vector",)
+    assert both.rrf_score > neighbour.rrf_score > last.rrf_score
+    # score stays the cosine similarity, whichever branch found the chunk.
+    assert neighbour.score > both.score > last.score
 
 
 @pytest.mark.parametrize(

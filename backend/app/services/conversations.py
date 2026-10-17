@@ -4,6 +4,7 @@ import uuid
 
 from app.core.principal import Principal
 from app.db.models import ChatMessage, Conversation
+from app.db.pagination import Page
 from app.db.repositories import chat_messages as messages_repo
 from app.db.repositories import conversations as conversations_repo
 from app.db.tenant_context import tenant_transaction
@@ -33,6 +34,5 @@ async def list_messages(
             principal.tenant_id,
             principal.user_id,
             conversation_id,
-            limit=limit,
-            offset=offset,
+            Page(limit, offset),
         )

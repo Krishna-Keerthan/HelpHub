@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.repositories.chunks import (
     CHUNKS_EMBEDDING_INDEX,
+    SearchQuery,
     search,
     search_statement,
 )
@@ -148,11 +149,11 @@ async def test_filtered_ann_with_hnsw(owner_conn, app_conn, two_tenants_seeded):
     async with AsyncSession(bind=app_conn) as session:
         await set_tenant(session, ta["id"])
         await app_conn.execute(text("SET LOCAL enable_seqscan = off"))
-        hits = (await search(session, ta["id"], q, "", [], 3)).hits
+        hits = (await search(session, ta["id"], SearchQuery(q, "", (), 3))).hits
         # The plan of the very statement the service runs must use the HNSW
         # index, otherwise this test would pass by accident through a seq scan.
         plan = await session.execute(
-            explain_statement(search_statement(ta["id"], q, "", [], 3))
+            explain_statement(search_statement(ta["id"], SearchQuery(q, "", (), 3)))
         )
         plan_text = "\n".join(row[0] for row in plan)
 
@@ -196,7 +197,7 @@ async def test_search_k_outside_1_to_50_is_422(client, two_tenants_seeded, k):
 
 def test_search_statement_is_tenant_filtered_and_materialized():
     tid = uuid.uuid4()
-    statement = search_statement(tid, unit_vector(1.0), "", [], 3)
+    statement = search_statement(tid, SearchQuery(unit_vector(1.0), "", (), 3))
     assert "AS MATERIALIZED" in statement.text
     assert "WHERE tenant_id = :tid" in statement.text
     assert statement.compile().params["tid"] == tid

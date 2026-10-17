@@ -55,11 +55,9 @@ async def test_short_ann_stage_triggers_exact_fallback(
 
     real_search = chunks_repo.search
 
-    async def short_ann(session, tenant_id, embedding, words, codes, k, *, exact=False):  # type: ignore[no-untyped-def]
-        calls.append(k)
-        rows = await real_search(
-            session, tenant_id, embedding, words, codes, k, exact=exact
-        )
+    async def short_ann(session, tenant_id, query, *, exact=False):  # type: ignore[no-untyped-def]
+        calls.append(query.k)
+        rows = await real_search(session, tenant_id, query, exact=exact)
         if exact:
             return rows
         # The ANN branch reports fewer candidates than the tenant has chunks.
@@ -89,15 +87,11 @@ async def test_healthy_ann_stage_does_not_fall_back(
     exact_calls: list[int] = []
     real_search = chunks_repo.search
 
-    async def spy_search(
-        session, tenant_id, embedding, words, codes, k, *, exact=False
-    ):  # type: ignore[no-untyped-def]
+    async def spy_search(session, tenant_id, query, *, exact=False):  # type: ignore[no-untyped-def]
         if exact:
-            exact_calls.append(k)
+            exact_calls.append(query.k)
         # Exact order stands in for a healthy ANN stage on this tiny tenant.
-        return await real_search(
-            session, tenant_id, embedding, words, codes, k, exact=True
-        )
+        return await real_search(session, tenant_id, query, exact=True)
 
     monkeypatch.setattr(chunks_repo, "search", spy_search)
     async with AsyncSession(bind=app_conn) as session:

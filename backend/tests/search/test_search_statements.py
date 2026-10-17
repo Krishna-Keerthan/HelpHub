@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 from app.db.repositories.chunks import (
     CHUNKS_EMBEDDING_INDEX,
     TENANT_FILTER,
+    SearchQuery,
     search_statement,
 )
 from app.db.repositories.documents import titles_statement
@@ -41,7 +42,9 @@ async def test_exact_search_plan_never_uses_hnsw(
             await session.execute(text(f"SET LOCAL {flag} = off"))
         plan = await session.execute(
             explain_statement(
-                search_statement(tenant["id"], unit_vector(1.0), "", [], 3, exact=True)
+                search_statement(
+                    tenant["id"], SearchQuery(unit_vector(1.0), "", (), 3), exact=True
+                )
             )
         )
         plan_text = "\n".join(row[0] for row in plan)
@@ -53,7 +56,7 @@ async def test_exact_search_plan_never_uses_hnsw(
 def test_search_statement_binds_tenant_in_every_branch(exact: bool) -> None:
     tid = uuid.uuid4()
     statement = search_statement(
-        tid, unit_vector(1.0), "reset", ["E-4012"], 3, exact=exact
+        tid, SearchQuery(unit_vector(1.0), "reset", ("E-4012",), 3), exact=exact
     )
     # Vector branch, full-text branch and the final join each carry the filter,
     # and nothing else compares tenant_id.

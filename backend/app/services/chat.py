@@ -12,20 +12,19 @@ so a cancelled task still completes the write).
 
 import asyncio
 import logging
-import traceback
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 from app.core.config import settings
+from app.core.errors import sqlstate_of, traceback_frames
 from app.core.principal import Principal
 from app.db.repositories import chat_messages as messages_repo
 from app.db.repositories import conversations as conversations_repo
 from app.db.repositories import documents as documents_repo
+from app.db.repositories.chat_messages import NewMessage
 from app.db.tenant_context import tenant_transaction
-from app.services.documents import sqlstate_of
 from app.services.embeddings import EmbeddingProvider
 from app.services.llm import LLMError, LLMProvider, Message
 from app.services.prompts import PromptSource, build_messages, parse_citations
@@ -119,9 +118,7 @@ async def prepare_chat(
             tenant_id,
             principal.user_id,
             conversation.id,
-            role="user",
-            content=question,
-            status="complete",
+            NewMessage(role="user", content=question, status="complete"),
         )
         await conversations_repo.touch(
             session, tenant_id, principal.user_id, conversation.id
@@ -250,11 +247,13 @@ async def _save_assistant(ctx: ChatContext, outcome: _Outcome) -> bool:
                 tenant_id,
                 ctx.principal.user_id,
                 ctx.conversation_id,
-                role="assistant",
-                content="".join(outcome.parts),
-                status=outcome.status,
-                sources=outcome.sources,
-                model=outcome.model,
+                NewMessage(
+                    role="assistant",
+                    content="".join(outcome.parts),
+                    status=outcome.status,
+                    sources=outcome.sources,
+                    model=outcome.model,
+                ),
             )
             await conversations_repo.touch(
                 session, tenant_id, ctx.principal.user_id, ctx.conversation_id
@@ -267,16 +266,12 @@ async def _save_assistant(ctx: ChatContext, outcome: _Outcome) -> bool:
 
 def _log_failure(message: str, exc: BaseException, ctx: ChatContext) -> None:
     """Class name, SQLSTATE, ids and traceback frames only (no exception text)."""
-    frames = " > ".join(
-        f"{Path(f.filename).name}:{f.lineno} in {f.name}"
-        for f in traceback.extract_tb(exc.__traceback__)
-    )
     logger.error(
         "%s: tenant=%s conversation=%s error=%s sqlstate=%s frames=%s",
         message,
         ctx.principal.tenant_id,
         ctx.conversation_id,
         type(exc).__name__,
-        sqlstate_of(exc),
-        frames,
+        sqlstate_of(exc) or "-",
+        traceback_frames(exc),
     )

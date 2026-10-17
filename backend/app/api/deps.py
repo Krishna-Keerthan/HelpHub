@@ -4,12 +4,12 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.principal import Principal
 from app.core.security import InvalidTokenError, TokenSubject, parse_token_subject
 from app.db.models import User
 from app.db.repositories import users as users_repo
+from app.db.session import DbSession
 from app.db.tenant_context import tenant_transaction
 from app.services.embeddings import EmbeddingProvider, default_provider
 from app.services.llm import GroqProvider, LLMProvider
@@ -51,14 +51,14 @@ def _check_user(user: User | None) -> None:
         raise _unauthorized("inactive")
 
 
-async def get_tenant_session(subject: Subject) -> AsyncIterator[AsyncSession]:
+async def get_tenant_session(subject: Subject) -> AsyncIterator[DbSession]:
     async with tenant_transaction(subject.tenant_id) as session:
         yield session
 
 
 # scope="function": the commit after the yield runs before the response is
 # sent, so a failed commit becomes an error response instead of a silent one.
-TenantSession = Annotated[AsyncSession, Depends(get_tenant_session, scope="function")]
+TenantSession = Annotated[DbSession, Depends(get_tenant_session, scope="function")]
 
 
 async def get_current_user(subject: Subject, session: TenantSession) -> User:

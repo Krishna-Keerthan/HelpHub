@@ -121,14 +121,16 @@ def _tsquery_sql(code_count: int) -> str:
     return " || ".join(parts)
 
 
+@dataclass(frozen=True)
+class SearchQuery:
+    embedding: list[float]
+    words: str  # plain words, OR'd in the full-text branch
+    codes: tuple[str, ...]  # identifiers, each matched as an exact phrase
+    k: int
+
+
 def search_statement(
-    tenant_id: uuid.UUID,
-    embedding: list[float],
-    words: str,
-    codes: Sequence[str],
-    k: int,
-    *,
-    exact: bool = False,
+    tenant_id: uuid.UUID, query: SearchQuery, *, exact: bool = False
 ) -> TextClause:
     """The one search statement, shared by ``search`` and EXPLAIN checks.
 
@@ -136,17 +138,17 @@ def search_statement(
     rows; it is the fallback when ANN misses some of them.
     """
     params = [
-        bindparam("vec", embedding, type_=Vector(EMBEDDING_DIM)),
+        bindparam("vec", query.embedding, type_=Vector(EMBEDDING_DIM)),
         bindparam("tid", tenant_id),
-        bindparam("k", clamp_k(k)),
+        bindparam("k", clamp_k(query.k)),
         bindparam("cand", CANDIDATES),
         bindparam("rrf_k", RRF_K),
-        bindparam("words", words),
+        bindparam("words", query.words),
     ]
-    params += [bindparam(f"code{i}", f'"{code}"') for i, code in enumerate(codes)]
+    params += [bindparam(f"code{i}", f'"{c}"') for i, c in enumerate(query.codes)]
     return text(
         _SEARCH_SQL.format(
-            tsquery=_tsquery_sql(len(codes)),
+            tsquery=_tsquery_sql(len(query.codes)),
             tenant=TENANT_FILTER,
             order_by=_EXACT_ORDER if exact else _ANN_ORDER,
         )
@@ -156,10 +158,7 @@ def search_statement(
 async def search(
     session: AsyncSession,
     tenant_id: uuid.UUID,
-    embedding: list[float],
-    words: str,
-    codes: Sequence[str],
-    k: int,
+    query: SearchQuery,
     *,
     exact: bool = False,
 ) -> SearchRows:
@@ -168,7 +167,6 @@ async def search(
     Runs in the caller's tenant transaction: set_config(..., true) is lost on
     commit, so tenant setup and search must share one transaction.
     """
-    k = clamp_k(k)
     if not exact:
         await session.execute(
             text("SELECT set_config('hnsw.iterative_scan', 'relaxed_order', true)")
@@ -177,11 +175,7 @@ async def search(
             text("SELECT set_config('hnsw.ef_search', :ef, true)"),
             {"ef": str(min(max(MIN_EF_SEARCH, CANDIDATES), MAX_EF_SEARCH))},
         )
-    rows = list(
-        await session.execute(
-            search_statement(tenant_id, embedding, words, codes, k, exact=exact)
-        )
-    )
+    rows = list(await session.execute(search_statement(tenant_id, query, exact=exact)))
     hits = [SearchHit(*row[:8], tuple(row[8])) for row in rows]
     return SearchRows(hits, rows[0][9] if rows else 0)
 

@@ -3,7 +3,7 @@
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
-from app.db.repositories.chunks import search_statement
+from app.db.repositories.chunks import SearchQuery, search_statement
 from app.db.tenant_context import set_tenant
 from tests.conftest import MakeTenant, insert_chunks, insert_document, unit_vector
 from tests.helpers.plans import explain_statement
@@ -35,7 +35,9 @@ async def test_exact_search_uses_tenant_index(
         await session.execute(text("SET LOCAL enable_seqscan = off"))
         plan = await session.execute(
             explain_statement(
-                search_statement(tenant["id"], unit_vector(1.0), "", [], 3, exact=True)
+                search_statement(
+                    tenant["id"], SearchQuery(unit_vector(1.0), "", (), 3), exact=True
+                )
             )
         )
         plan_text = "\n".join(row[0] for row in plan)

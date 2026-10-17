@@ -4,7 +4,7 @@ Multi-tenant support knowledge engine: FastAPI, async SQLAlchemy 2.0, Postgres +
 
 ## Layering
 - `api -> services -> db`. `api/` has no business logic and no SQL; `services/` has no FastAPI imports; `db/` imports neither. `core/` imports none of db, services, api.
-- No SQLAlchemy or asyncpg imports outside `db/` (and tests). Import-linter enforces this in the gate; do not re-check by hand.
+- No SQLAlchemy or asyncpg imports outside `db/` (and tests); annotate sessions with `app.db.session.DbSession`. Import-linter enforces this in the gate; do not re-check by hand.
 - Dependency types: `CurrentPrincipal` (short transaction, plain data), `TenantSession`/`CurrentUser` (request-long transaction).
 
 ## Tenant rules

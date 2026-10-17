@@ -10,11 +10,10 @@ import re
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.db.repositories import chunks as chunks_repo
 from app.db.repositories import documents as documents_repo
-from app.db.repositories.chunks import SearchHit
+from app.db.repositories.chunks import SearchHit, SearchQuery
+from app.db.session import DbSession
 from app.db.tenant_context import tenant_transaction
 from app.services.embeddings import EmbeddingProvider
 
@@ -64,7 +63,7 @@ def split_query(query: str) -> tuple[str, list[str]]:
 
 
 async def search_in_session(
-    session: AsyncSession,
+    session: DbSession,
     tenant_id: uuid.UUID,
     query: str,
     embedding: list[float],
@@ -78,7 +77,8 @@ async def search_in_session(
     rerun the statement with the exact vector order.
     """
     words, codes = split_query(query)
-    rows = await chunks_repo.search(session, tenant_id, embedding, words, codes, k)
+    terms = SearchQuery(embedding, words, tuple(codes), k)
+    rows = await chunks_repo.search(session, tenant_id, terms)
     wanted = chunks_repo.CANDIDATES
     if rows.vector_candidates >= wanted:
         return SearchResult(rows.hits, used_fallback=False)
@@ -91,9 +91,7 @@ async def search_in_session(
         rows.vector_candidates,
         available,
     )
-    exact = await chunks_repo.search(
-        session, tenant_id, embedding, words, codes, k, exact=True
-    )
+    exact = await chunks_repo.search(session, tenant_id, terms, exact=True)
     return SearchResult(exact.hits, used_fallback=True)
 
 

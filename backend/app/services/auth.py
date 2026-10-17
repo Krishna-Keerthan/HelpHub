@@ -1,5 +1,3 @@
-from sqlalchemy.exc import IntegrityError
-
 from app.core.config import settings
 from app.core.security import (
     DUMMY_HASH,
@@ -69,7 +67,7 @@ async def register_tenant(
                 role="admin",
             )
             await session.commit()
-        except IntegrityError as exc:
+        except tenants_repo.SlugTaken as exc:
             await session.rollback()
             raise TenantSlugTaken from exc
         except BaseException:

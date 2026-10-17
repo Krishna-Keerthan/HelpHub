@@ -8,11 +8,10 @@ database connection or row locks.
 
 import hashlib
 import logging
-import traceback
 import uuid
-from pathlib import Path
 
 from app.core.config import settings
+from app.core.errors import sqlstate_of, traceback_frames
 from app.db.models import Document
 from app.db.models.chunk import EMBEDDING_DIM
 from app.db.repositories import chunks as chunks_repo
@@ -71,35 +70,6 @@ def prepare_text(content: str) -> str:
     return text
 
 
-def sqlstate_of(exc: BaseException) -> str | None:
-    """SQLSTATE of a database error, if any.
-
-    Walks SQLAlchemy's wrapper (.orig) and the cause chain down to the asyncpg
-    exception; both levels carry the same code.
-    """
-    seen: set[int] = set()
-    current: BaseException | None = exc
-    while current is not None and id(current) not in seen:
-        seen.add(id(current))
-        code = getattr(current, "sqlstate", None)
-        if isinstance(code, str):
-            return code
-        current = getattr(current, "orig", None) or current.__cause__
-    return None
-
-
-def _frames(exc: BaseException) -> str:
-    """Traceback frames as ``file:line in func``, outermost first.
-
-    traceback.extract_tb rather than format_tb: the frame locations are what
-    we need; format_tb would also print each frame's source line.
-    """
-    return " > ".join(
-        f"{Path(frame.filename).name}:{frame.lineno} in {frame.name}"
-        for frame in traceback.extract_tb(exc.__traceback__)
-    )
-
-
 def _log_failure(
     message: str,
     exc: BaseException,
@@ -124,7 +94,7 @@ def _log_failure(
         type(exc).__name__,
         sqlstate_of(exc) or "-",
         detail,
-        _frames(exc),
+        traceback_frames(exc),
     )
 
 
@@ -161,10 +131,12 @@ async def create_or_get(
             created = await documents_repo.insert_if_absent(
                 session,
                 tenant_id,
-                title=title,
-                raw_text=raw_text,
-                content_hash=digest,
-                created_by=user_id,
+                documents_repo.NewDocument(
+                    title=title,
+                    raw_text=raw_text,
+                    content_hash=digest,
+                    created_by=user_id,
+                ),
             )
             if created is not None:
                 return created, True

@@ -20,6 +20,10 @@ engine = create_async_engine(
 )
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
+# The session type for annotations in services and api (they do not import
+# sqlalchemy themselves).
+DbSession = AsyncSession
+
 
 async def get_session() -> AsyncIterable[AsyncSession]:
     async with AsyncSessionLocal() as session:
