@@ -1,0 +1,13 @@
+.venv
+.cache
+.git
+.hypothesis
+.import_linter_cache
+.pytest_cache
+.ruff_cache
+.coverage*
+__pycache__
+dist
+tests
+eval
+scripts
