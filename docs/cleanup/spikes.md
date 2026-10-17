@@ -2,19 +2,41 @@
 
 Status key: MEASURED / VERIFIED (source read) / BLOCKED. Nothing here is a guess.
 
-## 1. set_tenant and the Supabase pooler: PARTLY VERIFIED, live test BLOCKED
-- VERIFIED (source): `backend/app/db/tenant_context.py` calls `set_config('app.tenant_id', :tid, true)`; `true` = transaction-local. It resets on commit/rollback.
-- VERIFIED (source): `backend/app/db/session.py` passes no `statement_cache_size` to asyncpg. Per the plan's cited Supabase doc, transaction-mode pooling needs `statement_cache_size=0` (asyncpg), and SQLAlchemy's asyncpg dialect also keeps a prepared-statement cache. That is a change the pooler path needs; not done in Session A (no code change outside the A2 cut).
-- BLOCKED: RLS isolation test through the pooler. `SPIKE_DATABASE_URL` / `SPIKE_MIGRATION_DATABASE_URL` are not set in this environment.
+## 1. set_tenant and the Supabase poolers: MEASURED (Session C, 2026-10-17)
+- VERIFIED (source): `app/db/tenant_context.py` uses `set_config('app.tenant_id', :tid, true)` (transaction-local).
+- MEASURED: 30 concurrent tasks x 6 iterations (180 tenant transactions, 2 tenants, pool_size 5) as `helphub_app`; each iteration checks the tenant sees only its own 3 documents, then that a fresh transaction with no tenant set sees 0 rows on a reused connection. Results (cross-tenant leaks were 0 in every run):
 
-## 2. Render to Supabase direct (IPv6) vs session pooler: BLOCKED
-No Supabase connection strings in the environment; no Render account access from here. Unmeasured.
+| Pooler | Connect args | Result |
+|---|---|---|
+| session, 5432 | default (no args) | 180/180 ok |
+| session, 5432 | `statement_cache_size=0` | 180/180 ok |
+| session, 5432 | + `prepared_statement_cache_size=0` | 180/180 ok |
+| session, 5432 | + unique `prepared_statement_name_func` | 180/180 ok |
+| transaction, 6543 | default | **6/180 ok; 174 failed, SQLSTATE 26000 (invalid_sql_statement_name)** |
+| transaction, 6543 | `statement_cache_size=0` | 180/180 ok |
+| transaction, 6543 | + `prepared_statement_cache_size=0` | 180/180 ok |
+| transaction, 6543 | + unique `prepared_statement_name_func` | 180/180 ok |
 
-## 3. helphub_owner / helphub_app on Supabase, isolation tests: BLOCKED
-Same reason as 1.
+- Conclusion: session pooler needs no change. Transaction pooler needs `statement_cache_size=0` and that alone was sufficient in this workload; the other two settings were not needed. `session.py` passes none today, so only the transaction pooler would need the change. Not measured: longer runs, other query shapes (pgvector ANN, tsvector), SQLAlchemy ORM paths.
+- Method note: this is a standalone script with its own engine, not `app.db.session`.
 
-## 4. Tables reachable via Supabase REST API with public keys: BLOCKED
-Same reason as 1. Unmeasured.
+## 2. Render to Supabase direct (IPv6) vs session pooler: OPEN (not testable from here)
+- Local only: this WSL2 box reached Supabase through the session pooler (`aws-0-ap-northeast-2.pooler.supabase.com:5432`). Direct (`db.<ref>.supabase.co`) was not tested.
+- OPEN: whether a Render free web service can reach Supabase over IPv6. Recorded in `docs/deploy/runbook.md`. Default for both app and migrations: session pooler.
+
+## 3. helphub_owner / helphub_app on Supabase: MEASURED
+- As `postgres` (not superuser; CREATEROLE; BYPASSRLS) over the session pooler, `CREATE ROLE helphub_owner` and `helphub_app` (both LOGIN, NOSUPERUSER, NOBYPASSRLS) worked. Pooler usernames are `role.<project-ref>`; both log in.
+- Needed grants beyond `docker/postgres/init/01-roles.sh`: `GRANT helphub_owner TO postgres` (required for `ALTER DEFAULT PRIVILEGES FOR ROLE helphub_owner`), `GRANT CREATE, USAGE ON SCHEMA public TO helphub_owner`, `GRANT CREATE ON DATABASE postgres TO helphub_owner`.
+- `alembic upgrade head` (0001 to 0009) ran as `helphub_owner` over the session pooler, including `CREATE EXTENSION vector` (lands in `public`, owned by supabase_admin). RLS is enabled on every tenant table; `tenants` has none (by design).
+- RLS enforcement: `pytest tests/isolation tests/core` against Supabase through the session pooler as `helphub_app`: **112 passed** (19m41s; about 10 s per test over the WAN). The full suite was started and stopped after about 70 tests because of that latency; the rest of the suite was NOT run against Supabase.
+
+## 4. Tables reachable via the Supabase REST API: NOT reachable (partly tested)
+- MEASURED: as `postgres`, `SET LOCAL ROLE anon / authenticated / service_role` then `SELECT count(*)` on all six tenant tables: all denied, SQLSTATE 42501. `information_schema.role_table_grants` shows 0 grants to those roles in `public`. Unauthenticated `GET /rest/v1/` and `/rest/v1/users` return 401.
+- NOT tested: requests with the project's real anon/publishable key (not available here).
+- Why it holds: tables are created by `helphub_owner`, and Supabase's default privileges for the API roles apply to objects created by `postgres`. HAZARD: running migrations as `postgres` would grant those roles access. Fix if ever needed: `REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon, authenticated, service_role` plus `ALTER DEFAULT PRIVILEGES ... REVOKE`, or disable the Data API in project settings. Runbook rule: migrations only as `helphub_owner`.
+
+## Incident during spikes
+Rotating the helphub_owner password on every run made the pooler reject the new password, and repeated failures tripped its circuit breaker (`ECIRCUITBREAKER`, all new connections blocked for several minutes). The owner password is now fixed for the run (derived from the app password, not stored).
 
 ## 5. Render free instance RAM: VERIFIED (raw page, re-checked in B0)
 Source: https://render.com/docs/compute-plans.md, fetched raw with curl (HTTP 200), section "Web service plans". The page states it as a table row, not a sentence:

@@ -94,6 +94,11 @@ Goal: everything that weighs the project down is gone, tests green.
 8. **Backups:** Supabase free has none. Add a scheduled `pg_dump` from CI to storage you control, or record the gap in the README.
 9. **Live smoke script:** register, upload a document, search, chat, delete, against the deployed URL.
 
+**Decisions from the Session C spikes (2026-10-17; evidence in `spikes.md`):**
+- Session pooler (port 5432) for both the app and migrations. No `statement_cache_size` code change (only the transaction pooler needs it).
+- Migrations only ever run as `helphub_owner`, never as `postgres`, in CI too: Supabase's default grants to `anon`/`authenticated`/`service_role` apply to tables created by `postgres` and would expose them through the REST API.
+- The extra grants are listed in `docs/deploy/runbook.md`.
+
 **Exit check C:** Gate 0 items 7 and 9 start; CI green on a clean clone.
 
 ## 7. Sessions D and E (reserved, use as many as needed)
