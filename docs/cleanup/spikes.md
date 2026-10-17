@@ -16,9 +16,10 @@ Same reason as 1.
 ## 4. Tables reachable via Supabase REST API with public keys: BLOCKED
 Same reason as 1. Unmeasured.
 
-## 5. Render free instance RAM: VERIFIED
-Render's compute-plans doc (https://render.com/docs/compute-plans.md), Web service Free: **512 MB RAM, 0.1 CPU** (Render Postgres free: 256 MB, not relevant). The 256 MB figure in the plan sources is therefore not the web-service figure. Spin-down after 15 min idle and 750 free instance hours per workspace per month confirmed on https://render.com/docs/free. (Page text was read through a summarising fetch tool, not a raw copy.)
-The instance-types/pricing pages did not list RAM; the compute-plans page did.
+## 5. Render free instance RAM: VERIFIED (raw page, re-checked in B0)
+Source: https://render.com/docs/compute-plans.md, fetched raw with curl (HTTP 200), section "Web service plans". The page states it as a table row, not a sentence:
+`| 0.1 CPU | 512 MB | [free](free) |  |` (columns: CPU, RAM, Plan ID, Legacy Plan Name).
+So the Free web service is **0.1 CPU, 512 MB RAM**. Render Postgres and Key Value free figures are different products and not relevant. Spin-down after 15 minutes and 750 free instance hours per workspace per month: https://render.com/docs/free (read in Session A through a summarising fetch; quote not re-checked raw).
 
 ## 6. Full-app peak RSS under load: MEASURED
 Setup: local WSL2 box, `uvicorn app.main:app` single process (not a container), local pgvector Postgres + ES running, real Groq calls. Script: register, login, upload a 10-page PDF (`/documents/upload`), POST a ~20 KB text document, then 20 sequential `POST /chat/stream` (all HTTP 200; median 7.1 s, max 10.5 s). RSS polled every 50 ms over the uvicorn process tree.
