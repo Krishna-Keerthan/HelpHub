@@ -74,10 +74,37 @@ Run `uv run alembic upgrade head` with `MIGRATION_DATABASE_URL` = `helphub_owner
 | Render free RAM | **VERIFIED 512 MB** (spikes.md section 5) | |
 | Backups | **GAP, not built**: Supabase free has none. Options: scheduled `pg_dump` from CI to storage you control, or state the gap in the README | deploy session |
 
+## C7 re-measurement (2026-10-17): criteria NOT met
+Setup: image built from commit db09187's app code, `--memory=512m --memory-swap=512m --cpus=0.1`, real Groq streaming, DB = Supabase session pooler from the dev box (WAN latency included), `APP_ENV=production`, `PDF_TIMEOUT_SECONDS=120`, `PDF_CPU_SECONDS` at its default 10, `RATE_LIMIT_*_PER_USER` raised so the limiter did not interfere. A sampler inside the container (every 0.2 s) sums PSS over all processes; `anon` comes from `memory.stat` at the PSS peak. One round = login, then concurrently 5 chat requests and N PDF uploads (N = `PDF_MAX_CONCURRENCY`), each PDF 10 pages and unique. 10 rounds per setting. The sampler itself competes for the 0.1 CPU.
+
+| | PDF concurrency 1 | PDF concurrency 2 |
+|---|---|---|
+| Rounds completed | 10 of 10 | 1 of 10 (container OOM-killed during round 2; reproduced in 2 of 2 attempts) |
+| Time to ready (`/health`, `/health/ready`) | 70.0 s, 77.2 s | 73.5 s and 76.1 s (two attempts), 83.4 s and 86.1 s |
+| PSS peak at startup (model load) | 453.5 MB | not recorded (sampler data lost with the container) |
+| PSS peak per round | 478.7 to 521.2 MB in rounds 2 to 10; round 1 reported 679.6 MB | not recorded |
+| `anon` at PSS peak | 435 to 509 MB (500 to 509 MB in rounds 6 to 10) | not recorded |
+| cgroup `memory.events` | `oom_kill 0`, `max` 1017 (limit reached 1017 times) | `oom_killed=true`, exit 137 |
+| Chat: 200 with an answer / sent | 50 / 50 (median 24.8 s, max 57.8 s) | 5 / 5 in round 1 |
+| PDF upload (whole request, under chat load) | 201 x9, 500 x1 (round 8, 28.8 s, cause NOT captured: container logs were not saved for this run); 201 times 104.7 to 148.3 s, median 106.8 s | 160.4 s and 169.2 s (round 1) |
+| PDF extraction alone, idle container at 0.1 CPU (3 runs) | 15.7 s, 10.5 s, 15.7 s (9,018 characters) | n/a |
+
+Against the criteria fixed in advance:
+- **PSS peak at most 461 MB: FAIL.** Steady-state rounds peaked at 512 to 521 MB. The 679.6 MB (and 872 MB RSS in round 4) readings coincide with a forked child (`uname -p`, spawned by Python before exec) sampled while the 329 MB parent was also sampled; the reading is not atomic, so those two are probably artifacts. Not verified. The steady 500 MB `anon` figure is a separate measurement and agrees with 512 MB being reached.
+- **oom_kill 0: PASS for concurrency 1, FAIL for concurrency 2.**
+- **PDF upload succeeds at a wall timeout of 120 s or less:** extraction alone (10.5 to 15.7 s) is well inside 120 s. Whole uploads under chat load took up to 148.3 s, and one of 10 returned 500 with an unknown cause. Not demonstrated.
+- The cgroup sat at its 512 MB limit and reclaimed 1,017 times; round 9 of the concurrency-1 run took 325 s. Plausibly reclaim thrash, not verified.
+
+Two defects seen in the container log (not fixed, found during C7):
+- `Ignoring corrupted tree cache file ... [Errno 13] Permission denied` under `/srv/backend/.cache/fastembed`: the baked model cache is not accessible as the non-root user for writes. It loaded and worked (HF_HUB_OFFLINE=1).
+- `readiness check failed: error=TimeoutError` once, during load (the 5 s `SELECT 1` timeout at 0.1 CPU).
+
+Options (not chosen, for the owner): a larger instance class or CPU share; a smaller or lazily loaded embedding model; lower PDF limits (smaller `pdf_memory_bytes`, fewer pages) and PDF concurrency 1; moving PDF extraction out of the web process; fewer concurrent chats per instance; accept the free class for a demo with concurrency 1 and a documented 500-or-slow tail.
+
 ## Open items
 - [ ] **Render IPv6 to Supabase direct connection: unknown.** Not testable from the dev box. Stay on the session pooler until answered; test on the first Render deploy and record the result here.
 - [ ] **`MIGRATION_DATABASE_URL` is a required setting**, so the runtime service must define it even though the app never uses it (CLAUDE.md: only Alembic uses it). Either make the field optional (code change, not made) or set it on Render to a harmless value; do not put the owner URL on the runtime service.
 - [ ] **Client IPs behind Render's proxy** are not trusted (uvicorn runs without `--proxy-headers`), which is why login limits are per account, not per IP (AR-19).
 - [ ] **Live smoke script** (register or seed, upload, search, chat, delete against the deployed URL): not built.
 - [ ] **Uptime bot** and the keep-alive target (`GET /health/ready`): not configured.
-- [ ] **Memory gate (Gate 0 item 7) is OPEN**: see the container measurement above and the C7 section below.
+- [ ] **Memory gate (Gate 0 item 7) is OPEN and the C7 criteria failed**: see the C7 section above. No instance class, model or architecture change has been made.
