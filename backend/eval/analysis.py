@@ -8,12 +8,28 @@ import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
-from app.services.rrf import fuse_rrf
 from eval import metrics
 from eval.gate_rules import Item
 from eval.records import MODES, Record
 
 TOP_K = 5
+
+RRF_K = 60
+
+
+def _fuse_rrf(
+    ranked_lists: Sequence[Sequence[uuid.UUID]], k: int
+) -> list[tuple[uuid.UUID, float]]:
+    """Reciprocal rank fusion over best-first id lists; ties keep first appearance."""
+    scores: dict[uuid.UUID, float] = {}
+    for ranked in ranked_lists:
+        seen: set[uuid.UUID] = set()
+        for rank, item in enumerate(ranked, start=1):
+            if item in seen:
+                continue
+            seen.add(item)
+            scores[item] = scores.get(item, 0.0) + 1.0 / (k + rank)
+    return sorted(scores.items(), key=lambda pair: -pair[1])
 
 
 @dataclass(frozen=True)
@@ -85,7 +101,7 @@ def fuse(record: Record, rrf_k: int, candidates: int) -> list[uuid.UUID]:
         record.branches["vector"].ids[:candidates],
         record.branches["keyword"].ids[:candidates],
     ]
-    return [chunk_id for chunk_id, _ in fuse_rrf(lists, k=rrf_k)]
+    return [chunk_id for chunk_id, _ in _fuse_rrf(lists, k=rrf_k)]
 
 
 def ablation_hits(

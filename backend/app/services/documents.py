@@ -12,18 +12,14 @@ import traceback
 import uuid
 from pathlib import Path
 
-from elasticsearch import AsyncElasticsearch
-
 from app.core.config import settings
 from app.db.models import Document
 from app.db.models.chunk import EMBEDDING_DIM
 from app.db.repositories import chunks as chunks_repo
 from app.db.repositories import documents as documents_repo
 from app.db.tenant_context import tenant_transaction
-from app.services import search_sync
 from app.services.chunker import chunk_text
 from app.services.embeddings import EmbeddingError, EmbeddingProvider, validate_vectors
-from app.services.es_client import get_es
 
 logger = logging.getLogger(__name__)
 
@@ -189,7 +185,6 @@ async def ingest_document(
     tenant_id: uuid.UUID,
     document_id: uuid.UUID,
     provider: EmbeddingProvider,
-    es: AsyncElasticsearch | None = None,
 ) -> Document:
     """Chunk, embed and store ``document_id``; it ends READY or FAILED.
 
@@ -214,8 +209,6 @@ async def ingest_document(
         _log_failure("ingestion failed", exc, tenant_id, document_id)
         await _mark_failed(tenant_id, document_id, exc)
         raise IngestionError("ingestion failed") from exc
-    # READY is committed; the search copy is best effort (never raises).
-    await search_sync.index_document(tenant_id, document_id, es or get_es())
     return document
 
 
@@ -308,11 +301,8 @@ async def get_document(tenant_id: uuid.UUID, document_id: uuid.UUID) -> Document
     return document
 
 
-async def delete_document(
-    tenant_id: uuid.UUID, document_id: uuid.UUID, es: AsyncElasticsearch | None = None
-) -> None:
+async def delete_document(tenant_id: uuid.UUID, document_id: uuid.UUID) -> None:
     async with tenant_transaction(tenant_id) as session:
         deleted = await documents_repo.delete_document(session, tenant_id, document_id)
     if not deleted:
         raise DocumentNotFound("document not found")
-    await search_sync.delete_document_chunks(tenant_id, document_id, es or get_es())

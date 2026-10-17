@@ -10,7 +10,6 @@ requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.20.0",
     "asyncpg>=0.31.0",
-    "elasticsearch[async]>=9,<10",
     "fastapi[standard]>=0.142.2",
     "fastembed>=0.9.0",
     "groq>=1.7.0",
@@ -63,9 +62,7 @@ extend-select = ["S", "B", "ASYNC"]
 # (argument lists, no shell) are accepted per file.
 "tests/core/test_hygiene_static.py" = ["S603"]
 "tests/documents/test_documents_schema.py" = ["S608"]
-"tests/documents/test_documents_search_index_columns.py" = ["S608"]
 "tests/isolation/test_documents_chunks_rls.py" = ["S608"]
-"tests/search/test_reindex.py" = ["S603"]
 "tests/tooling/test_gate_checks.py" = ["S603", "S607"]  # git with argument lists, no shell
 "tests/chat/test_chat_service.py" = ["ASYNC110"]
 "tests/migrations/test_migration_roundtrip.py" = ["S603"]

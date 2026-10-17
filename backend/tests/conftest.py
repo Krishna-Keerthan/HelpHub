@@ -18,7 +18,6 @@ from app.api.deps import get_embedding_provider, get_llm_provider
 from app.core.config import settings
 from app.core.security import create_access_token, hash_password
 from app.main import app
-from app.services import es_client
 from app.services.embeddings import FakeEmbeddingProvider
 from tests.helpers.fakes import FakeLLMProvider
 
@@ -51,34 +50,6 @@ def no_embedding_warm_up() -> Iterator[None]:
     settings.warm_up_embeddings = False
     yield
     settings.warm_up_embeddings = previous
-
-
-@pytest.fixture(scope="session", autouse=True)
-async def isolated_es_indices() -> AsyncIterator[None]:
-    """Every test index lives under a per-session ``test-<uuid>-`` prefix.
-
-    Nothing contacts ES here; tests that use it fail clearly (short timeout)
-    when it is unreachable. Indices of the session are deleted in ``finally``.
-    """
-    previous = (settings.es_index_prefix, settings.es_timeout_seconds)
-    prefix = f"test-{uuid.uuid4().hex[:12]}-"
-    settings.es_index_prefix = prefix
-    settings.es_timeout_seconds = 3.0
-    try:
-        yield
-    finally:
-        try:
-            # Wildcard deletes are refused by ES (destructive_requires_name).
-            es = es_client.get_es()
-            found = await es.indices.get(
-                index=f"{prefix}*", ignore_unavailable=True, allow_no_indices=True
-            )
-            if found:
-                await es.indices.delete(index=list(found), ignore_unavailable=True)
-        except Exception:  # noqa: BLE001, S110 - cleanup only; ES tests fail loudly
-            pass
-        await es_client.close_es()
-        settings.es_index_prefix, settings.es_timeout_seconds = previous
 
 
 @pytest.fixture(autouse=True)

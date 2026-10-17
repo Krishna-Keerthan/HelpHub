@@ -60,20 +60,6 @@ class Settings(BaseSettings):
     llm_retry_deadline_seconds: float = 20.0
     max_answer_tokens: int = 800
     llm_temperature: float = 0.2
-    # Elasticsearch (dev: single node, security off, 127.0.0.1 only).
-    es_endpoint: str = "http://127.0.0.1:9200"
-    # Prepended to the alias and index names; tests use a per-session prefix.
-    es_index_prefix: str = ""
-    es_timeout_seconds: float = 10.0
-    es_alias: str = "chunks"
-    # Hybrid search: reciprocal rank fusion constant, candidates per branch, and
-    # the budget of each branch's retrieval work (vector search, or Elasticsearch
-    # + hydration). The query embedding has its own limit; the vector branch may
-    # take embedding_timeout_seconds + hybrid_branch_timeout_seconds in all.
-    rrf_k: int = Field(default=60, ge=1)
-    hybrid_candidates: int = Field(default=50, ge=1)
-    hybrid_branch_timeout_seconds: float = Field(default=3.0, gt=0)
-    embedding_timeout_seconds: float = Field(default=10.0, gt=0)
     chat_top_k: int = 5
     chat_history_messages: int = 6
     max_context_chars: int = 12_000
