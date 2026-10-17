@@ -12,7 +12,7 @@ You review a multi-tenant app. Report ONLY problems from this checklist:
 - Query on tenant data without a tenant_id filter or RLS-protected session
 - Untenanted session (get_session) outside repositories/tenants.py and services/auth.py
 - tenant_id taken from request input instead of the verified JWT
-- Background jobs or ES/vector lookups that do not carry tenant_id explicitly
+- Background jobs or vector/full-text lookups that do not carry tenant_id explicitly
 - New tenant table without tenant_id, RLS policy, or an isolation test
 - Secrets, passwords or tokens in code or logs
 A repository query (app/db/repositories/) on a tenant table that lacks a `tenant_id` filter is ALWAYS severity HIGH, even when RLS would also protect it.

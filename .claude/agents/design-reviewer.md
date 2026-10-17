@@ -9,7 +9,7 @@ Read docs/review/accepted-risks.md first; never report an accepted risk (AR-nn) 
 Read only changed files, plus one direct caller/callee when needed. Ignore uv.lock and docs.
 Import direction is enforced by import-linter in the gate; do not re-check it. Evaluate ONLY the categories the diff touches:
 - Layering and placement: business logic in api/, SQL outside db/
-- DB transaction or session held across an ES, LLM or embedding call
+- DB transaction or session held across an LLM or embedding call
 - N+1 queries, unbounded queries, missing LIMIT or pagination
 - Missing indexes for new filters, joins or ORDER BY
 - Blocking calls in async code (time.sleep, sync HTTP or file I/O)

@@ -1,6 +1,6 @@
 """Metric tables, failure lists, gate inputs and ablations over recorded results.
 
-Pure functions over ``Record`` lists; nothing here touches a database or ES.
+Pure functions over ``Record`` lists; nothing here touches a database.
 Metrics cover ANSWERABLE questions only.
 """
 
