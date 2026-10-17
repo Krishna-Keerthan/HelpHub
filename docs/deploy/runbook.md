@@ -35,5 +35,49 @@ Image `backend/Dockerfile` (python:3.12-slim, uv, non-root uid 10001, model bake
 - At 0.1 CPU the default 10 s PDF wall limit is too short for a 10-page, 9,000-character PDF (422 in two of two runs). It completed with the limits raised to 120 s.
 - 5 concurrent chat requests took 15 to 22 s each at 0.1 CPU (no LLM call).
 
+## Render environment (free class, 512 MB, 0.1 CPU)
+All of these are plain environment variables read by `app/core/config.py` (no code change; `tests/core/test_config_env_overrides.py` covers the PDF ones). Render sets `PORT` (default 10000); the image binds `0.0.0.0:$PORT`.
+
+| Variable | Value | Note |
+|---|---|---|
+| `APP_ENV` | `production` | hides `/docs`, `/redoc`, `/openapi.json`; startup fails without `GROQ_API_KEY` or with `CORS_ORIGINS=*` |
+| `DATABASE_URL` | `postgresql+asyncpg://helphub_app.<ref>:<pw>@aws-0-<region>.pooler.supabase.com:5432/postgres?ssl=require` | session pooler, app role |
+| `MIGRATION_DATABASE_URL` | see open item below | required at startup by the settings class |
+| `JWT_SECRET` | 32+ random characters | rejected if it is the `.env.example` placeholder |
+| `GROQ_API_KEY` | secret | required when `APP_ENV=production` |
+| `CORS_ORIGINS` | frontend origin(s), comma-separated | empty = no CORS headers |
+| `ALLOW_PUBLIC_REGISTRATION` | `false` (default) | flipped to `true` as the very last project step |
+| `PDF_TIMEOUT_SECONDS` | `120` | raised from 10: at 0.1 CPU a 10-page PDF exceeded 10 s in 2 of 2 runs. 120 is the starting value; C7 records the real extraction time |
+| `PDF_CPU_SECONDS` | unset (stays 10) | CPU time, not wall time; kernel `RLIMIT_CPU` backstop |
+| `PDF_MAX_CONCURRENCY` | `1` | a second concurrent upload waits `PDF_QUEUE_WAIT_SECONDS` (5 s) and then gets 503 |
+| `ACCESS_TOKEN_MINUTES` / `REFRESH_TOKEN_DAYS` | `15` / `7` (defaults) | |
+| `RATE_LIMIT_*` | defaults | login 5 per account and 30 global per 60 s; search 60 and chat 10 per user per 60 s; in-process (AR-13, AR-19) |
+
+## Creating tenants (registration is closed)
+From `backend/`, with `DATABASE_URL` (app role, session pooler), `MIGRATION_DATABASE_URL` and `JWT_SECRET` set in the shell:
+`SEED_ADMIN_PASSWORD=... uv run python scripts/seed_tenant.py --name "Acme" --slug acme --email admin@acme.test`
+(omit the variable to be prompted). `scripts/` is not in the image; run it from a checkout.
+
+## Migrations
+Run `uv run alembic upgrade head` with `MIGRATION_DATABASE_URL` = `helphub_owner.<ref>` over the session pooler, from a dev machine or a CI job; never as `postgres` and never from the app's runtime role. `.github/workflows/ci.yml` runs tests only; a deploy-time migrate job is NOT built (deploy session). Migration 0010 adds `refresh_tokens` (RLS in the same migration).
+
+## VERIFY items from the plan (checked 2026-10-17)
+| Item | Status | Evidence |
+|---|---|---|
+| Render free tier pre-deploy command | **VERIFIED: not available**, so migrations run from CI or a dev machine | "The pre-deploy command is available for paid web services, private services, and background workers." https://render.com/docs/deploys (section Pre-deploy command, raw page `deploys.md`) |
+| Time a service has to bind its port / pass health checks after start | **VERIFIED: 15 minutes**, far above the measured 40 to 56 s, so warm-up stays blocking (no code change) | "If this condition is not met within 15 minutes, Render cancels the deploy and continues routing traffic to your service's existing instances." https://render.com/docs/health-checks (Handling failures, New deploy); start command timeout "15 minutes" https://render.com/docs/deploys. The port-binding section states no time limit, only "If Render fails to detect a bound port, your web service's deploy fails" https://render.com/docs/web-services |
+| Does the "60 seconds of failed health checks restarts the instance" rule apply while the instance is still starting | **UNVERIFIED** | The rule is documented for "a running service instance" (https://render.com/docs/health-checks). Our measured start is 40 to 56 s on a dev box; Render's CPU may be slower. Watch the first deploy |
+| Free web service wake-up time | **VERIFIED (Render's figure)**: "This process takes about one minute." https://render.com/docs/free | Our own startup (40 to 56 s measured) is on top of or part of that: not measured on Render |
+| Uptime bot free interval | **VERIFIED for UptimeRobot**: Free plan, 5 minutes, 50 monitors (under the 15-minute spin-down) https://uptimerobot.com/pricing.md | Free-plan terms for a non-personal project not checked: UNVERIFIED |
+| Supabase pause rule | **VERIFIED**: "Free projects are paused after 1 week of inactivity." https://supabase.com/pricing ; "A Free plan project is considered inactive if it does not receive sufficient user database activity over the past week." https://supabase.com/docs/guides/platform/free-project-pausing | |
+| Does `SELECT 1` from `/health/ready` count as database activity | **UNVERIFIED** | The doc says "user database activity" and "user queries" without defining them. Test = leave the project idle past the limit. Cheap hedge: a scheduled CI job doing a real read of a table |
+| Render free RAM | **VERIFIED 512 MB** (spikes.md section 5) | |
+| Backups | **GAP, not built**: Supabase free has none. Options: scheduled `pg_dump` from CI to storage you control, or state the gap in the README | deploy session |
+
 ## Open items
-- [ ] **Render IPv6 to Supabase direct connection: unknown.** Not testable from the dev box. Until answered, do not use the direct host (`db.<ref>.supabase.co`); stay on the session pooler. Test on the first Render deploy and record the result here.
+- [ ] **Render IPv6 to Supabase direct connection: unknown.** Not testable from the dev box. Stay on the session pooler until answered; test on the first Render deploy and record the result here.
+- [ ] **`MIGRATION_DATABASE_URL` is a required setting**, so the runtime service must define it even though the app never uses it (CLAUDE.md: only Alembic uses it). Either make the field optional (code change, not made) or set it on Render to a harmless value; do not put the owner URL on the runtime service.
+- [ ] **Client IPs behind Render's proxy** are not trusted (uvicorn runs without `--proxy-headers`), which is why login limits are per account, not per IP (AR-19).
+- [ ] **Live smoke script** (register or seed, upload, search, chat, delete against the deployed URL): not built.
+- [ ] **Uptime bot** and the keep-alive target (`GET /health/ready`): not configured.
+- [ ] **Memory gate (Gate 0 item 7) is OPEN**: see the container measurement above and the C7 section below.
