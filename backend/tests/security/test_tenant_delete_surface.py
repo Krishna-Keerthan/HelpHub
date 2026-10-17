@@ -4,7 +4,7 @@ import ast
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-TENANTS = ROOT / "app" / "db" / "repositories" / "tenants.py"
+TENANTS = ROOT / "eval" / "tenant_queries.py"
 NAMES = {"delete_by_ids", "_delete_by_ids"}
 
 

@@ -1,4 +1,4 @@
-"""Id-based tenant cleanup functions in repositories/tenants.py (real database)."""
+"""Id-based tenant cleanup functions in eval/tenant_queries.py (real database)."""
 
 import asyncio
 import uuid
@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
-from app.db.repositories import tenants as tenants_repo
+from eval import tenant_queries as tenants_repo
 
 SLUG_RE = r"^eval-[0-9a-f]{12}$"
 SUFFIX = "@eval-harness.example.com"
