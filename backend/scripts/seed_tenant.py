@@ -21,7 +21,7 @@ from app.services import auth as auth_service
 
 async def seed(data: RegisterRequest) -> int:
     try:
-        user, _ = await auth_service.create_tenant_with_admin(data)
+        user = await auth_service.create_tenant_with_admin(data)
     except auth_service.TenantSlugTaken:
         print(f"error: slug '{data.tenant_slug}' is already taken", file=sys.stderr)
         return 1

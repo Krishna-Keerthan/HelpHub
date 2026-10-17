@@ -9,7 +9,11 @@ from pwdlib import PasswordHash
 
 from app.core.config import settings
 
-REQUIRED_CLAIMS = ["exp", "sub", "tid"]
+ACCESS_TYPE = "access"
+REFRESH_TYPE = "refresh"
+# "typ" keeps the two token kinds apart: each is accepted only where it is meant.
+REQUIRED_CLAIMS = ["exp", "sub", "tid", "typ"]
+REFRESH_REQUIRED_CLAIMS = [*REQUIRED_CLAIMS, "jti"]
 
 _password_hash = PasswordHash.recommended()
 
@@ -44,21 +48,42 @@ def create_access_token(
 ) -> str:
     now = datetime.now(UTC)
     expires = expires_delta or timedelta(minutes=settings.access_token_minutes)
-    payload = {**claims, "iat": now, "exp": now + expires}
+    payload = {**claims, "typ": ACCESS_TYPE, "iat": now, "exp": now + expires}
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
-def decode_access_token(token: str) -> dict[str, Any]:
+def create_refresh_token(
+    user_id: uuid.UUID, tenant_id: uuid.UUID, jti: uuid.UUID, expires_at: datetime
+) -> str:
+    payload = {
+        "sub": str(user_id),
+        "tid": str(tenant_id),
+        "jti": str(jti),
+        "typ": REFRESH_TYPE,
+        "iat": datetime.now(UTC),
+        "exp": expires_at,
+    }
+    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def _decode(token: str, typ: str, required: list[str]) -> dict[str, Any]:
     try:
-        return jwt.decode(
+        claims = jwt.decode(
             token,
             settings.jwt_secret,
             algorithms=[settings.jwt_algorithm],
-            options={"require": REQUIRED_CLAIMS},
+            options={"require": required},
         )
     except jwt.PyJWTError as exc:
         # gate-allow: str-exc stored in the exception, never logged (reason is logged)
         raise InvalidTokenError(str(exc), reason=type(exc).__name__) from exc
+    if claims["typ"] != typ:
+        raise InvalidTokenError("wrong token type", reason="wrong_token_type")
+    return claims
+
+
+def decode_access_token(token: str) -> dict[str, Any]:
+    return _decode(token, ACCESS_TYPE, REQUIRED_CLAIMS)
 
 
 @dataclass(frozen=True)
@@ -90,4 +115,24 @@ def parse_token_subject(token: str) -> TokenSubject:
     return TokenSubject(
         user_id=_canonical_uuid(claims["sub"]),
         tenant_id=_canonical_uuid(claims["tid"]),
+    )
+
+
+@dataclass(frozen=True)
+class RefreshClaims:
+    user_id: uuid.UUID
+    tenant_id: uuid.UUID
+    jti: uuid.UUID
+
+
+def parse_refresh_token(token: str) -> RefreshClaims:
+    """Verify signature, expiry and type, then return the ids. No database access.
+
+    The tenant used for the lookup comes from this verified token only.
+    """
+    claims = _decode(token, REFRESH_TYPE, REFRESH_REQUIRED_CLAIMS)
+    return RefreshClaims(
+        user_id=_canonical_uuid(claims["sub"]),
+        tenant_id=_canonical_uuid(claims["tid"]),
+        jti=_canonical_uuid(claims["jti"]),
     )

@@ -28,7 +28,8 @@ class Settings(BaseSettings):
     app_env: Literal["local", "test", "production"] = "local"
     jwt_signing_key: SecretStr = Field(validation_alias="jwt_secret")
     jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
-    access_token_minutes: int = 60
+    access_token_minutes: int = 15
+    refresh_token_days: int = 7
     # Off by default: tenants are created by scripts/seed_tenant.py. It is set to
     # true (ALLOW_PUBLIC_REGISTRATION=true) as the last step of the project.
     allow_public_registration: bool = False

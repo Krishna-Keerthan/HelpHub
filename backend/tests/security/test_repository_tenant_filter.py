@@ -6,7 +6,7 @@ untenanted table) takes a ``tenant_id`` parameter, and every statement it builds
 through a name earlier built from a statement that does.
 
 In EVERY file, tenants.py included, private functions too, any statement that
-mentions a tenant-owned model (User, Document, Chunk, Conversation, ChatMessage)
+mentions a tenant-owned model (User, Document, Chunk, Conversation, ChatMessage, RefreshToken)
 must reference ``tenant_id``. There is no per-function allowlist: a function in
 tenants.py may omit the filter only on statements that touch ``Tenant`` alone.
 """
@@ -20,7 +20,7 @@ REPOSITORIES = Path(__file__).resolve().parents[2] / "app" / "db" / "repositorie
 BUILDERS = {"select", "update", "delete", "insert", "pg_insert", "text"}
 # Pure helpers: they take an already-built tenant statement or only clamp a number.
 EXEMPT = {"chunks.clamp_k"}
-MODELS = {"User", "Document", "Chunk", "Conversation", "ChatMessage"}
+MODELS = {"User", "Document", "Chunk", "Conversation", "ChatMessage", "RefreshToken"}
 SIMPLE = (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.Return, ast.Expr)
 
 
