@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parents[3] / ".env"
@@ -24,11 +24,17 @@ class Settings(BaseSettings):
     # properties below return the plain values for the few call sites.
     database_dsn: SecretStr = Field(validation_alias="database_url")
     migration_database_dsn: SecretStr = Field(validation_alias="migration_database_url")
-    app_env: str = "local"
+    # "production" turns on the hardening in app/main.py and the checks below.
+    app_env: Literal["local", "test", "production"] = "local"
     jwt_signing_key: SecretStr = Field(validation_alias="jwt_secret")
     jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     access_token_minutes: int = 60
-    allow_public_registration: bool = True
+    # Off by default: tenants are created by scripts/seed_tenant.py. It is set to
+    # true (ALLOW_PUBLIC_REGISTRATION=true) as the last step of the project.
+    allow_public_registration: bool = False
+    # Browser origins allowed to call the API, comma-separated (CORS_ORIGINS).
+    # Empty means no CORS headers at all (same-origin or non-browser clients).
+    cors_origins: str = ""
     warm_up_embeddings: bool = True
     # Longest document (in characters, after NUL stripping) accepted for ingestion.
     max_document_chars: int = 500_000
@@ -79,6 +85,24 @@ class Settings(BaseSettings):
                 f"JWT_SECRET must be at least {JWT_SECRET_MIN_LENGTH} characters"
             )
         return value
+
+    @model_validator(mode="after")
+    def _check_production(self) -> "Settings":
+        if self.app_env != "production":
+            return self
+        if "*" in self.cors_origin_list:
+            raise ValueError("CORS_ORIGINS must not contain '*' in production")
+        if not self.groq_api_key.get_secret_value():
+            raise ValueError("GROQ_API_KEY is required in production")
+        return self
+
+    @property
+    def is_production(self) -> bool:
+        return self.app_env == "production"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
     @property
     def database_url(self) -> str:

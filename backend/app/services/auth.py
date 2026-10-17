@@ -39,12 +39,23 @@ def issue_token(user: User) -> str:
 async def register_tenant(
     data: RegisterRequest, *, reserved_ok: bool = False
 ) -> tuple[User, str]:
-    """Create a tenant and its first admin in one transaction.
+    """Public registration: refused unless ``allow_public_registration`` is on.
 
     ``reserved_ok`` is for the evaluation harness only; no API schema carries it.
     """
     if not settings.allow_public_registration:
         raise RegistrationDisabled
+    return await create_tenant_with_admin(data, reserved_ok=reserved_ok)
+
+
+async def create_tenant_with_admin(
+    data: RegisterRequest, *, reserved_ok: bool = False
+) -> tuple[User, str]:
+    """Create a tenant and its first admin; does not look at the registration flag.
+
+    Used by public registration (after its flag check) and by the owner's
+    scripts/seed_tenant.py.
+    """
     if data.tenant_slug.startswith(RESERVED_SLUG_PREFIX) and not reserved_ok:
         raise ReservedSlug
 

@@ -2,6 +2,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.auth import router as auth_router
 from app.api.chat import router as chat_router
@@ -23,11 +24,34 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     await close_groq_client()
 
 
-app = FastAPI(title="HelpHub", lifespan=lifespan)
-app.include_router(health_router)
-app.include_router(auth_router)
-app.include_router(users_router)
-app.include_router(documents_router)
-app.include_router(search_router)
-app.include_router(chat_router)
-app.include_router(conversations_router)
+def create_app() -> FastAPI:
+    """Build the app from the current settings (tests call it with other settings)."""
+    production = settings.is_production
+    application = FastAPI(
+        title="HelpHub",
+        lifespan=lifespan,
+        # The interactive docs and the schema are not served in production.
+        docs_url=None if production else "/docs",
+        redoc_url=None if production else "/redoc",
+        openapi_url=None if production else "/openapi.json",
+    )
+    if settings.cors_origin_list:
+        application.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origin_list,
+            allow_methods=["GET", "POST", "DELETE"],
+            allow_headers=["Authorization", "Content-Type"],
+            allow_credentials=False,  # bearer tokens in headers, no cookies
+            max_age=600,
+        )
+    application.include_router(health_router)
+    application.include_router(auth_router)
+    application.include_router(users_router)
+    application.include_router(documents_router)
+    application.include_router(search_router)
+    application.include_router(chat_router)
+    application.include_router(conversations_router)
+    return application
+
+
+app = create_app()
