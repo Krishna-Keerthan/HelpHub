@@ -12,6 +12,8 @@ from app.main import app
 # Adding a route here is a security decision: it is reachable without a token.
 PUBLIC_ROUTES: set[tuple[str, str]] = {
     ("GET", "/health"),
+    # Readiness probe for the host and the uptime bot; returns only ok/not ready.
+    ("GET", "/health/ready"),
     ("POST", "/auth/register"),
     ("POST", "/auth/login"),
 }
