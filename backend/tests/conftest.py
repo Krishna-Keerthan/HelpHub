@@ -9,6 +9,7 @@ from typing import Any, TypedDict
 import pytest
 from httpx import ASGITransport, AsyncClient
 from pgvector.sqlalchemy import Vector
+from pydantic import SecretStr
 from sqlalchemy import bindparam, text
 from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
@@ -52,6 +53,22 @@ def no_embedding_warm_up() -> Iterator[None]:
     settings.warm_up_embeddings = False
     yield
     settings.warm_up_embeddings = previous
+
+
+@pytest.fixture
+def registration_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Public registration is off by default; tests of that route opt in."""
+    monkeypatch.setattr(settings, "allow_public_registration", True)
+
+
+@pytest.fixture(autouse=True)
+def dummy_groq_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test depends on a developer's real key being in the environment.
+
+    The network is never reached: tests use fakes, or inject a fake client
+    into GroqProvider, which refuses an empty key before using any client.
+    """
+    monkeypatch.setattr(settings, "groq_api_key", SecretStr("gsk-test-not-a-real-key"))
 
 
 @pytest.fixture(autouse=True)
