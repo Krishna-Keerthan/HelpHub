@@ -14,14 +14,6 @@ import json
 import resource
 import sys
 
-ERROR_CODES = (
-    "not_pdf",
-    "encrypted",
-    "too_many_pages",
-    "unreadable",
-    "no_text",
-    "too_large",
-)
 PDF_SIGNATURE = b"%PDF-"
 
 
