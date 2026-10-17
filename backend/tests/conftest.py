@@ -17,6 +17,7 @@ from sqlalchemy.pool import NullPool
 from app.api.deps import get_embedding_provider, get_llm_provider
 from app.core.config import settings
 from app.core.errors import sqlstate_of
+from app.core.ratelimit import limiter
 from app.core.security import create_access_token, hash_password
 from app.main import app
 from app.services.embeddings import FakeEmbeddingProvider
@@ -51,6 +52,14 @@ def no_embedding_warm_up() -> Iterator[None]:
     settings.warm_up_embeddings = False
     yield
     settings.warm_up_embeddings = previous
+
+
+@pytest.fixture(autouse=True)
+def fresh_rate_limiter() -> Iterator[None]:
+    """Limiter state is process-wide; no test inherits another test's attempts."""
+    limiter.reset()
+    yield
+    limiter.reset()
 
 
 @pytest.fixture(autouse=True)

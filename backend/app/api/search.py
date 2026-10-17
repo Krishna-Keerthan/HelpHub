@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.deps import CurrentPrincipal, Embedder
+from app.api.rate_limit import SearchLimit
 from app.schemas.search import SearchHitRead, SearchRequest
 from app.services import search as search_service
 
@@ -27,7 +28,7 @@ def _read(results: list[search_service.TitledHit]) -> list[SearchHitRead]:
 
 # CurrentPrincipal, never CurrentUser/TenantSession: the query is embedded
 # before any transaction opens.
-@router.post("", response_model=list[SearchHitRead])
+@router.post("", response_model=list[SearchHitRead], dependencies=[SearchLimit])
 async def search(
     data: SearchRequest, principal: CurrentPrincipal, provider: Embedder
 ) -> list[SearchHitRead]:

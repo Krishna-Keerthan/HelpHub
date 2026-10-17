@@ -32,6 +32,16 @@ class Settings(BaseSettings):
     # Off by default: tenants are created by scripts/seed_tenant.py. It is set to
     # true (ALLOW_PUBLIC_REGISTRATION=true) as the last step of the project.
     allow_public_registration: bool = False
+    # In-process rate limits per window (see app/core/ratelimit.py, AR-13).
+    # Login is limited per tenant+email and globally (the global cap bounds
+    # Argon2 CPU without relying on client IPs, which are the proxy's behind
+    # Render). Search and chat are limited per authenticated user.
+    rate_limit_enabled: bool = True
+    rate_limit_window_seconds: float = 60.0
+    rate_limit_login_per_account: int = 5
+    rate_limit_login_global: int = 30
+    rate_limit_search_per_user: int = 60
+    rate_limit_chat_per_user: int = 10
     # Browser origins allowed to call the API, comma-separated (CORS_ORIGINS).
     # Empty means no CORS headers at all (same-origin or non-browser clients).
     cors_origins: str = ""

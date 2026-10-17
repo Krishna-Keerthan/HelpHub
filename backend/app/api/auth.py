@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, status
 
 from app.api.deps import CurrentUser
+from app.api.rate_limit import enforce_login
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
 from app.schemas.user import UserRead
 from app.services import auth as auth_service
@@ -35,6 +36,7 @@ async def register(data: RegisterRequest) -> RegisterResponse:
 
 @router.post("/login", response_model=TokenResponse)
 async def login(data: LoginRequest) -> TokenResponse:
+    enforce_login(data)  # 429 before any password hashing
     try:
         token = await auth_service.authenticate(data)
     except auth_service.InvalidCredentials:
