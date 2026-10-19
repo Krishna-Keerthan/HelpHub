@@ -79,8 +79,8 @@ C9 steps 2 to 4 (Argon2 and fastembed-import changes) are shelved: hosted embedd
 - Argon2 variants (s2_1, s2_2, s2_3): **unmeasured**. s2_1 completed its 10 rounds but the result was lost to a sampler parse error (`ValueError` at bench.py:19, a `/meas/sampler.sh:` line in the samples); s2_2 was stopped at round 7; base_c never became ready (400 s); s2_3 failed on connection after the containers were stopped. No PSS or anon figures exist for these.
 - Login latency at 0.1 CPU: **unmeasured**.
 
-### Lost code and the spec to rebuild it
-The uncommitted Argon2/fastembed-import work (app/core/security.py, db/repositories/users.py, services/auth.py, services/embeddings.py, services/users.py, tests/auth/test_auth_flow.py, test_security.py, new tests/auth/test_password_rehash.py) was lost before it could be saved as a patch (the saved patch came out empty and the tree was clean). **None of it was ever run or tested.** Spec:
+### Shelved code and its spec
+The uncommitted Argon2/fastembed-import work (app/core/security.py, db/repositories/users.py, services/auth.py, services/embeddings.py, services/users.py, tests/auth/test_auth_flow.py, test_security.py, new tests/auth/test_password_rehash.py) is shelved, saved outside the repo at `~/c9-shelved/` (patch `c9-argon2-fastembed.patch` plus file copies in `files/`). It was never run or tested. `git apply --check -p1` of the patch succeeds against HEAD 02cc7c7. Spec:
 - Argon2id with m=19456 KiB, t=2, p=1.
 - Async wrappers around hashing and verifying, behind a semaphore of 1 per event loop.
 - Rehash only on successful login.
