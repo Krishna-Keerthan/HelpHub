@@ -87,3 +87,10 @@ The uncommitted Argon2/fastembed-import work (app/core/security.py, db/repositor
 - `DUMMY_HASH` computed with the same parameters.
 - Needs an accepted-risk entry (AR-nn, not yet written): during the transition, old hashes cost more than the dummy hash, so login timing leaks whether an account exists with an old hash.
 - Side effect to handle: `create_user` would hold the semaphore while holding a DB session.
+
+## C9b: why the Cloudflare spike said 32/32 top-5 where B1 said 28/32 (checked 2026-10-19)
+What was verified:
+- The spike script (`stage2.py`, session scratchpad, not in the repo) builds the 24-document eval corpus (49 chunks, same as the ES-era eval), loads the 40 questions (32 answerable, 8 unanswerable) and runs the **Postgres hybrid search** (`repo.search`, k=5, pgvector HNSW + tsvector) over a temp table. A question is a hit if any evidence snippet occurs as a substring in the content of any of the top 5 hits. That is the same relevance as `eval/` (relevant chunk = chunk containing the evidence), so the hit definition and the corpus are not the difference.
+- I re-ran that script with **local vectors only** (no Cloudflare): top-5 hit **32/32**, answerable top score min 0.5479 / median 0.7396, unanswerable median 0.5851 / max 0.7649. So 32/32 does not depend on the hosted embedder.
+- The ES-era eval (`docs/eval/latest.md`, git_sha 2dab2fa80ac0, Elasticsearch keyword branch) has hit@5 vector 31/32 and hybrid 30/32 (dev 20/20 + test 11/12 and 18/20 + 12/12).
+Not verified: the **28/32** figure. It is not in any repo document, in git history (`git log -S`) or in the saved session files I searched, so its hit definition, search mode and corpus are unknown to me. The only checked difference is the search stack (ES keyword branch then, Postgres tsvector now); I did not test that it explains the gap.
