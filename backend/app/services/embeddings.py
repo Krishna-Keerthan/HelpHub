@@ -16,6 +16,8 @@ from typing import Any, Protocol
 
 import numpy as np
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
 EMBEDDING_DIM = 384
@@ -77,7 +79,9 @@ class FastEmbedProvider:
                 from fastembed import TextEmbedding
 
                 cls._model = TextEmbedding(
-                    model_name=cls.model_name, cache_dir=str(MODEL_CACHE_DIR)
+                    model_name=cls.model_name,
+                    cache_dir=str(MODEL_CACHE_DIR),
+                    threads=settings.embedding_threads,
                 )
             return cls._model
 

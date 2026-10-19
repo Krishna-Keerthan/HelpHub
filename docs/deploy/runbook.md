@@ -161,6 +161,30 @@ Reading (baseline idle is very stable, 322.5 to 323.0; baseline round-3 peak is 
 
 Status: the Docker daemon (Docker Desktop, WSL integration) stopped during the third repeat batch (`docker info` now crashes with SIGBUS), so C8.5 repeats (base4, malloc2c, threads1b/c) and the whole of C8.6 were not run, and the gate cannot start its Postgres. This section is therefore uncommitted work.
 
+### C8.5b screening, 5 runs per condition (2026-10-19)
+Same harness as C8.5, 3 rounds per run, 20 runs one container at a time, order rotated each run (ABCD, BCDA, CDAB, DABC, DCBA). Stub LLM, local DB, 0.1 CPU, 512 MB. Every chat 200, every PDF 201, `oom_kill 0` in all 20. Rule fixed beforehand: adopt if (a) mean round-3 peak is at least 10 MB below baseline's mean AND the worst run is not above baseline's worst, or (b) idle is at least 10 MB lower in all runs; otherwise "no demonstrated effect".
+
+| Condition | Idle PSS mean (range) | Round-3 peak mean (min to max) | PSS after load mean (range) | Verdict |
+|---|---|---|---|---|
+| baseline | 323.6 (322.7 to 324.3) | 470.5 (435.8 to 498.5) | 422.9 (409.0 to 435.5) | |
+| `MALLOC_ARENA_MAX=2` | 322.5 (322.2 to 323.1) | 466.3 (433.7 to 497.0) | 411.4 (387.9 to 433.1) | no demonstrated effect (peak -4.2, idle -1.1) |
+| `threads=1` | **309.8** (307.3 to 311.5) | **447.8** (431.5 to 485.0) | 402.2 (374.6 to 423.6) | **adopt**: (a) peak -22.7, worst 485.0 <= 498.5; (b) idle -12 to -16 in 5 of 5 |
+| both | 310.7 (301.9 to 321.7) | 447.9 (432.4 to 476.0) | 384.0 (368.8 to 412.0) | meets (a), but nothing beyond threads=1 alone; malloc part has no effect |
+
+Adopted: `threads=1`. fastembed has no environment variable for it, so it is `EMBEDDING_THREADS` (a setting, default unset = library default) and `ENV EMBEDDING_THREADS=1` in the Dockerfile. Rejected levers stay recorded: `MALLOC_ARENA_MAX=2`, ONNX arena off (C8.5), pool 2/0 (C8.5), single worker (already the case).
+Plausible reason (not tested): the container sees all host cores while holding a 0.1 CPU share, so onnxruntime sizes its thread pool to the host.
+
+### C8.3b what the model-load step is made of (report only, no change)
+One process, same limits, `/proc/self/smaps_rollup` (MB):
+
+| | Rss | Pss | Pss_Anon | Pss_File |
+|---|---|---|---|---|
+| before (interpreter) | 25.0 | 25.0 | 15.7 | 9.3 |
+| after `import app.services.embeddings` | 34.6 | 34.6 | 19.3 | 15.3 |
+| after warm-up | 266.2 | 266.2 | 223.9 | 42.3 |
+
+Warm-up adds 204.6 MB anon and 27.0 MB file-backed. On disk the cache holds one 66.5 MB ONNX file plus a 0.7 MB file (67.2 MB of regular files). So the anonymous memory is about 3 times the model file size; what it consists of was not measured.
+
 ### C8.7 Render web instance types (read 2026-10-19)
 RAM and CPU: https://render.com/docs/compute-plans (web service table). Price: https://render.com/pricing.md ("Services & Workers" table; the compute-plans page itself has no prices and says to see the pricing page; https://render.com/pricing returned no table and https://render.com/docs/pricing is a 404). Both pages were read through a page-to-text tool that summarises, so transcription was not checked against the live page by eye.
 

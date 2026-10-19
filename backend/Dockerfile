@@ -23,7 +23,7 @@ COPY app ./app
 COPY alembic ./alembic
 COPY alembic.ini ./
 ENV PATH=/srv/backend/.venv/bin:$PATH PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
-    HF_HUB_OFFLINE=1
+    HF_HUB_OFFLINE=1 EMBEDDING_THREADS=1
 USER app
 EXPOSE 8000
 # Render sets PORT; 8000 locally. exec so uvicorn is PID 1 and gets SIGTERM.

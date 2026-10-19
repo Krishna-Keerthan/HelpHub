@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     # Empty means no CORS headers at all (same-origin or non-browser clients).
     cors_origins: str = ""
     warm_up_embeddings: bool = True
+    # onnxruntime threads for the embedding model; unset lets it use every host
+    # core, which at a 0.1 CPU share costs memory (docs/deploy/runbook.md, C8.5).
+    embedding_threads: int | None = Field(default=None, ge=1)
     # Longest /health/ready waits for SELECT 1 before answering 503. At 0.1 CPU
     # under load the default was exceeded once (docs/deploy/runbook.md, C7).
     ready_timeout_seconds: float = Field(default=5.0, gt=0)

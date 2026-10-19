@@ -193,3 +193,24 @@ async def test_embedding_does_not_block_the_event_loop():
     expected = duration / 0.01
     assert expected >= 10, f"embedding too fast ({duration:.3f}s) to be meaningful"
     assert ticks >= 0.2 * expected, f"{ticks} ticks in {duration:.2f}s"
+
+
+def test_model_gets_the_configured_thread_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, object] = {}
+
+    class Recorder:
+        def __init__(self, **kwargs: object) -> None:
+            seen.update(kwargs)
+
+    import fastembed
+
+    monkeypatch.setattr(fastembed, "TextEmbedding", Recorder)
+    monkeypatch.setattr(FastEmbedProvider, "_model", None)
+    monkeypatch.setattr(settings, "embedding_threads", 1)
+
+    FastEmbedProvider._get_model()
+
+    assert seen["threads"] == 1
+    FastEmbedProvider._model = None  # do not leave the recorder as the shared model

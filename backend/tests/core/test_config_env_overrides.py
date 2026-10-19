@@ -44,3 +44,17 @@ def test_ready_timeout_must_be_positive(
     monkeypatch.setenv("READY_TIMEOUT_SECONDS", value)
     with pytest.raises(ValidationError):
         Settings(_env_file=None, **BASE)  # type: ignore[arg-type]
+
+
+def test_embedding_threads_unset_by_default_and_overridable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("EMBEDDING_THREADS", raising=False)
+    assert Settings(_env_file=None, **BASE).embedding_threads is None  # type: ignore[arg-type]
+
+    monkeypatch.setenv("EMBEDDING_THREADS", "1")
+    assert Settings(_env_file=None, **BASE).embedding_threads == 1  # type: ignore[arg-type]
+
+    monkeypatch.setenv("EMBEDDING_THREADS", "0")
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, **BASE)  # type: ignore[arg-type]
