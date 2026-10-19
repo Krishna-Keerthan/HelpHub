@@ -111,6 +111,28 @@ Measurement setup for all C8 numbers: image built from the repo, `--memory=512m 
 - Time to ready (`docker run` to first `/health` 200), local DB, 0.1 CPU: before 43.8, 45.8, 44.3 s (mean 44.6); after 41.8, 42.4, 43.3 s (mean 42.5). Difference of about 2 s with n=3 each; not shown to be more than noise.
 - Still logged at start, not changed: onnxruntime `Failed to persist telemetry device ID; using an in-memory identifier` (a warning, not a failure).
 
+### C8.4 memory attribution (PSS, MB, whole process tree)
+Method: one Python process in the container (`--memory=512m --memory-swap=512m --cpus=0.1`, uid 1000, `WARM_UP_EMBEDDINGS=false`), PSS read from `/proc/<pid>/smaps_rollup` for the process and all its children at the end of each stage; "peak" is the maximum of a 0.1 s sampler thread during the stage. Stages 6 and later go through the real app via an in-process ASGI client (no uvicorn HTTP layer, no concurrency), stub LLM, local DB. Two full runs; both settled values shown (run 1 / run 2).
+
+| Stage | PSS settled | Added by stage | Peak during stage |
+|---|---|---|---|
+| 1 interpreter start | 14.4 / 14.6 | | |
+| 2 after imports (`app.api.*`, services) | 89.5 / 89.3 | +75.1 / +74.7 | 111.8 / 111.8 |
+| 3 after app creation (`import app.main`) | 89.6 / 89.3 | +0.1 / 0.0 | |
+| 4 after first DB pool use (`SELECT 1`) | 91.3 / 91.0 | +1.7 / +1.7 | |
+| 5 after warm-up (fastembed import + model load) | 321.5 / 320.5 | **+230.2 / +229.5** | |
+| 6 after one embedding (query) | 323.1 / 322.1 | +1.6 / +1.6 | |
+| 7 extra: register + login (Argon2) | 333.7 / 333.0 | +10.6 / +10.9 | **397.7 / 397.1** (+64) |
+| 8 extra: one text document ingest | 334.8 / 334.1 | +1.1 / +1.1 | |
+| 9 after one chat (stub LLM, 3,178 bytes) | 336.5 / 335.7 | +1.7 / +1.6 | |
+| 10 after one 10-page PDF upload (includes embedding its chunks) | 374.9 / 377.0 | **+38.4 / +41.3** | 375.7 / 377.0; extraction child alone 27.6 (run 2, sampled) |
+| 11 two seconds later | 374.9 / 377.0 | 0 | |
+
+- **The stage that adds the most is warm-up (fastembed import plus loading the ONNX model): about +230 MB, 70% of the 321 MB at ready.** Imports are second (+75 MB). Among request-time stages the PDF upload is the largest (+38 to +41 MB settled, not released afterwards).
+- The PDF stage mixes extraction (child process, at most 27.6 MB sampled) with embedding its chunks in the parent; this run does not separate the parent's growth between them.
+- Argon2 (register or login) adds a transient 64 MB peak (+10 MB retained). Importing `app.core.security` also hashes a dummy password at import (`DUMMY_HASH`), visible as the 111.8 MB peak in stage 2.
+- Single request at a time. Concurrent chats, several documents and a longer-lived process are not in this table (C8.6 covers load).
+
 ## Open items
 - [ ] **Render IPv6 to Supabase direct connection: unknown.** Not testable from the dev box. Stay on the session pooler until answered; test on the first Render deploy and record the result here.
 - [x] **`MIGRATION_DATABASE_URL` is optional for the app** (C8): leave it unset on the runtime service; set it only where `alembic upgrade head` runs. Never put the owner URL on the runtime service.
