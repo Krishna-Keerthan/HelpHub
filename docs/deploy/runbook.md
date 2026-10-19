@@ -133,6 +133,55 @@ Method: one Python process in the container (`--memory=512m --memory-swap=512m -
 - Argon2 (register or login) adds a transient 64 MB peak (+10 MB retained). Importing `app.core.security` also hashes a dummy password at import (`DUMMY_HASH`), visible as the 111.8 MB peak in stage 2.
 - Single request at a time. Concurrent chats, several documents and a longer-lived process are not in this table (C8.6 covers load).
 
+### C8.5 one lever at a time (2026-10-19; NOT committed, see status)
+Setup as C8.4 but the real uvicorn server: one container under `--memory=512m --memory-swap=512m --cpus=0.1`, local DB, stub LLM, a 1 s PSS sampler inside the container (python and uvicorn processes, children included). One run = start, 12 s idle, 3 rounds of (login, then 5 chats and 1 unique 10-page PDF at once), 6 s idle. The first attempt at this batch ran two copies of the script at once (shared container name and port) and was discarded entirely; the numbers below are from clean single runs. A fourth container run (threads1b) died with the Docker daemon (below) and is not counted.
+
+| Run | Lever | Time to ready (s) | Idle PSS (MB) | Round peak PSS, rounds 1/2/3 (MB) | PSS 6 s after load (MB) | oom_kill |
+|---|---|---|---|---|---|---|
+| base1 | none (serve wrapper = image CMD) | 43.2 | 322.8 | 388.0 / 437.6 / 438.6 | 419.7 | 0 |
+| base2 | none | 44.3 | 322.5 | 388.3 / 452.5 / 453.9 | 435.0 | 0 |
+| base3 | none | 43.3 | 323.0 | 389.1 / 453.5 / 499.6 | 435.7 | 0 |
+| cmd_unmodified | image CMD as shipped (single uvicorn, no reload, no workers flag) | 43.6 | 322.8 | 388.6 / 452.7 / 498.5 | 434.8 | 0 |
+| threads1 | `TextEmbedding(threads=1)` | 42.1 | **310.9** | 377.4 / 441.6 / 442.1 | **378.3** | 0 |
+| malloc2 | `MALLOC_ARENA_MAX=2` | 43.1 | 322.0 | 387.1 / 432.6 / 433.1 | 369.3 | 0 |
+| malloc2b | `MALLOC_ARENA_MAX=2` | 35.9 | 322.2 | 387.4 / 433.0 / 433.2 | 413.5 | 0 |
+| noarena | `TextEmbedding(enable_cpu_mem_arena=False)` | 41.8 | 310.6 | 412.1 / 474.8 / **521.1** | 451.3 | 0 |
+| pool2 | engine `pool_size=2, max_overflow=0` | 43.1 | 323.2 | 388.4 / 434.2 / 435.0 | 416.2 | 0 |
+
+Library documentation quoted (fastembed 0.9.0, `TextEmbedding.__init__` docstring): "threads (int, optional): The number of threads single onnxruntime session can use. Defaults to None." The code sets `intra_op_num_threads` and `inter_op_num_threads` to it. `enable_cpu_mem_arena` is the only exposed ONNX session option (`EXPOSED_SESSION_OPTIONS = ("enable_cpu_mem_arena",)`), passed as a keyword argument.
+
+Reading (baseline idle is very stable, 322.5 to 323.0; baseline round-3 peak is NOT: 438.6, 453.9, 499.6, 498.5, a 61 MB spread, so single runs cannot show a 10 MB peak effect):
+- **Single uvicorn worker, no reload**: no effect, because it is already the shipped configuration (cmd_unmodified matches the baselines). Nothing to change.
+- **DB pool size 2/0**: no effect (idle +0.4, peak within baseline range). Not kept.
+- **ONNX memory arena off**: idle -12.2 but peaks +22 to +67 over the baselines (round 3: 521.1) and slower first round. Worse for the peak criterion. Not kept.
+- **threads=1**: idle -11.9 MB (n=1; baseline n=4), peak inside the baseline range, PSS after load 378.3 vs 419.7 to 435.7. Meets the 10 MB rule on idle, but from ONE complete run (the repeat was lost). Candidate.
+- **MALLOC_ARENA_MAX=2**: idle unchanged; round-3 peak 433.1 and 433.2 (n=2) vs baseline mean 472.7, i.e. -39.5 MB against the mean but only -5.5 MB against the lowest baseline (438.6). All 2 malloc runs are below all 4 baselines (chance of that with no effect: 1 in 15). After-load PSS 369.3 and 413.5. Candidate, not conclusive.
+- Not applied to the code or Dockerfile: the confirmation runs could not be completed (below).
+- Chat latency in the loaded rounds (7 to 11 s, stub LLM) and PDF (42 to 70 s whole request under load) did not differ between levers beyond run-to-run spread.
+
+Status: the Docker daemon (Docker Desktop, WSL integration) stopped during the third repeat batch (`docker info` now crashes with SIGBUS), so C8.5 repeats (base4, malloc2c, threads1b/c) and the whole of C8.6 were not run, and the gate cannot start its Postgres. This section is therefore uncommitted work.
+
+### C8.7 Render web instance types (read 2026-10-19)
+RAM and CPU: https://render.com/docs/compute-plans (web service table). Price: https://render.com/pricing.md ("Services & Workers" table; the compute-plans page itself has no prices and says to see the pricing page; https://render.com/pricing returned no table and https://render.com/docs/pricing is a 404). Both pages were read through a page-to-text tool that summarises, so transcription was not checked against the live page by eye.
+
+| Plan ID | CPU | RAM | Price |
+|---|---|---|---|
+| `free` | 0.1 CPU (pricing page says only "Free") | 512 MB | $0/month |
+| `0.5c-512mb` (legacy `starter`) | 0.5 CPU | 512 MB | $7/month |
+| `1c-2g` (legacy `standard`) | 1 CPU | 2 GB | $25/month |
+| `2c-4g` (legacy `pro`) | 2 CPU | 4 GB | $85/month |
+| `2c-8g` | 2 CPU | 8 GB | $135/month |
+| `2c-16g` | 2 CPU | 16 GB | $200/month |
+| `4c-8g` (legacy `pro_plus`) | 4 CPU | 8 GB | $175/month |
+| `4c-16g` (legacy `pro_max`) | 4 CPU | 16 GB | $225/month |
+| `4c-32g` | 4 CPU | 32 GB | $350/month |
+| `8c-16g` | 8 CPU | 16 GB | $300/month |
+| `8c-32g` (legacy `pro_ultra`) | 8 CPU | 32 GB | $450/month |
+| `8c-64g` | 8 CPU | 64 GB | $1,000/month |
+| `12c-24g` | 12 CPU | 24 GB | $450/month |
+| `12c-48g` | 12 CPU | 48 GB | $800/month |
+| `12c-96g` | 12 CPU | 96 GB | $1,500/month |
+
 ## Open items
 - [ ] **Render IPv6 to Supabase direct connection: unknown.** Not testable from the dev box. Stay on the session pooler until answered; test on the first Render deploy and record the result here.
 - [x] **`MIGRATION_DATABASE_URL` is optional for the app** (C8): leave it unset on the runtime service; set it only where `alembic upgrade head` runs. Never put the owner URL on the runtime service.
