@@ -59,3 +59,31 @@ Setup: local WSL2 box, `uvicorn app.main:app` single process (not a container), 
 - `eval-` reserved slug (app/services/auth.py): **stays.** Registration is public until the end of the project, and the Session D eval runner will create throw-away `eval-<hex>` tenants that a cleanup will sweep by slug regex (the moved queries were deleted in B0 as caller-less; recoverable from `pre-lean`). Without the reservation a real tenant could match that regex. Revisit when the runner exists; the gate 0 item 6 exception is this one line.
 - ES-bound eval code (guard, run_eval, lifecycle, journal, cleanup) deleted, not kept: owner decision during Session A (plan did not cover it). Recoverable from tag `pre-lean`. Session D rebuilds the slim eval.
 - AR-04, 06, 12, 14 are CLOSED tombstone rows (gate_checks requires a gap-free id sequence): AR-12 and AR-14 beyond the plan, because their trigger no longer exists (`/health/db` route deleted in A2.1; the 0007 CHECK dropped by 0008).
+
+## C9 Step 0/1 findings (shelved)
+C9 steps 2 to 4 (Argon2 and fastembed-import changes) are shelved: hosted embeddings (Cloudflare, pooling "cls") replace the local model in production. Source: Session scratchpad `results/base_a.*`, `results/base_b.*`, `base_*.out`, `an.py`. Image `helphub-backend:c9-base`, 512 MB / 0.1 CPU container, 10 rounds each (5 chat + 1 PDF upload per round), all requests HTTP 200, no OOM kill. Samples: base_a 461 lines, base_b 401 lines (about 1.2 s apart).
+
+| | base_a | base_b |
+|---|---|---|
+| time to ready (s) | 73.7 | 49.5 |
+| idle PSS (MB) | 323.9 | 323.6 |
+| per-round peak PSS (MB) | 390.2, 453.3, 453.6, 454.1, 490.4, 490.5, 490.4, 491.0, 489.8, 489.9 | 388.6, 430.0, 431.6, 431.8, 397.3, 442.6, 443.5, 448.2, 449.2, 450.7 |
+| cgroup anon at round peak (MB) | 338.4, 338.7, 403.0, 403.5, 448.7, 448.7, 448.7, 449.3, 449.3, 449.3 | 339.5, 384.5, 385.6, 385.8, 386.0, 431.1, 431.3, 431.5, 431.5, 431.6 |
+| PSS after idle (MB) | 425.9 | 387.5 |
+| max PSS (MB) | 491.0 | 450.7 |
+
+- Structure: anon grows in steps of about 45 to 65 MB (base_a at rounds 3 and 5, base_b at rounds 2 and 6) and then stays flat; it does not return to idle after the load stops (after-idle PSS 387 to 426 MB vs idle 324 MB). The allocator (glibc arenas, fragmentation) was **not measured**, so the cause of the steps is unmeasured.
+- Plateau: base_a settles at 489.8 to 491.0 MB, base_b at 442.6 to 450.7 MB. The "447 to 490 MB" range is the span of plateau values over base_a, base_b and the earlier C8 runs. The 447 end is not in the base_a/base_b files: the nearest saved figure is the runbook C8.5 `threads=1` mean peak of 447.8 (docs/deploy/runbook.md); sample counts for the earlier runs are **unmeasured** here. The base_a/base_b counts are the 10 rounds and the sample lines above.
+- Run-to-run spread: about 40 MB (base_a plateau minus base_b plateau = 490.4 - 450.7 = 39.7 at the extremes). It is a range from two runs of the same image, not a statistic (n=2, no interval).
+- Retained during embedding: about 40 MB stays in the API process during embedding. This figure comes from the Step 1 attribution and is not in the saved result files: **unmeasured** in the data re-read for this entry.
+- Argon2 variants (s2_1, s2_2, s2_3): **unmeasured**. s2_1 completed its 10 rounds but the result was lost to a sampler parse error (`ValueError` at bench.py:19, a `/meas/sampler.sh:` line in the samples); s2_2 was stopped at round 7; base_c never became ready (400 s); s2_3 failed on connection after the containers were stopped. No PSS or anon figures exist for these.
+- Login latency at 0.1 CPU: **unmeasured**.
+
+### Lost code and the spec to rebuild it
+The uncommitted Argon2/fastembed-import work (app/core/security.py, db/repositories/users.py, services/auth.py, services/embeddings.py, services/users.py, tests/auth/test_auth_flow.py, test_security.py, new tests/auth/test_password_rehash.py) was lost before it could be saved as a patch (the saved patch came out empty and the tree was clean). **None of it was ever run or tested.** Spec:
+- Argon2id with m=19456 KiB, t=2, p=1.
+- Async wrappers around hashing and verifying, behind a semaphore of 1 per event loop.
+- Rehash only on successful login.
+- `DUMMY_HASH` computed with the same parameters.
+- Needs an accepted-risk entry (AR-nn, not yet written): during the transition, old hashes cost more than the dummy hash, so login timing leaks whether an account exists with an old hash.
+- Side effect to handle: `create_user` would hold the semaphore while holding a DB session.
