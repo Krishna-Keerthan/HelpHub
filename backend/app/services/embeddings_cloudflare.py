@@ -6,9 +6,12 @@ this module. Retries: at most ``MAX_RETRIES``, only on HTTP 429 and 5xx.
 """
 
 import asyncio
+import json
 import logging
+import math
 import random
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -150,3 +153,39 @@ class CloudflareEmbeddingProvider:
 
     async def embed_query(self, text: str) -> list[float]:
         return (await self._post([text]))[0]
+
+
+REFERENCE_FILE = Path(__file__).with_name("embedding_reference.json")
+REFERENCE_MIN_COSINE = 0.999
+
+
+def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
+    return dot / (math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b)))
+
+
+async def reference_cosine(provider: CloudflareEmbeddingProvider) -> float:
+    """Cosine between the hosted vector of the fixed sentence and the stored local one."""
+    reference = json.loads(REFERENCE_FILE.read_text())
+    hosted = (await provider.embed_passages([reference["sentence"]]))[0]
+    return _cosine(hosted, reference["vector"])
+
+
+async def warn_if_reference_differs(provider: CloudflareEmbeddingProvider) -> None:
+    """Startup check, log-only: a mismatch or an outage never blocks readiness."""
+    try:
+        cosine = await reference_cosine(provider)
+    except Exception as exc:  # noqa: BLE001 - startup check must never raise
+        logger.warning(
+            "embedding reference check skipped: error=%s", type(exc).__name__
+        )
+        return
+    if cosine < REFERENCE_MIN_COSINE:
+        logger.warning(
+            "embedding reference check FAILED: cosine=%.6f min=%s; hosted vectors "
+            "may not match the stored ones (pooling or model changed?)",
+            cosine,
+            REFERENCE_MIN_COSINE,
+        )
+    else:
+        logger.info("embedding reference check ok: cosine=%.6f", cosine)

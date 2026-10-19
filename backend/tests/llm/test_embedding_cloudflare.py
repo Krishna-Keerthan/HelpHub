@@ -208,3 +208,67 @@ def test_cloudflare_provider_requires_credentials() -> None:
             cloudflare_account_id="",
             cloudflare_api_token="",
         )
+
+
+def _reference_vector(cosine_target: float) -> list[float]:
+    """A vector whose cosine with the stored reference is ``cosine_target``."""
+    ref = json.loads(cf.REFERENCE_FILE.read_text())["vector"]
+    # Mix in an orthogonal component: ref has 384 entries, so build one by rotating.
+    other = ref[1:] + ref[:1]
+    dot = sum(a * b for a, b in zip(ref, other, strict=True))
+    nr = sum(a * a for a in ref)
+    ortho = [b - dot / nr * a for a, b in zip(ref, other, strict=True)]
+    no = sum(a * a for a in ortho) ** 0.5
+    s = (1 - cosine_target**2) ** 0.5
+    return [
+        cosine_target * a / nr**0.5 + s * o / no
+        for a, o in zip(ref, ortho, strict=True)
+    ]
+
+
+def _vector_handler(vector: list[float]):
+    def handler(request: httpx.Request) -> httpx.Response:
+        texts = json.loads(request.content)["text"]
+        return httpx.Response(200, json={"result": {"data": [vector] * len(texts)}})
+
+    return handler
+
+
+async def test_reference_cosine_matches_stored_vector() -> None:
+    p, _ = provider(_vector_handler(_reference_vector(0.9995)))
+    assert round(await cf.reference_cosine(p), 4) == 0.9995
+
+
+async def test_reference_mismatch_logs_a_warning_and_does_not_raise(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    p, _ = provider(_vector_handler(_reference_vector(0.9)))
+    await cf.warn_if_reference_differs(p)
+    assert "reference check FAILED" in caplog.text
+
+
+async def test_reference_check_survives_an_outage(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    p, _ = provider(lambda r: httpx.Response(500))
+    await cf.warn_if_reference_differs(p)
+    assert "reference check skipped" in caplog.text
+
+
+@pytest.mark.skipif(
+    not (
+        settings.cloudflare_account_id.get_secret_value()
+        and settings.cloudflare_api_token.get_secret_value()
+    ),
+    reason="needs CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN",
+)
+async def test_live_hosted_vector_matches_the_local_reference(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Opt-in: runs only when credentials are present; spends about 0.2 neurons."""
+    monkeypatch.undo()  # the autouse fixture replaced the real credentials
+    try:
+        cosine = await cf.reference_cosine(cf.CloudflareEmbeddingProvider())
+    finally:
+        await cf.close_client()
+    assert cosine >= cf.REFERENCE_MIN_COSINE
