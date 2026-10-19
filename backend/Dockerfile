@@ -10,6 +10,9 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 # Bake the fastembed model into the path app/services/embeddings.py reads.
 RUN /srv/backend/.venv/bin/python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='BAAI/bge-small-en-v1.5', cache_dir='/srv/backend/.cache/fastembed')"
+# huggingface_hub writes trees/*.json as 0600 root; the non-root runtime user
+# must be able to read them (read-only: it never writes the cache).
+RUN chmod -R a+rX,go-w /srv/backend/.cache
 
 FROM python:3.12-slim-bookworm
 RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin app

@@ -95,11 +95,20 @@ Against the criteria fixed in advance:
 - **PDF upload succeeds at a wall timeout of 120 s or less:** extraction alone (10.5 to 15.7 s) is well inside 120 s. Whole uploads under chat load took up to 148.3 s, and one of 10 returned 500 with an unknown cause. Not demonstrated.
 - The cgroup sat at its 512 MB limit and reclaimed 1,017 times; round 9 of the concurrency-1 run took 325 s. Plausibly reclaim thrash, not verified.
 
-Two defects seen in the container log (not fixed, found during C7):
+Two defects seen in the container log (found during C7; the first is fixed in C8.2, see below):
 - `Ignoring corrupted tree cache file ... [Errno 13] Permission denied` under `/srv/backend/.cache/fastembed`: the baked model cache is not accessible as the non-root user for writes. It loaded and worked (HF_HUB_OFFLINE=1).
 - `readiness check failed: error=TimeoutError` once, during load (the 5 s `SELECT 1` timeout at 0.1 CPU).
 
 Options (not chosen, for the owner): a larger instance class or CPU share; a smaller or lazily loaded embedding model; lower PDF limits (smaller `pdf_memory_bytes`, fewer pages) and PDF concurrency 1; moving PDF extraction out of the web process; fewer concurrent chats per instance; accept the free class for a demo with concurrency 1 and a documented 500-or-slow tail.
+
+## C8 follow-up (2026-10-19)
+Measurement setup for all C8 numbers: image built from the repo, `--memory=512m --memory-swap=512m --cpus=0.1`, scratch Postgres 16 + pgvector in a sibling container on the same Docker network (migrated with `alembic upgrade head` from the image; **no WAN latency**, unlike C7's Supabase pooler), Groq replaced by a local stub that streams 60 chunks (**no real Groq**: the key lives in `.env`, which is off limits). Absolute times therefore differ from C7; compare within C8 only.
+
+### C8.2 baked model cache readable by the app user
+- Cause: `huggingface_hub` wrote `trees/*.json` as mode 600 root; the `app` user (uid 10001) got `Errno 13` and logged "Ignoring corrupted tree cache file". Fix: `chmod -R a+rX,go-w /srv/backend/.cache` in the build stage (`backend/Dockerfile`). CI now asserts no cache file lacks the world-read bit (the check finds 1 file on the old image, 0 on the new).
+- Model not downloaded at start: container started with `--network none` reached "Application startup complete"; `docker diff` empty and the cache file listing (path, size, mtime) identical before and after start. `HF_HUB_OFFLINE=1` is also set.
+- Time to ready (`docker run` to first `/health` 200), local DB, 0.1 CPU: before 43.8, 45.8, 44.3 s (mean 44.6); after 41.8, 42.4, 43.3 s (mean 42.5). Difference of about 2 s with n=3 each; not shown to be more than noise.
+- Still logged at start, not changed: onnxruntime `Failed to persist telemetry device ID; using an in-memory identifier` (a warning, not a failure).
 
 ## Open items
 - [ ] **Render IPv6 to Supabase direct connection: unknown.** Not testable from the dev box. Stay on the session pooler until answered; test on the first Render deploy and record the result here.

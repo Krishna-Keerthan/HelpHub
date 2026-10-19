@@ -104,4 +104,7 @@ jobs:
           import app.main
           from app.services.embeddings import MODEL_CACHE_DIR
           assert any(MODEL_CACHE_DIR.rglob('*.onnx')), 'embedding model not baked'
+          import stat
+          unreadable = [p for p in MODEL_CACHE_DIR.rglob('*') if p.is_file() and not p.stat().st_mode & stat.S_IROTH]
+          assert not unreadable, f'cache files not readable by the app user: {len(unreadable)}'
           print('ok')"
