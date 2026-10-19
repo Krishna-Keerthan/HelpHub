@@ -172,7 +172,7 @@ Same harness as C8.5, 3 rounds per run, 20 runs one container at a time, order r
 | both | 310.7 (301.9 to 321.7) | 447.9 (432.4 to 476.0) | 384.0 (368.8 to 412.0) | meets (a), but nothing beyond threads=1 alone; malloc part has no effect |
 
 Adopted: `threads=1`. fastembed has no environment variable for it, so it is `EMBEDDING_THREADS` (a setting, default unset = library default) and `ENV EMBEDDING_THREADS=1` in the Dockerfile. Rejected levers stay recorded: `MALLOC_ARENA_MAX=2`, ONNX arena off (C8.5), pool 2/0 (C8.5), single worker (already the case).
-Plausible reason (not tested): the container sees all host cores while holding a 0.1 CPU share, so onnxruntime sizes its thread pool to the host.
+**Correction (C8.5c below): the idle gain in this table was largely an artifact of the test wrapper, which imported `fastembed` in the main thread for the `threads=1` and `both` runs. The threads=1 effect on the shipped code is smaller than this table shows.**
 
 ### C8.3b what the model-load step is made of (report only, no change)
 One process, same limits, `/proc/self/smaps_rollup` (MB):
@@ -184,6 +184,48 @@ One process, same limits, `/proc/self/smaps_rollup` (MB):
 | after warm-up | 266.2 | 266.2 | 223.9 | 42.3 |
 
 Warm-up adds 204.6 MB anon and 27.0 MB file-backed. On disk the cache holds one 66.5 MB ONNX file plus a 0.7 MB file (67.2 MB of regular files). So the anonymous memory is about 3 times the model file size; what it consists of was not measured.
+
+### C8.5c control for the wrapper artifact (2026-10-19)
+3 runs each, order rotated, 3 rounds, same harness. "Import-only" = test wrapper imports `fastembed` in the main thread, nothing else changed (image without the threads setting). "Wrapper threads=1" = the screening wrapper. "Real" = the shipped code, `EMBEDDING_THREADS=1` from the Dockerfile ENV, image CMD, no wrapper.
+
+| Condition | Idle PSS (MB) | Round-3 peak (MB) | PSS after load (MB) |
+|---|---|---|---|
+| baseline (C8.5b, n=5) | 323.6 (322.7 to 324.3) | 470.5 (435.8 to 498.5) | 422.9 |
+| import-only | 308.8, 312.1, 312.0 | 457.5, 469.1, 440.8 | 393.6, 405.2, 376.8 |
+| wrapper threads=1 | 312.3, 309.2, 311.8 | 443.1, 428.6, 469.8 | 379.3, 364.7, 403.2 |
+| real threads=1 | 314.7, 314.9, 314.6 | 444.7, 445.7, 488.8 | 425.8, 426.6, 425.1 |
+| real threads=1, C8.6 run | 323.5 | 439.7 (round 3) | 422.0 |
+
+- Importing fastembed in the main thread alone lowers idle by 10.6 to 15.5 MB in 3 of 3 runs vs the baseline range; it matches the wrapper's threads=1 result, so that gain was not from threads.
+- The shipped threads=1 code: idle 314.6 to 314.9 in 3 runs (-9 vs baseline mean, below the 10 MB bar) but 323.5 in the C8.6 run (no change). Round-3 peak over its 4 runs (439.7, 444.7, 445.7, 488.8): mean 454.7 vs 470.5, worst 488.8 vs 498.5. That still meets rule (a) numerically, but the run-to-run spread (about 50 to 60 MB) is larger than the effect, and the idle rule (b) is NOT met. Kept as shipped (rule (a)); the evidence for it is weak.
+- New candidate, NOT adopted (it is code, not an ENV): import fastembed at startup in the main thread. Not tested on the shipped code path, only through the wrapper.
+
+### C8.6 criteria re-run (2026-10-19, image with `EMBEDDING_THREADS=1`)
+Setup: image CMD as shipped, `--memory=512m --memory-swap=512m --cpus=0.1`, `PDF_MAX_CONCURRENCY=1`, `PDF_TIMEOUT_SECONDS=120`, `APP_ENV=production`, local DB, **Groq stub (GROQ_API_KEY is not available to this session, so NOT real Groq)**, 10 rounds, each: login, then 5 chats and 1 unique 10-page PDF at once. PSS and cgroup anon sampled every 1 s, so shorter spikes (the 64 MB Argon2 transient) can be missed. Container log saved (`results/c86.log` in the scratchpad).
+
+| Round | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| PSS peak (MB) | 388.9 | 438.7 | 439.7 | 440.2 | 485.4 | 485.4 | 485.6 | 485.7 | 485.9 | 485.8 |
+| cgroup anon at that sample (MiB) | 339.4 | 387.5 | 388.4 | 389.0 | 434.2 | 434.2 | 370.3 | 434.4 | 434.5 | 434.5 |
+| PDF upload, whole request (s) | 75.3 | 68.3 | 66.7 | 63.4 | 70.4 | 59.2 | 64.9 | 69.5 | 69.2 | 64.4 |
+
+- Time to ready 61.8 s; idle PSS 323.5 MB; PSS 6 s after the last round 422.0 MB. Memory steps up at rounds 2 and 5 and is flat for rounds 5 to 10; 10 rounds cannot rule out slower growth.
+- `memory.events`: `oom 0`, `oom_kill 0`, `max 31` (C7: 1017). `memory.stat` anon at the end: 388,788,224 bytes (370.8 MiB). Docker `OOMKilled=false`.
+- Chat: 50 of 50 returned 200 with no error event (slowest per round 7.5 to 20.0 s, stub LLM). PDF: 10 of 10 returned 201, whole request 59.2 to 75.3 s (median 67.5). Extraction alone in the idle container (3 runs, `docker exec` of the worker): 9.6, 11.6, 13.4 s.
+- Container log: no errors, tracebacks or 500s. The C7 500 on PDF upload did not recur (0 of 10) and its cause was never captured, so it is still unexplained.
+
+Criteria (fixed in advance):
+- **PSS peak at most 461 MB: FAIL.** Rounds 5 to 10 peaked at 485.4 to 485.9 MB; rounds 1 to 4 were 388.9 to 440.2.
+- **oom_kill 0: PASS** (0; the limit was reached 31 times).
+- **PDF upload succeeds at a wall timeout of 120 s or less: PASS** (10 of 10, slowest 75.3 s) for this stub-LLM, local-DB setup. Not shown with real Groq or over the WAN to the database.
+
+Options when the criteria fail (listed, none chosen; measured numbers only):
+- Import fastembed in the main thread at startup: idle -10.6 to -15.5 MB in 3 of 3 wrapper runs (C8.5c); peak effect not separable from noise; not tested on shipped code.
+- Reduce the PDF step: it keeps +38.4 / +41.3 MB after one upload (C8.4), extraction child up to 27.6 MB; e.g. lower `pdf_memory_bytes`, fewer pages (`MAX_PDF_PAGES` is 200 today). Not measured.
+- Fewer simultaneous logins or chats: Argon2 adds a 64 MB transient per hash (C8.4). Not measured as a lever.
+- Model: warm-up is +229.5 to +230.2 MB of 321 MB PSS at ready (C8.4), 204.6 MB of it anonymous (C8.3b); the model file is 66.5 MB. A smaller or lazily loaded model changes this; not measured.
+- Larger instance (C8.7): `0.5c-512mb` is also 512 MB ($7/month); `1c-2g` is 1 CPU, 2 GB, $25/month.
+- Accept the free class: 10 of 10 rounds completed with `oom_kill 0` at a 485.9 MB PSS peak, but the 461 MB rule fails and C7 saw the container OOM-killed at PDF concurrency 2.
 
 ### C8.7 Render web instance types (read 2026-10-19)
 RAM and CPU: https://render.com/docs/compute-plans (web service table). Price: https://render.com/pricing.md ("Services & Workers" table; the compute-plans page itself has no prices and says to see the pricing page; https://render.com/pricing returned no table and https://render.com/docs/pricing is a 404). Both pages were read through a page-to-text tool that summarises, so transcription was not checked against the live page by eye.
