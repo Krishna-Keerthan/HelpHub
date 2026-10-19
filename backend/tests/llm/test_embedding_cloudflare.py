@@ -255,7 +255,7 @@ async def test_reference_check_survives_an_outage(
     assert "reference check skipped" in caplog.text
 
 
-@pytest.mark.skipif(
+@pytest.mark.skipif(  # gate-allow: skip-xfail opt-in live test, runs only with credentials
     not (
         settings.cloudflare_account_id.get_secret_value()
         and settings.cloudflare_api_token.get_secret_value()
