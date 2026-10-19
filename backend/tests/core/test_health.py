@@ -51,7 +51,7 @@ async def test_not_ready_when_the_database_hangs(
         await asyncio.sleep(60)
 
     monkeypatch.setattr(health, "ping", hangs)
-    monkeypatch.setattr(health, "READY_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(health.settings, "ready_timeout_seconds", 0.05)
 
     response = await client.get("/health/ready")
 

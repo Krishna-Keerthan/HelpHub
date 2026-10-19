@@ -1,6 +1,7 @@
 """Render-class overrides are plain environment variables (docs/deploy/runbook.md)."""
 
 import pytest
+from pydantic import ValidationError
 
 from app.core.config import Settings
 
@@ -24,3 +25,22 @@ def test_pdf_limits_come_from_the_environment(monkeypatch: pytest.MonkeyPatch) -
     assert overridden.pdf_timeout_seconds == 120.0
     assert overridden.pdf_max_concurrency == 1
     assert overridden.pdf_cpu_seconds == 10  # not overridden: the CPU limit stays
+
+
+def test_ready_timeout_defaults_to_five_seconds_and_is_overridable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("READY_TIMEOUT_SECONDS", raising=False)
+    assert Settings(_env_file=None, **BASE).ready_timeout_seconds == 5.0  # type: ignore[arg-type]
+
+    monkeypatch.setenv("READY_TIMEOUT_SECONDS", "20")
+    assert Settings(_env_file=None, **BASE).ready_timeout_seconds == 20.0  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("value", ["0", "-1"])
+def test_ready_timeout_must_be_positive(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv("READY_TIMEOUT_SECONDS", value)
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, **BASE)  # type: ignore[arg-type]

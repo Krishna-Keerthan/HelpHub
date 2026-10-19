@@ -50,6 +50,7 @@ All of these are plain environment variables read by `app/core/config.py` (no co
 | `PDF_TIMEOUT_SECONDS` | `120` | raised from 10: at 0.1 CPU a 10-page PDF exceeded 10 s in 2 of 2 runs. 120 is the starting value; C7 records the real extraction time |
 | `PDF_CPU_SECONDS` | unset (stays 10) | CPU time, not wall time; kernel `RLIMIT_CPU` backstop |
 | `PDF_MAX_CONCURRENCY` | `1` | a second concurrent upload waits `PDF_QUEUE_WAIT_SECONDS` (5 s) and then gets 503 |
+| `READY_TIMEOUT_SECONDS` | unset (stays 5) | how long `/health/ready` waits for `SELECT 1` before 503; raise it only if readiness flaps under load |
 | `ACCESS_TOKEN_MINUTES` / `REFRESH_TOKEN_DAYS` | `15` / `7` (defaults) | |
 | `RATE_LIMIT_*` | defaults | login 5 per account and 30 global per 60 s; search 60 and chat 10 per user per 60 s; in-process (AR-13, AR-19) |
 
@@ -115,5 +116,6 @@ Measurement setup for all C8 numbers: image built from the repo, `--memory=512m 
 - [x] **`MIGRATION_DATABASE_URL` is optional for the app** (C8): leave it unset on the runtime service; set it only where `alembic upgrade head` runs. Never put the owner URL on the runtime service.
 - [ ] **Client IPs behind Render's proxy** are not trusted (uvicorn runs without `--proxy-headers`), which is why login limits are per account, not per IP (AR-19).
 - [ ] **Live smoke script** (register or seed, upload, search, chat, delete against the deployed URL): not built.
-- [ ] **Uptime bot** and the keep-alive target (`GET /health/ready`): not configured.
+- [ ] **Uptime bot** and the keep-alive target (`GET /health/ready`): not configured. When it is: set it to alert only after 2 consecutive failures (tolerate one). C7 saw one `/health/ready` timeout under load at 0.1 CPU (the 5 s `SELECT 1` limit), so a single failed probe is expected noise, not an outage.
+- [ ] **Render's health check path must be `/health`** (liveness, touches nothing else), not `/health/ready`. Reason: a database blip or a slow `SELECT 1` on a busy 0.1 CPU instance would otherwise count against the instance, and Render restarts an instance after 60 s of failed checks (https://render.com/docs/health-checks, quoted in the table above). `/health/ready` is for the uptime bot and the Supabase keep-alive only.
 - [ ] **Memory gate (Gate 0 item 7) is OPEN and the C7 criteria failed**: see the C7 section above. No instance class, model or architecture change has been made.

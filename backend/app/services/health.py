@@ -3,12 +3,11 @@
 import asyncio
 import logging
 
+from app.core.config import settings
 from app.core.errors import sqlstate_of, traceback_frames
 from app.db.session import ping
 
 logger = logging.getLogger(__name__)
-
-READY_TIMEOUT_SECONDS = 5.0
 
 
 async def database_ready() -> bool:
@@ -17,7 +16,7 @@ async def database_ready() -> bool:
     Failures are logged by class name, SQLSTATE and traceback frames only.
     """
     try:
-        await asyncio.wait_for(ping(), READY_TIMEOUT_SECONDS)
+        await asyncio.wait_for(ping(), settings.ready_timeout_seconds)
     except Exception as exc:  # noqa: BLE001 - readiness reports any failure as not ready
         logger.error(
             "readiness check failed: error=%s sqlstate=%s frames=%s",

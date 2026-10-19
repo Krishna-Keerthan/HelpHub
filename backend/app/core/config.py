@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     # Empty means no CORS headers at all (same-origin or non-browser clients).
     cors_origins: str = ""
     warm_up_embeddings: bool = True
+    # Longest /health/ready waits for SELECT 1 before answering 503. At 0.1 CPU
+    # under load the default was exceeded once (docs/deploy/runbook.md, C7).
+    ready_timeout_seconds: float = Field(default=5.0, gt=0)
     # Longest document (in characters, after NUL stripping) accepted for ingestion.
     max_document_chars: int = 500_000
     # Largest accepted upload file; the request body is read with a bounded cap.
