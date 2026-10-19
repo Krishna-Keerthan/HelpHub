@@ -164,8 +164,8 @@ dependencies = [
     { name = "alembic" },
     { name = "asyncpg" },
     { name = "fastapi", extra = ["standard"] },
-    { name = "fastembed" },
     { name = "groq" },
+    { name = "httpx" },
     { name = "numpy" },
     { name = "pgvector" },
     { name = "pwdlib", extra = ["argon2"] },
@@ -178,7 +178,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx" },
+    { name = "fastembed" },
     { name = "hypothesis" },
     { name = "import-linter" },
     { name = "pip-audit" },
@@ -188,14 +188,17 @@ dev = [
     { name = "pyyaml" },
     { name = "ruff" },
 ]
+local-embeddings = [
+    { name = "fastembed" },
+]
 
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = ">=1.20.0" },
     { name = "asyncpg", specifier = ">=0.31.0" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.142.2" },
-    { name = "fastembed", specifier = ">=0.9.0" },
     { name = "groq", specifier = ">=1.7.0" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "numpy", specifier = ">=2.5.3" },
     { name = "pgvector", specifier = ">=0.5.1" },
     { name = "pwdlib", extras = ["argon2"], specifier = ">=0.3.1" },
@@ -208,7 +211,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "fastembed", specifier = ">=0.9.0" },
     { name = "hypothesis", specifier = ">=6.168.5" },
     { name = "import-linter", specifier = ">=2.15" },
     { name = "pip-audit", specifier = ">=2.10.1" },
@@ -218,6 +221,7 @@ dev = [
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "ruff", specifier = ">=0.16.10" },
 ]
+local-embeddings = [{ name = "fastembed", specifier = ">=0.9.0" }]
 
 [[package]]
 name = "boolean-py"
