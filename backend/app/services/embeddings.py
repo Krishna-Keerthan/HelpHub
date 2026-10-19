@@ -139,21 +139,33 @@ class FakeEmbeddingProvider:
         return self._vector(text)
 
 
-_provider: FastEmbedProvider | None = None
+_provider: EmbeddingProvider | None = None
 
 
-def default_provider() -> FastEmbedProvider:
-    """The process-wide real provider. Creating it does not load the model."""
+def default_provider() -> EmbeddingProvider:
+    """The process-wide real provider, chosen by ``settings.embedding_provider``.
+
+    Creating it neither loads the local model nor contacts Cloudflare, and the
+    unused provider's module (and fastembed) is never imported.
+    """
     global _provider
     if _provider is None:
-        _provider = FastEmbedProvider()
+        if settings.embedding_provider == "cloudflare":
+            from app.services.embeddings_cloudflare import CloudflareEmbeddingProvider
+
+            _provider = CloudflareEmbeddingProvider()
+        else:
+            _provider = FastEmbedProvider()
     return _provider
 
 
 async def warm_up_default_provider() -> None:
-    """Load the model at startup; on failure it will load lazily on first use."""
+    """Load the local model at startup; on failure it will load lazily on first use."""
+    provider = default_provider()
+    if not isinstance(provider, FastEmbedProvider):
+        return
     try:
-        await default_provider().warm_up()
+        await provider.warm_up()
     except Exception:
         # gate-allow: str-exc startup warm-up, no DB or document data
         logger.exception("embedding model warm-up failed; will retry on first use")

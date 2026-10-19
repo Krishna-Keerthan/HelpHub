@@ -18,7 +18,12 @@ from app.db.repositories import chunks as chunks_repo
 from app.db.repositories import documents as documents_repo
 from app.db.tenant_context import tenant_transaction
 from app.services.chunker import chunk_text
-from app.services.embeddings import EmbeddingError, EmbeddingProvider, validate_vectors
+from app.services.embeddings import (
+    EmbeddingError,
+    EmbeddingProvider,
+    EmbeddingUnavailableError,
+    validate_vectors,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +53,10 @@ class DocumentNotFound(DocumentError):
 
 class IngestionError(DocumentError):
     pass
+
+
+class EmbeddingUnavailable(IngestionError):
+    """The hosted embedding provider failed; the document is FAILED and retryable."""
 
 
 # Only these messages are safe to store; anything else is stored as its class
@@ -180,6 +189,8 @@ async def ingest_document(
     except Exception as exc:
         _log_failure("ingestion failed", exc, tenant_id, document_id)
         await _mark_failed(tenant_id, document_id, exc)
+        if isinstance(exc, EmbeddingUnavailableError):
+            raise EmbeddingUnavailable("embedding provider unavailable") from exc
         raise IngestionError("ingestion failed") from exc
     return document
 

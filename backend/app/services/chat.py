@@ -25,7 +25,7 @@ from app.db.repositories import conversations as conversations_repo
 from app.db.repositories import documents as documents_repo
 from app.db.repositories.chat_messages import NewMessage
 from app.db.tenant_context import tenant_transaction
-from app.services.embeddings import EmbeddingProvider
+from app.services.embeddings import EmbeddingProvider, EmbeddingUnavailableError
 from app.services.llm import LLMError, LLMProvider, Message
 from app.services.prompts import PromptSource, build_messages, parse_citations
 from app.services.search import search_in_session
@@ -37,6 +37,7 @@ REFUSAL_TEXT = (
     "I couldn't find anything in your knowledge base that answers this question."
 )
 INTERNAL_ERROR = "internal_error"
+EMBEDDING_UNAVAILABLE = "embedding_unavailable"
 
 
 class ConversationNotFound(Exception):
@@ -150,6 +151,9 @@ async def stream_answer(
     except LLMError as exc:
         logger.warning("chat llm failed: error=%s", type(exc).__name__)
         outcome.status, outcome.error_code = "failed", exc.code
+    except EmbeddingUnavailableError as exc:
+        logger.warning("chat embedding failed: error=%s", type(exc).__name__)
+        outcome.status, outcome.error_code = "failed", EMBEDDING_UNAVAILABLE
     except Exception as exc:  # noqa: BLE001 - logged by class; never leaves the stream
         _log_failure("chat failed", exc, ctx)
         outcome.status, outcome.error_code = "failed", INTERNAL_ERROR

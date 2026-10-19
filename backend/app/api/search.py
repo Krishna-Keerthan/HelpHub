@@ -1,9 +1,10 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, status
 
 from app.api.deps import CurrentPrincipal, Embedder
 from app.api.rate_limit import SearchLimit
 from app.schemas.search import SearchHitRead, SearchRequest
 from app.services import search as search_service
+from app.services.embeddings import EmbeddingUnavailableError
 
 router = APIRouter(prefix="/search", tags=["search"])
 
@@ -32,7 +33,12 @@ def _read(results: list[search_service.TitledHit]) -> list[SearchHitRead]:
 async def search(
     data: SearchRequest, principal: CurrentPrincipal, provider: Embedder
 ) -> list[SearchHitRead]:
-    results = await search_service.search(
-        principal.tenant_id, data.query, data.k, provider
-    )
+    try:
+        results = await search_service.search(
+            principal.tenant_id, data.query, data.k, provider
+        )
+    except EmbeddingUnavailableError:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, detail="Embedding service unavailable"
+        ) from None
     return _read(results)

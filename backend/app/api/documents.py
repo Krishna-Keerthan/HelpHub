@@ -87,6 +87,10 @@ async def _create_and_ingest(
             status.HTTP_409_CONFLICT,
             detail="Document changed while it was being processed; retry",
         ) from None
+    except documents_service.EmbeddingUnavailable:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, detail="Embedding service unavailable"
+        ) from None
     except documents_service.IngestionError:
         raise HTTPException(
             status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Document ingestion failed"
