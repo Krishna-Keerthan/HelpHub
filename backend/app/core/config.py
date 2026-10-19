@@ -51,6 +51,13 @@ class Settings(BaseSettings):
     # Empty means no CORS headers at all (same-origin or non-browser clients).
     cors_origins: str = ""
     warm_up_embeddings: bool = True
+    # "cloudflare" (production) embeds with Workers AI; "local" runs fastembed
+    # in-process and needs the optional local-embeddings dependency group.
+    embedding_provider: Literal["cloudflare", "local"] = "local"
+    cloudflare_account_id: SecretStr = SecretStr("")
+    cloudflare_api_token: SecretStr = SecretStr("")
+    # Per-request budget for one Workers AI call (retries come on top, max 2).
+    embedding_timeout_seconds: float = Field(default=20.0, gt=0)
     # onnxruntime threads for the embedding model; unset lets it use every host
     # core, which at a 0.1 CPU share costs memory (docs/deploy/runbook.md, C8.5).
     embedding_threads: int | None = Field(default=None, ge=1)
@@ -106,6 +113,18 @@ class Settings(BaseSettings):
                 f"JWT_SECRET must be at least {JWT_SECRET_MIN_LENGTH} characters"
             )
         return value
+
+    @model_validator(mode="after")
+    def _check_embedding_provider(self) -> "Settings":
+        if self.embedding_provider == "cloudflare" and not (
+            self.cloudflare_account_id.get_secret_value()
+            and self.cloudflare_api_token.get_secret_value()
+        ):
+            raise ValueError(
+                "CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN are required "
+                "when EMBEDDING_PROVIDER=cloudflare"
+            )
+        return self
 
     @model_validator(mode="after")
     def _check_production(self) -> "Settings":

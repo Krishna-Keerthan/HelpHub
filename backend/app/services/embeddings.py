@@ -39,6 +39,16 @@ class EmbeddingError(Exception):
     """
 
 
+class EmbeddingUnavailableError(EmbeddingError):
+    """The hosted provider failed (network, quota, 4xx/5xx, bad payload).
+
+    Fixed message: nothing from the provider or the inputs is ever attached.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("embedding provider unavailable")
+
+
 def validate_vectors(
     vectors: Sequence[Sequence[float]], *, count: int, dim: int
 ) -> list[list[float]]:
