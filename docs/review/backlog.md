@@ -16,3 +16,7 @@ Sources: docs/plans/day-05.md, docs/plans/day-06.md (items copied as recorded th
 | BL-09 | Weaker test assertions listed in the day-05 review | day-05 | LOW | Open |
 | BL-10 | Stretch: per-tenant filtered aliases | day-05 | n/a | Skipped; obsolete with ES |
 | BL-11 | Known flake: `tests/isolation/test_search_dead_tuples.py` failed 13/20 standalone once, 0/60 later; cause not found | day-06 | LOW | Open |
+| BL-12 | `register` hashes the password before the slug check, so a 409 (taken slug) costs a full hash | C9 | LOW | Open |
+| BL-13 | Argon2 hashing runs synchronously on the event loop (blocks other requests while hashing) | C9 | MEDIUM | Open |
+
+Note: login latency at 0.1 CPU is unmeasured (relevant to BL-12 and BL-13).
