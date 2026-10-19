@@ -115,6 +115,6 @@ def test_every_secret_looking_field_is_a_secretstr() -> None:
         name
         for name, field in Settings.model_fields.items()
         if any(part in name for part in SECRET_NAME_PARTS)
-        and field.annotation is not SecretStr
+        and field.annotation not in (SecretStr, SecretStr | None)
     ]
     assert plain == []

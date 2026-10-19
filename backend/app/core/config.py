@@ -23,7 +23,11 @@ class Settings(BaseSettings):
     # (DATABASE_URL, MIGRATION_DATABASE_URL, JWT_SECRET); the read-only
     # properties below return the plain values for the few call sites.
     database_dsn: SecretStr = Field(validation_alias="database_url")
-    migration_database_dsn: SecretStr = Field(validation_alias="migration_database_url")
+    # Owner role, used only by alembic and the test fixtures. The running app
+    # never reads it, so a deployed service can leave it unset.
+    migration_database_dsn: SecretStr | None = Field(
+        default=None, validation_alias="migration_database_url"
+    )
     # "production" turns on the hardening in app/main.py and the checks below.
     app_env: Literal["local", "test", "production"] = "local"
     jwt_signing_key: SecretStr = Field(validation_alias="jwt_secret")
@@ -121,6 +125,8 @@ class Settings(BaseSettings):
 
     @property
     def migration_database_url(self) -> str:
+        if self.migration_database_dsn is None:
+            raise RuntimeError("MIGRATION_DATABASE_URL is required for migrations")
         return self.migration_database_dsn.get_secret_value()
 
     @property

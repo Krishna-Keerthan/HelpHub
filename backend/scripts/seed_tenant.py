@@ -1,6 +1,6 @@
 """Create a tenant and its first admin through the service layer.
 
-Usage (from backend/, with DATABASE_URL, MIGRATION_DATABASE_URL and JWT_SECRET set):
+Usage (from backend/, with DATABASE_URL and JWT_SECRET set):
     uv run python scripts/seed_tenant.py --name "Acme" --slug acme --email admin@acme.test
 The password comes from SEED_ADMIN_PASSWORD, or is prompted for (never an argument).
 Works while ALLOW_PUBLIC_REGISTRATION is false. Prints ids only, never a token.

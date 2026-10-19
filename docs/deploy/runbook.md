@@ -42,7 +42,7 @@ All of these are plain environment variables read by `app/core/config.py` (no co
 |---|---|---|
 | `APP_ENV` | `production` | hides `/docs`, `/redoc`, `/openapi.json`; startup fails without `GROQ_API_KEY` or with `CORS_ORIGINS=*` |
 | `DATABASE_URL` | `postgresql+asyncpg://helphub_app.<ref>:<pw>@aws-0-<region>.pooler.supabase.com:5432/postgres?ssl=require` | session pooler, app role |
-| `MIGRATION_DATABASE_URL` | see open item below | required at startup by the settings class |
+| `MIGRATION_DATABASE_URL` | not set on the runtime service | optional for the app; read only by alembic and the test fixtures (raises if read while unset) |
 | `JWT_SECRET` | 32+ random characters | rejected if it is the `.env.example` placeholder |
 | `GROQ_API_KEY` | secret | required when `APP_ENV=production` |
 | `CORS_ORIGINS` | frontend origin(s), comma-separated | empty = no CORS headers |
@@ -103,7 +103,7 @@ Options (not chosen, for the owner): a larger instance class or CPU share; a sma
 
 ## Open items
 - [ ] **Render IPv6 to Supabase direct connection: unknown.** Not testable from the dev box. Stay on the session pooler until answered; test on the first Render deploy and record the result here.
-- [ ] **`MIGRATION_DATABASE_URL` is a required setting**, so the runtime service must define it even though the app never uses it (CLAUDE.md: only Alembic uses it). Either make the field optional (code change, not made) or set it on Render to a harmless value; do not put the owner URL on the runtime service.
+- [x] **`MIGRATION_DATABASE_URL` is optional for the app** (C8): leave it unset on the runtime service; set it only where `alembic upgrade head` runs. Never put the owner URL on the runtime service.
 - [ ] **Client IPs behind Render's proxy** are not trusted (uvicorn runs without `--proxy-headers`), which is why login limits are per account, not per IP (AR-19).
 - [ ] **Live smoke script** (register or seed, upload, search, chat, delete against the deployed URL): not built.
 - [ ] **Uptime bot** and the keep-alive target (`GET /health/ready`): not configured.
