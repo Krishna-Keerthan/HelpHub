@@ -50,6 +50,23 @@ _client: httpx.AsyncClient | None = None
 neurons_total = 0.0
 
 
+def enable_metrics_logging() -> None:
+    """Make this module's INFO lines (one per call, with ``neurons=``) visible.
+
+    The app configures no root logger, so INFO is otherwise dropped under
+    uvicorn. Only this logger is opened up; idempotent.
+    """
+    if not any(getattr(h, "_helphub_metrics", False) for h in logger.handlers):
+        handler = logging.StreamHandler()
+        handler.setFormatter(
+            logging.Formatter("%(levelname)s:     %(name)s: %(message)s")
+        )
+        handler._helphub_metrics = True  # type: ignore[attr-defined]
+        logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+
+
 def get_client() -> httpx.AsyncClient:
     """One shared client per process, created on first use."""
     global _client
@@ -157,6 +174,8 @@ class CloudflareEmbeddingProvider:
 
 REFERENCE_FILE = Path(__file__).with_name("embedding_reference.json")
 REFERENCE_MIN_COSINE = 0.999
+# Startup must not wait on Cloudflare for long: the check is only a warning.
+REFERENCE_CHECK_TIMEOUT_SECONDS = 8.0
 
 
 def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
@@ -174,7 +193,9 @@ async def reference_cosine(provider: CloudflareEmbeddingProvider) -> float:
 async def warn_if_reference_differs(provider: CloudflareEmbeddingProvider) -> None:
     """Startup check, log-only: a mismatch or an outage never blocks readiness."""
     try:
-        cosine = await reference_cosine(provider)
+        cosine = await asyncio.wait_for(
+            reference_cosine(provider), REFERENCE_CHECK_TIMEOUT_SECONDS
+        )
     except Exception as exc:  # noqa: BLE001 - startup check must never raise
         logger.warning(
             "embedding reference check skipped: error=%s", type(exc).__name__

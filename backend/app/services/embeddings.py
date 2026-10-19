@@ -163,8 +163,12 @@ async def warm_up_default_provider() -> None:
     """Warm up at startup: load the local model, or check the hosted vectors (log-only)."""
     provider = default_provider()
     if not isinstance(provider, FastEmbedProvider):
-        from app.services.embeddings_cloudflare import warn_if_reference_differs
+        from app.services.embeddings_cloudflare import (
+            enable_metrics_logging,
+            warn_if_reference_differs,
+        )
 
+        enable_metrics_logging()
         await warn_if_reference_differs(provider)  # type: ignore[arg-type]
         return
     try:

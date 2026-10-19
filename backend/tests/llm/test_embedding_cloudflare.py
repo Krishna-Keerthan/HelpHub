@@ -272,3 +272,21 @@ async def test_live_hosted_vector_matches_the_local_reference(
     finally:
         await cf.close_client()
     assert cosine >= cf.REFERENCE_MIN_COSINE
+
+
+def test_metrics_logging_is_idempotent_and_scoped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    logger = logging.getLogger("app.services.embeddings_cloudflare")
+    before = list(logger.handlers), logger.level, logger.propagate
+    try:
+        cf.enable_metrics_logging()
+        cf.enable_metrics_logging()
+        added = [h for h in logger.handlers if getattr(h, "_helphub_metrics", False)]
+        assert len(added) == 1
+        assert logger.level == logging.INFO
+        assert logging.getLogger("app").level != logging.INFO
+    finally:
+        logger.handlers[:] = before[0]
+        logger.setLevel(before[1])
+        logger.propagate = before[2]
