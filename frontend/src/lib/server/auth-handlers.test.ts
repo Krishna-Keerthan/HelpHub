@@ -176,14 +176,55 @@ describe("handleLogin / handleLogout", () => {
     expect(cookiesOf(bad)).toEqual([]);
   });
 
-  test("logout always clears local cookies even when the backend is down", async () => {
-    const deps = { sleep: async () => {}, fetch: (async () => { throw new TypeError("down"); }) as typeof fetch };
-    const res = await handleLogout(
-      req("/api/auth/logout", { cookies: { [REFRESH_COOKIE]: "rt-0", [ACCESS_COOKIE]: fakeJwt(inMinutes(5)) } }),
-      deps,
-    );
+  test("logout sends only the refresh token in the body, with no Bearer, even without an access cookie", async () => {
+    const calls: { url: string; headers: Headers; body: string }[] = [];
+    const deps = {
+      sleep: async () => {},
+      fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        calls.push({ url: String(input), headers: new Headers(init?.headers), body: String(init?.body) });
+        return new Response(null, { status: 204 });
+      }) as typeof fetch,
+    };
+    const res = await handleLogout(req("/api/auth/logout", { cookies: { [REFRESH_COOKIE]: "rt-0" } }), deps);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ revoked: false });
+    expect(await res.json()).toEqual({ sent: true });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toBe(`${BACKEND}/auth/logout`);
+    expect(calls[0]!.headers.get("authorization")).toBeNull();
+    expect(JSON.parse(calls[0]!.body)).toEqual({ refresh_token: "rt-0" });
+    expect(cleared(res)).toBe(true);
+  });
+
+  test("an expired access cookie does not matter: logout still reaches the backend", async () => {
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 204 }));
+    const res = await handleLogout(
+      req("/api/auth/logout", { cookies: { [REFRESH_COOKIE]: "rt-0", [ACCESS_COOKIE]: fakeJwt(inMinutes(-30)) } }),
+      { sleep: async () => {}, fetch: fetchImpl as unknown as typeof fetch },
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(await res.json()).toEqual({ sent: true });
+  });
+
+  test("backend down or non-204: cookies are still cleared, sent is false", async () => {
+    for (const fetchImpl of [
+      (async () => { throw new TypeError("down"); }) as typeof fetch,
+      (async () => new Response("", { status: 500 })) as typeof fetch,
+    ]) {
+      const res = await handleLogout(
+        req("/api/auth/logout", { cookies: { [REFRESH_COOKIE]: "rt-0" } }),
+        { sleep: async () => {}, fetch: fetchImpl },
+      );
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ sent: false });
+      expect(cleared(res)).toBe(true);
+    }
+  });
+
+  test("no refresh cookie: nothing is sent, cookies cleared", async () => {
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 204 }));
+    const res = await handleLogout(req("/api/auth/logout"), { sleep: async () => {}, fetch: fetchImpl as unknown as typeof fetch });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(await res.json()).toEqual({ sent: false });
     expect(cleared(res)).toBe(true);
   });
 

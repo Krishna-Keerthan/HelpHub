@@ -57,4 +57,4 @@ Only meaningful against a sleeping backend (Render free, after ~15 min idle) or 
 5. Lost-response case (AR-F1) cannot be triggered by hand reliably; check the logs for `refresh_indeterminate` over the first week of use.
 
 ## 7. Logout
-Click **Log out**. Expected: `POST /api/auth/logout` 200 `{"revoked":true}`, cookies cleared, landing on `/login`; replaying the old RT via curl as in 3.2 returns 401. If `hh_at` was already expired, `revoked` is `false` (best effort; the backend needs a valid access token) - note it.
+Click **Log out**. Expected: `POST /api/auth/logout` 200 `{"sent":true}`, cookies cleared, landing on `/login`; the upstream request carries the refresh token in the body and **no** `Authorization` header; replaying the old RT via curl as in 3.2 returns 401. Repeat after deleting `hh_at` (expired access token): expected the same result, because logout no longer needs it. Replaying logout with an already revoked or tampered token via curl against the BACKEND should also return 204 (same answer either way).

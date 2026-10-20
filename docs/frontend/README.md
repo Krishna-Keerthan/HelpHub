@@ -40,7 +40,7 @@ No `NEXT_PUBLIC_*` variables exist. Never read or commit `.env*` files.
 - Uploads are capped at 4 MiB in the browser (Vercel's 4.5 MB body limit; the backend allows 5 MiB). No second upload path.
 - Chat shows a refusal only (`done.status == "no_answer"`); there is no escalation or hand-off (the backend has none).
 - Residual risk AR-F1: a refresh whose response is lost can force a new login (`decisions.md` D9).
-- Backend logout currently needs a valid access token, so a logout after the access token expired does not revoke the refresh family (issue raised with the backend shell).
+- Logout sends only the refresh token (backend contract after `a67513b`); the backend answers 204 whether or not it revoked anything, so the UI cannot tell. Unverified against the running backend.
 - Layout and dark mode were **not checked in a real browser** (none available); only roles/labels are covered by tests.
 - Never run against the real backend or Vercel yet: see `integration-checklist.md` and `deploy.md`.
 

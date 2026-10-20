@@ -1,6 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
 import {
-  ACCESS_COOKIE,
   clearSessionCookies,
   readCookie,
   REFRESH_COOKIE,
@@ -89,30 +88,33 @@ export async function handleLogin(req: NextRequest, deps: Deps = realDeps): Prom
 }
 
 
-/** Always clears the local cookies; revoking the token family upstream is best effort. */
+/**
+ * Always clears the local cookies. The backend authenticates logout by the refresh
+ * token in the body (no Bearer, so it works after the access token expired) and
+ * answers 204 whether or not it revoked anything; `sent` only says it acknowledged.
+ */
 export async function handleLogout(req: NextRequest, deps: Deps = realDeps): Promise<NextResponse> {
   if (!originAllowed(req)) return forbiddenOrigin() as NextResponse;
   const rt = readCookie(req.cookies, REFRESH_COOKIE);
-  const at = readCookie(req.cookies, ACCESS_COOKIE);
-  let revoked = false;
-  if (rt && at) {
+  let sent = false;
+  if (rt) {
     try {
       const res = await fetchWithHeaderTimeout(
         deps,
         `${backendUrl()}/auth/logout`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${at}` },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ refresh_token: rt }),
         },
         10_000,
       );
-      revoked = res.status === 204;
+      sent = res.status === 204;
     } catch {
-      revoked = false;
+      sent = false;
     }
   }
-  const out = NextResponse.json({ revoked });
+  const out = NextResponse.json({ sent });
   clearSessionCookies(out, req.url);
   return out;
 }
