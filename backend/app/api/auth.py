@@ -2,7 +2,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Response, status
 
-from app.api.deps import CurrentPrincipal, CurrentUser
+from app.api.deps import CurrentUser
 from app.api.rate_limit import enforce_login
 from app.schemas.auth import (
     LoginRequest,
@@ -91,10 +91,11 @@ async def refresh(data: RefreshRequest) -> TokenResponse:
     )
 
 
+# Public by design, like /refresh: the credential is the signed refresh token in
+# the body, so a client whose access token already expired can still log out.
+# Always 204; the outcome is only logged (a fixed label, never token content).
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout(data: RefreshRequest, principal: CurrentPrincipal) -> Response:
-    try:
-        await auth_service.logout(principal, data.refresh_token)
-    except auth_service.InvalidRefreshToken as exc:
-        raise _invalid_refresh(exc.reason) from None
+async def logout(data: RefreshRequest) -> Response:
+    outcome = await auth_service.logout(data.refresh_token)
+    logger.info("logout outcome=%s", outcome)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

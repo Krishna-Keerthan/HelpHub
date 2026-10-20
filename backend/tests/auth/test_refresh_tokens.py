@@ -279,24 +279,6 @@ async def test_logout_revokes_the_family(
     assert (await refresh(client, first["refresh_token"])).status_code == 401
 
 
-async def test_logout_needs_an_access_token_and_the_callers_own_refresh_token(
-    client: AsyncClient, make_tenant: MakeTenant
-) -> None:
-    a, b = await make_tenant(), await make_tenant()
-    pair_a, pair_b = await login(client, a), await login(client, b)
-    body = {"refresh_token": pair_a["refresh_token"]}
-
-    assert (await client.post("/auth/logout", json=body)).status_code == 401
-    assert (
-        await client.post(
-            "/auth/logout", json=body, headers=bearer(pair_b["access_token"])
-        )
-    ).status_code == 401
-    assert (
-        await refresh(client, pair_a["refresh_token"])
-    ).status_code == 200  # untouched
-
-
 async def test_logout_does_not_touch_other_logins(
     client: AsyncClient, make_tenant: MakeTenant
 ) -> None:
@@ -319,7 +301,6 @@ AUTHENTICATED = [
     ("GET", "/conversations"),
     ("POST", "/search"),
     ("POST", "/chat/stream"),
-    ("POST", "/auth/logout"),
 ]
 
 
