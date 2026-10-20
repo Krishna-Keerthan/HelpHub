@@ -1,11 +1,14 @@
+import asyncio
 import secrets
 import uuid
+import weakref
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import jwt
 from pwdlib import PasswordHash
+from pwdlib.hashers.argon2 import Argon2Hasher
 
 from app.core.config import settings
 
@@ -15,7 +18,21 @@ REFRESH_TYPE = "refresh"
 REQUIRED_CLAIMS = ["exp", "sub", "tid", "typ"]
 REFRESH_REQUIRED_CLAIMS = [*REQUIRED_CLAIMS, "jti"]
 
-_password_hash = PasswordHash.recommended()
+# OWASP's minimum Argon2id configuration (m=19 MiB, t=2, p=1). The parameters
+# are stored in every hash, so hashes made with the library defaults
+# (m=64 MiB, t=3, p=4) still verify; they are not rehashed on login.
+ARGON2_MEMORY_KIB = 19456
+ARGON2_TIME_COST = 2
+ARGON2_PARALLELISM = 1
+_password_hash = PasswordHash(
+    (
+        Argon2Hasher(
+            time_cost=ARGON2_TIME_COST,
+            memory_cost=ARGON2_MEMORY_KIB,
+            parallelism=ARGON2_PARALLELISM,
+        ),
+    )
+)
 
 
 class InvalidTokenError(Exception):
@@ -36,6 +53,31 @@ def hash_password(password: str) -> str:
 
 def verify_password(password: str, hashed: str) -> bool:
     return _password_hash.verify(password, hashed)
+
+
+# One hash at a time per event loop: each Argon2 run holds its memory until it
+# finishes, so concurrent runs would add up. Running in a thread keeps the loop
+# free while a hash is computed (and while others wait for the slot).
+_hash_slots: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def _hash_slot() -> asyncio.Semaphore:
+    loop = asyncio.get_running_loop()
+    if loop not in _hash_slots:
+        _hash_slots[loop] = asyncio.Semaphore(1)
+    return _hash_slots[loop]
+
+
+async def hash_password_async(password: str) -> str:
+    async with _hash_slot():
+        return await asyncio.to_thread(hash_password, password)
+
+
+async def verify_password_async(password: str, hashed: str) -> bool:
+    async with _hash_slot():
+        return await asyncio.to_thread(verify_password, password, hashed)
 
 
 # Verified against when a login names an unknown tenant or user, so failures

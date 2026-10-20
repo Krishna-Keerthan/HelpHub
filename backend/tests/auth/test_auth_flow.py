@@ -147,13 +147,13 @@ async def test_login_failure_verifies_against_dummy_hash(
     }[case]
 
     calls: list[tuple[str, str]] = []
-    real = auth_service.verify_password
+    real = auth_service.verify_password_async
 
-    def spy(password: str, hashed: str) -> bool:
+    async def spy(password: str, hashed: str) -> bool:
         calls.append((password, hashed))
-        return real(password, hashed)
+        return await real(password, hashed)
 
-    monkeypatch.setattr(auth_service, "verify_password", spy)
+    monkeypatch.setattr(auth_service, "verify_password_async", spy)
     resp = await client.post("/auth/login", json=body)
     assert resp.status_code == 401
     assert calls == [(body["password"], DUMMY_HASH)]
