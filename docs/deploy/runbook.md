@@ -18,6 +18,9 @@ GRANT USAGE ON SCHEMA public TO helphub_app;
 ALTER DEFAULT PRIVILEGES FOR ROLE helphub_owner IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO helphub_app;
 ALTER DEFAULT PRIVILEGES FOR ROLE helphub_owner IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO helphub_app;
 ```
+pgvector must live in schema `public`: create it as `postgres` with the SQL `create extension vector with schema public`. The dashboard toggle installs it in schema `extensions`, where `to_regtype('vector')` is null for `helphub_owner` and `helphub_app` (search_path is `"$user", public`) and `helphub_owner` (not a superuser) cannot create it itself because the extension is not trusted. Migration 0001's `CREATE EXTENSION IF NOT EXISTS vector` is a no-op once it exists.
+Migrations are run from a copy of the tracked files with no `.env` (`git archive HEAD backend | tar -x -C <dir>`), with `MIGRATION_DATABASE_URL` and the other settings variables in the shell environment, because `alembic/env.py` loads `app.core.config.settings`, which reads `.env` if one exists.
+
 Do not rotate a role's password repeatedly while connecting through the pooler: the pooler kept rejecting the new password and repeated failures tripped its circuit breaker (`ECIRCUITBREAKER`, all new connections blocked for minutes).
 
 ## Container measurement (C2, 2026-10-17)
