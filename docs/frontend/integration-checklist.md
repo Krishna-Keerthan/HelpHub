@@ -85,3 +85,28 @@ Setup: `TEST_EMAIL`, `TEST_PASSWORD`, `BACKEND_URL` were set. Backend at `http:/
 `POST /auth/login` directly on the backend with slug `local-dev` and the `TEST_EMAIL`/`TEST_PASSWORD` pair answers **401 `Invalid credentials`** (and 401 `invalid_credentials` through the BFF). The backend cannot tell a wrong slug, a wrong email and a wrong password apart, so one of the three does not match the account. Nothing else was tried (login is limited to 5 attempts per 60 s per account). Every authenticated step stays **not run**: login, documents and chat through the BFF, refresh rotation, replay of an old refresh token, logout after the access token expired, the 4 MB upload through the dev server.
 
 Planned way to expire the access token without waiting: send the request with only the `hh_rt` cookie (exactly what deleting `hh_at` in DevTools does). A genuinely expired-but-present JWT cannot be made without the signing key, so that variant is not covered. The 4 MB upload through the dev server does not test Vercel's 4.5 MB limit.
+
+## Observed run 3: 2026-10-20 (authenticated, terminal only)
+
+Setup: slug from `TEST_TENANT_SLUG`, credentials from the shell (never printed). Own dev server on port 3100, `BACKEND_URL` from the shell. Backend not modified. Driven by a script with `curl`-equivalent requests, so **browser behaviour is not covered**. The "expire the access token" step is done by sending only `hh_rt` (same as deleting `hh_at`).
+
+| Step | Expected | Observed |
+|---|---|---|
+| 1.2 | login 200 `{"ok":true}` | 200 `{"ok":true}`, no tokens in the body. Matches. |
+| 1.3 | HttpOnly, SameSite=Lax, Path `/`, not Secure; `hh_at` ~15 min, `hh_rt` ~7 days | HttpOnly, SameSite=lax, Path `/`, no Secure. `hh_rt` Max-Age 604800 (7 days). **`hh_at` Max-Age 3599 (~1 h), not ~15 min:** the checklist's "~15 min" is wrong for this backend (the cookie follows the backend's token lifetime). |
+| 1.4 | wrong password, no cookies | 401 `invalid_credentials`, 0 cookies. Matches. |
+| 2.2 | no `hh_at`: 401 `token_expired`, refresh, retry | `GET /api/documents` with only `hh_rt`: 401 `{"code":"token_expired"}`. `POST /api/auth/refresh` 200 `{"ok":true}`. The browser-side retry is not run (needs a browser). |
+| 2.3 | `hh_rt` changes, `hh_at` returns | Both set; `hh_rt` differs from RT-A. Matches. `GET /api/documents` with the new `hh_at`: 200. |
+| 2.4-2.6 | no token text in logs; one refresh across tabs | No `eyJ` in the dev server log. Parallel tabs and Web Lock: not run (browser). |
+| 3.2 | replay spent RT-A: 401, cookies cleared | 401 `{"code":"session_expired"}`, `hh_at` and `hh_rt` cleared (`Max-Age=0`). Backend "refresh token reuse" log and `forced_logout` line not checked (no access to the backend log). |
+| 3.3 | RT-B (current) rejected after the reuse | `POST /api/auth/refresh` with RT-B: 401 `session_expired`. **The family is revoked.** The redirect and no-loop part needs a browser: not run. |
+| 3.4 | bad or missing Origin gives 403 | Both 403 `{"code":"bad_origin"}`. Matches. |
+| Documents list | 200 | 200, an empty list for this tenant. |
+| 4.1 | 4 MiB text accepted | **Not accepted: 413 `{"detail":"Document is too large"}`.** A 4 MiB (and 4 MiB + 1) random-text `.txt` is under the 5 MiB file limit but its extracted text exceeds `max_document_chars` (500 000), so the backend refuses it. A 6 MiB file gives 413 `Request body is too large`. The checklist's text-file recipe cannot work; use a PDF. |
+| 4.1 (PDF) | upload accepted, PENDING then READY | A valid 4 194 304-byte PDF (one short text line plus padding): `POST /api/documents/upload` 201 in 2.2 s, status READY at once (still READY after 5 s). **This goes through my dev server only and does NOT test Vercel's 4.5 MB function limit**, which exists only on Vercel: not run. |
+| 4.2 | over 4 MB rejected in the browser | Not run (browser). |
+| 4.4 | delete 204 | `DELETE /api/documents/<id>` 204. The confirm dialog is not run (browser). |
+| 5.1 | `POST /api/chat/stream` 200 `text/event-stream`, incremental, sources | 200 `text/event-stream; charset=utf-8`. 15 chunks arrived over 0.85 s (not one block). Events: `token` x15, `sources`, `done` (`status: complete`). Visible UI incrementality is not run (browser). **Finding:** the answer contained the marker `【1】` (fullwidth brackets) while `done.cited` was `[]`, so no source chips would show. The client's `[n]` parsing was not exercised against this: check it. |
+| 5.2-5.6 | refusal, `conversation_id`, rate limit, embedding failure, expired token mid-chat | Not run: not attempted to avoid extra provider calls and the 10 per 60 s limit. |
+| 6 | cold start | Not run: needs the backend stopped or a sleeping Render instance. |
+| 7 | logout with only `hh_rt`, then replay | `POST /api/auth/logout` with only `hh_rt` (no `hh_at`): 200 `{"sent":true}`, both cookies cleared. Replaying that never-rotated RT on `/api/auth/refresh`: **401 `session_expired`**, so the backend revoked it. Note the old `hh_at` still returned 200 on `GET /api/documents` afterwards (access JWTs are stateless until they expire). |
