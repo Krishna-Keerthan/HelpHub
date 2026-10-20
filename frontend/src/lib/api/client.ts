@@ -1,5 +1,6 @@
 import createClient from "openapi-fetch";
 import type { paths } from "./schema";
+import { authedFetch } from "./authed-fetch";
 import { readChatEvents, type ChatEvent, type ChatRequest } from "./sse";
 
 export type { ChatEvent, ChatRequest, ChatSource } from "./sse";
@@ -8,7 +9,7 @@ export type { ChatEvent, ChatRequest, ChatSource } from "./sse";
 export const API_BASE = "/api";
 
 /** Typed JSON/multipart client for every route in docs/api/openapi.json. */
-export const api = createClient<paths>({ baseUrl: API_BASE });
+export const api = createClient<paths>({ baseUrl: API_BASE, fetch: authedFetch });
 
 /** Failure before the stream starts (plain HTTP error). */
 export class ChatHttpError extends Error {
@@ -26,12 +27,14 @@ export async function* streamChat(
   body: ChatRequest,
   signal?: AbortSignal,
 ): AsyncGenerator<ChatEvent> {
-  const res = await fetch(`${API_BASE}/chat/stream`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-    body: JSON.stringify(body),
-    signal,
-  });
+  const res = await authedFetch(
+    new Request(new URL(`${API_BASE}/chat/stream`, location.origin), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+      body: JSON.stringify(body),
+      signal,
+    }),
+  );
   if (!res.ok || !res.body) {
     const retry = Number(res.headers.get("Retry-After"));
     throw new ChatHttpError(res.status, Number.isFinite(retry) && retry > 0 ? retry : null);
