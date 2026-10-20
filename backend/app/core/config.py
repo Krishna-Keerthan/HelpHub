@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[3] / ".env"
 # Value shipped in .env.example; must never be used as a real secret.
 JWT_SECRET_PLACEHOLDER = "change-me-generate-with-openssl-rand-hex-32"  # noqa: S105 (public placeholder, rejected at startup)
 JWT_SECRET_MIN_LENGTH = 32
+ASYNC_DRIVER_PREFIX = "postgresql+asyncpg://"
 
 
 class Settings(BaseSettings):
@@ -113,6 +114,19 @@ class Settings(BaseSettings):
                 f"JWT_SECRET must be at least {JWT_SECRET_MIN_LENGTH} characters"
             )
         return value
+
+    @model_validator(mode="after")
+    def _check_database_driver(self) -> "Settings":
+        # The URL itself is never put in the message (it carries the password).
+        for name, dsn in (
+            ("DATABASE_URL", self.database_dsn),
+            ("MIGRATION_DATABASE_URL", self.migration_database_dsn),
+        ):
+            if dsn is not None and not dsn.get_secret_value().startswith(
+                ASYNC_DRIVER_PREFIX
+            ):
+                raise ValueError(f"{name} must start with {ASYNC_DRIVER_PREFIX}")
+        return self
 
     @model_validator(mode="after")
     def _check_embedding_provider(self) -> "Settings":

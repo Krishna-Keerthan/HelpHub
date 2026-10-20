@@ -3,6 +3,7 @@
 ## Connection defaults
 - Both the app (`DATABASE_URL`) and migrations (`MIGRATION_DATABASE_URL`) use the Supabase **session pooler**, port 5432, username `role.<project-ref>`. Measured working with no asyncpg changes (spikes.md section 1).
 - If the app is ever moved to the transaction pooler (port 6543), set asyncpg `statement_cache_size=0` in `app/db/session.py`; without it 174 of 180 test transactions failed with SQLSTATE 26000.
+- The Supabase dashboard shows `postgresql://...`; add `+asyncpg` (`postgresql+asyncpg://...`) before pasting it, because the app refuses to start with any other prefix.
 - Migrations run only as `helphub_owner`, never as `postgres` (otherwise Supabase grants the API roles access to new tables; spikes.md section 4).
 
 ## Supabase role setup (once, as `postgres` over the session pooler)
