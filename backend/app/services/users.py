@@ -1,6 +1,6 @@
 import uuid
 
-from app.core.security import hash_password
+from app.core.security import hash_password_async
 from app.db.models import User
 from app.db.repositories import users as users_repo
 from app.db.session import DbSession
@@ -40,7 +40,9 @@ async def get_user(
 async def create_user(
     session: DbSession, tenant_id: uuid.UUID, data: UserCreate
 ) -> User:
-    password_hash = hash_password(data.password)
+    # Waits for the hash slot while this request's session is open: admin-only,
+    # low volume (BL-14).
+    password_hash = await hash_password_async(data.password)
     # The repository flushes, so the INSERT (and its unique check) runs here,
     # while the request is still open, not at commit time.
     return await users_repo.create(

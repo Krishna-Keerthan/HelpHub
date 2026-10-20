@@ -1,4 +1,5 @@
 import uuid
+from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy import delete, func, select, update
@@ -7,21 +8,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import RefreshToken
 
 
+@dataclass(frozen=True)
+class NewRefreshToken:
+    user_id: uuid.UUID
+    jti: uuid.UUID
+    family_id: uuid.UUID
+    expires_at: datetime
+
+
 async def add(
-    session: AsyncSession,
-    tenant_id: uuid.UUID,
-    user_id: uuid.UUID,
-    jti: uuid.UUID,
-    family_id: uuid.UUID,
-    expires_at: datetime,
+    session: AsyncSession, tenant_id: uuid.UUID, new: NewRefreshToken
 ) -> None:
     session.add(
         RefreshToken(
-            jti=jti,
+            jti=new.jti,
             tenant_id=tenant_id,
-            user_id=user_id,
-            family_id=family_id,
-            expires_at=expires_at,
+            user_id=new.user_id,
+            family_id=new.family_id,
+            expires_at=new.expires_at,
         )
     )
     await session.flush()

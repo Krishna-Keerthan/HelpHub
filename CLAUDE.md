@@ -37,4 +37,4 @@ New tests go in the matching domain directory under tests/; helpers live in test
 - Agents are read-only and print at most 12 findings; the skill prints one report of at most 40 lines.
 - Context for reviewers: docs/review/context.md. Accepted risks (stable IDs AR-nn): docs/review/accepted-risks.md; add an entry instead of re-explaining a known risk.
 - `.claude/hooks/guard_bash.py` blocks destructive commands (best-effort); do not work around it.
-- Not built yet (Day 12): CI and production-readiness checks.
+- CI exists (.github/workflows/ci.yml: gate, audit and image jobs) but has never run on GitHub. Not done yet (Day 12): Render deploy and smoke checks, soak, other production-readiness checks.

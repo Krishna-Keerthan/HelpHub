@@ -11,9 +11,9 @@ from app.core.security import (
     RefreshClaims,
     create_access_token,
     create_refresh_token,
-    hash_password,
+    hash_password_async,
     parse_refresh_token,
-    verify_password,
+    verify_password_async,
 )
 from app.db.models import User
 from app.db.repositories import refresh_tokens as refresh_repo
@@ -68,7 +68,11 @@ async def _add_refresh_token(
 ) -> str:
     jti = uuid.uuid4()
     expires_at = datetime.now(UTC) + timedelta(days=settings.refresh_token_days)
-    await refresh_repo.add(session, user.tenant_id, user.id, jti, family_id, expires_at)
+    await refresh_repo.add(
+        session,
+        user.tenant_id,
+        refresh_repo.NewRefreshToken(user.id, jti, family_id, expires_at),
+    )
     return create_refresh_token(user.id, user.tenant_id, jti, expires_at)
 
 
@@ -104,11 +108,14 @@ async def create_tenant_with_admin(
     if data.tenant_slug.startswith(RESERVED_SLUG_PREFIX) and not reserved_ok:
         raise ReservedSlug
 
-    password_hash = hash_password(data.password)
+    # A taken slug is answered before the (slow) hash, and the connection is not
+    # held while hashing. The insert below still maps a race to TenantSlugTaken.
+    async with AsyncSessionLocal() as session:
+        if await tenants_repo.get_by_slug(session, data.tenant_slug):
+            raise TenantSlugTaken
+    password_hash = await hash_password_async(data.password)
     async with AsyncSessionLocal() as session:
         try:
-            if await tenants_repo.get_by_slug(session, data.tenant_slug):
-                raise TenantSlugTaken
             tenant = await tenants_repo.create(
                 session, name=data.tenant_name, slug=data.tenant_slug
             )
@@ -142,9 +149,9 @@ async def authenticate(data: LoginRequest) -> TokenPair:
 
     if user is None or not user.is_active:
         # Same Argon2 work as a real check, and the same error either way.
-        verify_password(data.password, DUMMY_HASH)
+        await verify_password_async(data.password, DUMMY_HASH)
         raise InvalidCredentials
-    if not verify_password(data.password, user.password_hash):
+    if not await verify_password_async(data.password, user.password_hash):
         raise InvalidCredentials
     return await issue_tokens(user)
 
