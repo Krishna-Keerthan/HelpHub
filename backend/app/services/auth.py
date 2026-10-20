@@ -68,7 +68,11 @@ async def _add_refresh_token(
 ) -> str:
     jti = uuid.uuid4()
     expires_at = datetime.now(UTC) + timedelta(days=settings.refresh_token_days)
-    await refresh_repo.add(session, user.tenant_id, user.id, jti, family_id, expires_at)
+    await refresh_repo.add(
+        session,
+        user.tenant_id,
+        refresh_repo.NewRefreshToken(user.id, jti, family_id, expires_at),
+    )
     return create_refresh_token(user.id, user.tenant_id, jti, expires_at)
 
 
