@@ -1,9 +1,19 @@
-from fastapi import APIRouter, HTTPException, status
+import logging
 
-from app.api.deps import CurrentUser
-from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
+from fastapi import APIRouter, HTTPException, Response, status
+
+from app.api.deps import CurrentPrincipal, CurrentUser
+from app.api.rate_limit import enforce_login
+from app.schemas.auth import (
+    LoginRequest,
+    RefreshRequest,
+    RegisterRequest,
+    TokenResponse,
+)
 from app.schemas.user import UserRead
 from app.services import auth as auth_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -17,7 +27,7 @@ class RegisterResponse(TokenResponse):
 )
 async def register(data: RegisterRequest) -> RegisterResponse:
     try:
-        user, token = await auth_service.register_tenant(data)
+        user, tokens = await auth_service.register_tenant(data)
     except auth_service.RegistrationDisabled:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, detail="Registration is disabled"
@@ -30,22 +40,61 @@ async def register(data: RegisterRequest) -> RegisterResponse:
         raise HTTPException(
             status.HTTP_409_CONFLICT, detail="Tenant slug already taken"
         ) from None
-    return RegisterResponse(access_token=token, user=UserRead.model_validate(user))
+    return RegisterResponse(
+        access_token=tokens.access_token,
+        refresh_token=tokens.refresh_token,
+        user=UserRead.model_validate(user),
+    )
 
 
 @router.post("/login", response_model=TokenResponse)
 async def login(data: LoginRequest) -> TokenResponse:
+    enforce_login(data)  # 429 before any password hashing
     try:
-        token = await auth_service.authenticate(data)
+        tokens = await auth_service.authenticate(data)
     except auth_service.InvalidCredentials:
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
             headers={"WWW-Authenticate": "Bearer"},
         ) from None
-    return TokenResponse(access_token=token)
+    return TokenResponse(
+        access_token=tokens.access_token, refresh_token=tokens.refresh_token
+    )
 
 
 @router.get("/me", response_model=UserRead)
 async def me(user: CurrentUser) -> UserRead:
     return UserRead.model_validate(user)
+
+
+def _invalid_refresh(reason: str) -> HTTPException:
+    # Reason is a fixed label, never token content.
+    logger.info("refresh_rejected reason=%s", reason)
+    return HTTPException(
+        status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid refresh token",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+# Public by design: the credential is the signed refresh token in the body (an
+# access token is rejected here), checked before any database access.
+@router.post("/refresh", response_model=TokenResponse)
+async def refresh(data: RefreshRequest) -> TokenResponse:
+    try:
+        tokens = await auth_service.refresh(data.refresh_token)
+    except auth_service.InvalidRefreshToken as exc:
+        raise _invalid_refresh(exc.reason) from None
+    return TokenResponse(
+        access_token=tokens.access_token, refresh_token=tokens.refresh_token
+    )
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(data: RefreshRequest, principal: CurrentPrincipal) -> Response:
+    try:
+        await auth_service.logout(principal, data.refresh_token)
+    except auth_service.InvalidRefreshToken as exc:
+        raise _invalid_refresh(exc.reason) from None
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

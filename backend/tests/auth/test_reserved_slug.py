@@ -30,6 +30,7 @@ async def _tenant_count(owner_conn: AsyncConnection, slug: str) -> int:
     return int(result.scalar_one())
 
 
+@pytest.mark.usefixtures("registration_open")
 async def test_api_rejects_eval_slugs_generically(
     client: AsyncClient, owner_conn: AsyncConnection
 ) -> None:
@@ -42,6 +43,7 @@ async def test_api_rejects_eval_slugs_generically(
     assert other.status_code == 422 and other.json() == resp.json()
 
 
+@pytest.mark.usefixtures("registration_open")
 async def test_non_eval_slug_is_still_accepted(
     client: AsyncClient, owner_conn: AsyncConnection
 ) -> None:
@@ -56,6 +58,7 @@ async def test_non_eval_slug_is_still_accepted(
         await owner_conn.commit()
 
 
+@pytest.mark.usefixtures("registration_open")
 async def test_service_refuses_eval_slug_unless_reserved_ok(
     owner_conn: AsyncConnection,
 ) -> None:

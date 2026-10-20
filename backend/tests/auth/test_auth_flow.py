@@ -55,6 +55,7 @@ def login_body(slug: str, email: str, password: str) -> dict[str, str]:
     return {"tenant_slug": slug, "email": email, "password": password}
 
 
+@pytest.mark.usefixtures("registration_open")
 async def test_register_login_me(client: AsyncClient, register: Callable[..., Any]):
     slug = f"acme-{uuid.uuid4().hex[:10]}"
     resp = await register(slug=slug)
@@ -82,6 +83,7 @@ async def test_register_login_me(client: AsyncClient, register: Callable[..., An
     assert me2.status_code == 200
 
 
+@pytest.mark.usefixtures("registration_open")
 async def test_register_duplicate_slug_409(register: Callable[..., Any]):
     slug = f"dup-{uuid.uuid4().hex[:10]}"
     assert (await register(slug=slug)).status_code == 201
@@ -145,18 +147,19 @@ async def test_login_failure_verifies_against_dummy_hash(
     }[case]
 
     calls: list[tuple[str, str]] = []
-    real = auth_service.verify_password
+    real = auth_service.verify_password_async
 
-    def spy(password: str, hashed: str) -> bool:
+    async def spy(password: str, hashed: str) -> bool:
         calls.append((password, hashed))
-        return real(password, hashed)
+        return await real(password, hashed)
 
-    monkeypatch.setattr(auth_service, "verify_password", spy)
+    monkeypatch.setattr(auth_service, "verify_password_async", spy)
     resp = await client.post("/auth/login", json=body)
     assert resp.status_code == 401
     assert calls == [(body["password"], DUMMY_HASH)]
 
 
+@pytest.mark.usefixtures("registration_open")
 async def test_responses_never_leak_secrets(
     client: AsyncClient, register: Callable[..., Any]
 ):

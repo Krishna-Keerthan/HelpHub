@@ -12,9 +12,14 @@ from app.main import app
 # Adding a route here is a security decision: it is reachable without a token.
 PUBLIC_ROUTES: set[tuple[str, str]] = {
     ("GET", "/health"),
-    ("GET", "/health/db"),
+    # Readiness probe for the host and the uptime bot; returns only ok/not ready.
+    ("GET", "/health/ready"),
     ("POST", "/auth/register"),
     ("POST", "/auth/login"),
+    # Exempt on purpose: the credential is the signed refresh token in the body
+    # (an access token is rejected, see tests/auth/test_refresh_tokens.py), verified
+    # before any database access. /auth/logout is NOT exempt: it needs a bearer token.
+    ("POST", "/auth/refresh"),
 }
 # Served by FastAPI itself (not APIRoute instances).
 DOCS_PATHS = {"/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
@@ -52,7 +57,7 @@ def _api_routes() -> list[tuple[str, set[str], Dependant]]:
 
 def test_route_discovery_sees_included_routers() -> None:
     paths = {path for path, _, _ in _api_routes()}
-    assert {"/health", "/auth/me", "/documents", "/search/keyword"} <= paths
+    assert {"/health", "/auth/me", "/documents", "/search"} <= paths
     assert len(paths) >= 10
 
 
@@ -95,8 +100,6 @@ REQUIRED_ROUTES = [
     "/auth/register",
     "/documents",
     "/search",
-    "/search/keyword",
-    "/search/hybrid",
     "/chat/stream",
 ]
 

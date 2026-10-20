@@ -20,6 +20,7 @@ dist/
 .coverage.*
 htmlcov/
 coverage.xml
+.import_linter_cache/
 
 # ---------- Node / Next.js (frontend) ----------
 node_modules/
@@ -70,3 +71,4 @@ PROJECT_REPORT.md
 # ---------- Evaluation harness ----------
 backend/eval/results/.eval-active.json
 backend/eval/results/.eval-active.json.*.tmp
+.vscode/

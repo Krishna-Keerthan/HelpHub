@@ -53,18 +53,22 @@ async def test_short_ann_stage_triggers_exact_fallback(
     a_ids = await _seed_chunks(owner_conn, ta, K + 2)
     calls: list[int] = []
 
-    async def short_ann(session, tenant_id, embedding, k):  # type: ignore[no-untyped-def]
-        calls.append(k)
-        return (await chunks_repo.exact_search(session, tenant_id, embedding, k))[
-            :ann_hits
-        ]
+    real_search = chunks_repo.search
 
-    monkeypatch.setattr(chunks_repo, "vector_search", short_ann)
+    async def short_ann(session, tenant_id, query, *, exact=False):  # type: ignore[no-untyped-def]
+        calls.append(query.k)
+        rows = await real_search(session, tenant_id, query, exact=exact)
+        if exact:
+            return rows
+        # The ANN branch reports fewer candidates than the tenant has chunks.
+        return chunks_repo.SearchRows(rows.hits[:ann_hits], ann_hits)
+
+    monkeypatch.setattr(chunks_repo, "search", short_ann)
     async with AsyncSession(bind=app_conn) as session:
         await set_tenant(session, ta["id"])
-        result = await search_in_session(session, ta["id"], unit_vector(1.0), K)
+        result = await search_in_session(session, ta["id"], "", unit_vector(1.0), K)
 
-    assert calls == [K]
+    assert calls == [K, K]  # the ANN pass, then the exact pass
     assert result.used_fallback is True
     assert len(result.hits) == K
     assert {hit.chunk_id for hit in result.hits} <= a_ids
@@ -81,20 +85,18 @@ async def test_healthy_ann_stage_does_not_fall_back(
     ta = two_tenants_seeded["tenant_a"]
     a_ids = await _seed_chunks(owner_conn, ta, K + 2)
     exact_calls: list[int] = []
-    real_exact = chunks_repo.exact_search
+    real_search = chunks_repo.search
 
-    async def healthy_ann(session, tenant_id, embedding, k):  # type: ignore[no-untyped-def]
-        return await real_exact(session, tenant_id, embedding, k)
+    async def spy_search(session, tenant_id, query, *, exact=False):  # type: ignore[no-untyped-def]
+        if exact:
+            exact_calls.append(query.k)
+        # Exact order stands in for a healthy ANN stage on this tiny tenant.
+        return await real_search(session, tenant_id, query, exact=True)
 
-    async def spy_exact(session, tenant_id, embedding, k):  # type: ignore[no-untyped-def]
-        exact_calls.append(k)
-        return await real_exact(session, tenant_id, embedding, k)
-
-    monkeypatch.setattr(chunks_repo, "vector_search", healthy_ann)
-    monkeypatch.setattr(chunks_repo, "exact_search", spy_exact)
+    monkeypatch.setattr(chunks_repo, "search", spy_search)
     async with AsyncSession(bind=app_conn) as session:
         await set_tenant(session, ta["id"])
-        result = await search_in_session(session, ta["id"], unit_vector(1.0), K)
+        result = await search_in_session(session, ta["id"], "", unit_vector(1.0), K)
 
     assert result.used_fallback is False
     assert exact_calls == []  # the exact path really was not taken

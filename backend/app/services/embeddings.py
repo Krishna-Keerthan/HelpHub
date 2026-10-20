@@ -16,6 +16,8 @@ from typing import Any, Protocol
 
 import numpy as np
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
 EMBEDDING_DIM = 384
@@ -35,6 +37,16 @@ class EmbeddingError(Exception):
     lengths and indices only. Providers wrapping a remote error should raise
     a different exception type (logged as class name only).
     """
+
+
+class EmbeddingUnavailableError(EmbeddingError):
+    """The hosted provider failed (network, quota, 4xx/5xx, bad payload).
+
+    Fixed message: nothing from the provider or the inputs is ever attached.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("embedding provider unavailable")
 
 
 def validate_vectors(
@@ -77,7 +89,9 @@ class FastEmbedProvider:
                 from fastembed import TextEmbedding
 
                 cls._model = TextEmbedding(
-                    model_name=cls.model_name, cache_dir=str(MODEL_CACHE_DIR)
+                    model_name=cls.model_name,
+                    cache_dir=str(MODEL_CACHE_DIR),
+                    threads=settings.embedding_threads,
                 )
             return cls._model
 
@@ -125,34 +139,40 @@ class FakeEmbeddingProvider:
         return self._vector(text)
 
 
-_provider: FastEmbedProvider | None = None
+_provider: EmbeddingProvider | None = None
 
 
-def default_provider() -> FastEmbedProvider:
-    """The process-wide real provider. Creating it does not load the model."""
+def default_provider() -> EmbeddingProvider:
+    """The process-wide real provider, chosen by ``settings.embedding_provider``.
+
+    Creating it neither loads the local model nor contacts Cloudflare, and the
+    unused provider's module (and fastembed) is never imported.
+    """
     global _provider
     if _provider is None:
-        _provider = FastEmbedProvider()
+        if settings.embedding_provider == "cloudflare":
+            from app.services.embeddings_cloudflare import CloudflareEmbeddingProvider
+
+            _provider = CloudflareEmbeddingProvider()
+        else:
+            _provider = FastEmbedProvider()
     return _provider
 
 
 async def warm_up_default_provider() -> None:
-    """Load the model at startup; on failure it will load lazily on first use."""
+    """Warm up at startup: load the local model, or check the hosted vectors (log-only)."""
+    provider = default_provider()
+    if not isinstance(provider, FastEmbedProvider):
+        from app.services.embeddings_cloudflare import (
+            enable_metrics_logging,
+            warn_if_reference_differs,
+        )
+
+        enable_metrics_logging()
+        await warn_if_reference_differs(provider)  # type: ignore[arg-type]
+        return
     try:
-        await default_provider().warm_up()
+        await provider.warm_up()
     except Exception:
         # gate-allow: str-exc startup warm-up, no DB or document data
         logger.exception("embedding model warm-up failed; will retry on first use")
-
-
-# --- Synchronous helpers -------------------------------------------------
-# For tests and scripts ONLY. They block on model inference: never call them
-# from async code (use an EmbeddingProvider there).
-
-
-def get_embedding(text: str) -> list[float]:
-    return FastEmbedProvider._passages([text])[0]
-
-
-def get_embeddings_batch(texts: Sequence[str]) -> list[list[float]]:
-    return FastEmbedProvider._passages(texts) if texts else []

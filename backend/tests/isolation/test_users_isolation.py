@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from app.core.security import create_access_token
 from app.main import app
-from tests.conftest import SEED_PASSWORD, SeededTenant
+from tests.conftest import SEED_PASSWORD, SeededTenant, sqlstate
 
 # gate-allow: secret fake value used only by this test
 NEW_PASSWORD = "Another-Password-123"
@@ -25,13 +25,6 @@ def token_for(tenant: SeededTenant, *, sub: Any = None, tid: Any = None) -> str:
 
 def auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
-
-
-def sqlstate(exc: DBAPIError) -> str | None:
-    orig = exc.orig
-    return getattr(orig, "sqlstate", None) or getattr(
-        getattr(orig, "__cause__", None), "sqlstate", None
-    )
 
 
 async def use_tenant(conn: AsyncConnection, tenant_id: uuid.UUID) -> None:

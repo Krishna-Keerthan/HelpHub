@@ -1,6 +1,7 @@
 import os
 from collections.abc import AsyncIterable
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import settings
@@ -20,7 +21,17 @@ engine = create_async_engine(
 )
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
+# The session type for annotations in services and api (they do not import
+# sqlalchemy themselves).
+DbSession = AsyncSession
+
 
 async def get_session() -> AsyncIterable[AsyncSession]:
     async with AsyncSessionLocal() as session:
         yield session
+
+
+async def ping() -> None:
+    """SELECT 1 through the runtime (app) role; raises if the database is unreachable."""
+    async with engine.connect() as connection:
+        await connection.execute(text("SELECT 1"))

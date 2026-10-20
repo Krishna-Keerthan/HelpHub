@@ -11,7 +11,7 @@ Read /tmp/gate-report.txt if it exists (ruff S rules and pip-audit already ran; 
 - Authz logic and role checks (admin vs user, ownership)
 - Input limits (size, length, count, depth)
 - Upload handling (type, size, path traversal, storage)
-- Injection into SQL, ES query DSL, shell, or LLM prompts
+- Injection into SQL (including tsquery/full-text input), shell, or LLM prompts
 - SSRF: server-side fetch of user-supplied URLs
 - Secrets in code, logs, errors and responses
 - Dependency findings listed in /tmp/gate-report.txt

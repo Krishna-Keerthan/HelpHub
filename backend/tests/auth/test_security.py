@@ -16,7 +16,7 @@ from app.core.security import (
     verify_password,
 )
 
-CLAIMS = {"sub": "user-1", "tid": "tenant-1", "role": "admin"}
+CLAIMS = {"typ": "access", "sub": "user-1", "tid": "tenant-1", "role": "admin"}
 
 
 def _b64(data: dict[str, Any]) -> str:
@@ -113,7 +113,7 @@ def test_token_signed_with_other_algorithm_rejected() -> None:
         decode_access_token(token)
 
 
-@pytest.mark.parametrize("missing", ["exp", "sub", "tid"])
+@pytest.mark.parametrize("missing", ["exp", "sub", "tid", "typ"])
 def test_token_missing_required_claim_rejected(missing: str) -> None:
     claims = {**CLAIMS, "exp": 4102444800}
     del claims[missing]

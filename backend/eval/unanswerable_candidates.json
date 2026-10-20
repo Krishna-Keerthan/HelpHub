@@ -1,0 +1,493 @@
+{
+  "status": "DRAFT for human review. Not scored, not merged into questions.yaml.",
+  "split_rule": "Fixed before any scoring (no scores exist for these questions): within each category, in the order the questions are written in this file, the 1st goes to dev, the 2nd to test, the 3rd to dev, and so on, starting with dev. near_miss (24) gives 12 dev + 12 test; off_topic (16) gives 8 dev + 8 test; total 20 dev + 20 test. The split does not depend on question content.",
+  "categories": {
+    "near_miss": "same topic as a corpus document, asks for a fact the corpus does not state",
+    "off_topic": "unrelated to the product"
+  },
+  "absent_terms_note": "For each question, strings that must not occur (case-insensitive) in any eval/corpus/*.md. This is a mechanical text check only; a human must still confirm that no document answers the question.",
+  "questions": [
+    {
+      "category": "near_miss",
+      "split": "dev",
+      "question": "Is there a referral program that gives free storage for inviting friends?",
+      "absent_terms": [
+        "referral",
+        "invite a friend",
+        "invite friends"
+      ],
+      "id": "u-001",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "near_miss",
+      "split": "test",
+      "question": "Can I pay my invoice through PayPal?",
+      "absent_terms": [
+        "paypal"
+      ],
+      "id": "u-002",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "near_miss",
+      "split": "dev",
+      "question": "What is the maximum number of webhooks I can create in one workspace?",
+      "absent_terms": [
+        "maximum number of webhooks",
+        "webhooks per"
+      ],
+      "id": "u-003",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "near_miss",
+      "split": "test",
+      "question": "How do I switch the desktop client to dark mode?",
+      "absent_terms": [
+        "dark mode",
+        "dark theme"
+      ],
+      "id": "u-004",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "near_miss",
+      "split": "dev",
+      "question": "Does the desktop client run on ChromeOS?",
+      "absent_terms": [
+        "chromeos",
+        "chrome os"
+      ],
+      "id": "u-005",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "near_miss",
+      "split": "test",
+      "question": "How do I connect Acme Cloud to Jira so tasks link to tickets?",
+      "absent_terms": [
+        "jira"
+      ],
+      "id": "u-006",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "near_miss",
+      "split": "dev",
+      "question": "Is there a Windows Phone version of the mobile app?",
+      "absent_terms": [
+        "windows phone"
+      ],
+      "id": "u-007",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "near_miss",
+      "split": "test",
+      "question": "Can I schedule a file to be deleted automatically on a chosen date?",
+      "absent_terms": [
+        "auto-delete",
+        "autodelete",
+        "scheduled deletion",
+        "delete automatically"
+      ],
+      "id": "u-008",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "near_miss",
+      "split": "dev",
+      "question": "How do I set up SCIM user provisioning for my identity provider?",
+      "absent_terms": [
+        "scim",
+        "provisioning"
+      ],
+      "id": "u-009",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "near_miss",
+      "split": "test",
+      "question": "Does Acme Cloud support Kerberos authentication for the desktop client?",
+      "absent_terms": [
+        "kerberos"
+      ],
+      "id": "u-010",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "near_miss",
+      "split": "dev",
+      "question": "What uptime percentage does the Enterprise service level agreement guarantee?",
+      "absent_terms": [
+        "uptime",
+        "service level",
+        "99."
+      ],
+      "id": "u-011",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "near_miss",
+      "split": "test",
+      "question": "How do I change the language of the web interface to German?",
+      "absent_terms": [
+        "german",
+        "deutsch",
+        "language setting"
+      ],
+      "id": "u-012",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "near_miss",
+      "split": "dev",
+      "question": "How do I transfer ownership of a workspace to another member?",
+      "absent_terms": [
+        "transfer ownership",
+        "transfer the ownership",
+        "new owner can"
+      ],
+      "id": "u-013",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "near_miss",
+      "split": "test",
+      "question": "Is there an official Python SDK for the Acme Cloud API?",
+      "absent_terms": [
+        "sdk",
+        "python"
+      ],
+      "id": "u-014",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "near_miss",
+      "split": "dev",
+      "question": "How many personal access tokens can one user have at the same time?",
+      "absent_terms": [
+        "tokens per user",
+        "maximum number of tokens",
+        "token limit"
+      ],
+      "id": "u-015",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "near_miss",
+      "split": "test",
+      "question": "Does the Acme Cloud API offer a GraphQL endpoint?",
+      "absent_terms": [
+        "graphql"
+      ],
+      "id": "u-016",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "near_miss",
+      "split": "dev",
+      "question": "Can I receive invoices in euros instead of US dollars?",
+      "absent_terms": [
+        "euros",
+        "currency",
+        "eur "
+      ],
+      "id": "u-017",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "near_miss",
+      "split": "test",
+      "question": "How do I turn on end-to-end encryption for a single folder?",
+      "absent_terms": [
+        "end-to-end",
+        "zero-knowledge"
+      ],
+      "id": "u-018",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "near_miss",
+      "split": "dev",
+      "question": "What is the longest file name Acme Cloud accepts?",
+      "absent_terms": [
+        "file name length",
+        "characters long",
+        "maximum length of a file"
+      ],
+      "id": "u-019",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "near_miss",
+      "split": "test",
+      "question": "Can I embed a shared folder on my website with an iframe?",
+      "absent_terms": [
+        "iframe",
+        "embed"
+      ],
+      "id": "u-020",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "near_miss",
+      "split": "dev",
+      "question": "Can the desktop sync client be limited to Wi-Fi networks only?",
+      "absent_terms": [
+        "metered",
+        "wi-fi only",
+        "wifi only",
+        "wi-fi network"
+      ],
+      "id": "u-021",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "near_miss",
+      "split": "test",
+      "question": "In which city is the Asia-Pacific data center located?",
+      "absent_terms": [
+        "singapore",
+        "sydney",
+        "tokyo",
+        "data center"
+      ],
+      "id": "u-022",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "near_miss",
+      "split": "dev",
+      "question": "How do I export the audit log to Splunk?",
+      "absent_terms": [
+        "splunk",
+        "siem"
+      ],
+      "id": "u-023",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "near_miss",
+      "split": "test",
+      "question": "Can I lock a single file so nobody else can edit it while I work on it?",
+      "absent_terms": [
+        "check out",
+        "file lock",
+        "lock a file",
+        "lock the file"
+      ],
+      "id": "u-024",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "off_topic",
+      "split": "dev",
+      "question": "How long should I boil an egg for a soft yolk?",
+      "absent_terms": [
+        "egg"
+      ],
+      "id": "u-025",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "off_topic",
+      "split": "test",
+      "question": "What is the capital city of Australia?",
+      "absent_terms": [
+        "canberra",
+        "australia"
+      ],
+      "id": "u-026",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "off_topic",
+      "split": "dev",
+      "question": "Who won the football World Cup in 2014?",
+      "absent_terms": [
+        "world cup"
+      ],
+      "id": "u-027",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "off_topic",
+      "split": "test",
+      "question": "How do I knit a scarf for a beginner?",
+      "absent_terms": [
+        "knit"
+      ],
+      "id": "u-028",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "off_topic",
+      "split": "dev",
+      "question": "What are the symptoms of the common cold?",
+      "absent_terms": [
+        "cold symptoms",
+        "fever"
+      ],
+      "id": "u-029",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "off_topic",
+      "split": "test",
+      "question": "How do I convert Celsius to Fahrenheit?",
+      "absent_terms": [
+        "fahrenheit"
+      ],
+      "id": "u-030",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "off_topic",
+      "split": "dev",
+      "question": "What is a good name for a golden retriever puppy?",
+      "absent_terms": [
+        "puppy",
+        "retriever"
+      ],
+      "id": "u-031",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "off_topic",
+      "split": "test",
+      "question": "How many calories are in a banana?",
+      "absent_terms": [
+        "calorie",
+        "banana"
+      ],
+      "id": "u-032",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "off_topic",
+      "split": "dev",
+      "question": "Explain how photosynthesis works in plants.",
+      "absent_terms": [
+        "photosynthesis"
+      ],
+      "id": "u-033",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "off_topic",
+      "split": "test",
+      "question": "What time does the sun set in Reykjavik in June?",
+      "absent_terms": [
+        "reykjavik",
+        "sunset"
+      ],
+      "id": "u-034",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "off_topic",
+      "split": "dev",
+      "question": "How do I change the oil in a 2012 Honda Civic?",
+      "absent_terms": [
+        "honda",
+        "motor oil"
+      ],
+      "id": "u-035",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "off_topic",
+      "split": "test",
+      "question": "Recommend a good science fiction novel from the 1980s.",
+      "absent_terms": [
+        "novel",
+        "science fiction"
+      ],
+      "id": "u-036",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "off_topic",
+      "split": "dev",
+      "question": "What is the difference between a violin and a viola?",
+      "absent_terms": [
+        "violin",
+        "viola"
+      ],
+      "id": "u-037",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "off_topic",
+      "split": "test",
+      "question": "How do I grow tomatoes on a balcony?",
+      "absent_terms": [
+        "tomato"
+      ],
+      "id": "u-038",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "off_topic",
+      "split": "dev",
+      "question": "Translate 'good morning' into Japanese.",
+      "absent_terms": [
+        "japanese"
+      ],
+      "id": "u-039",
+      "answerable": false,
+      "evidence": []
+    },
+    {
+      "category": "off_topic",
+      "split": "test",
+      "question": "How do I train for a half marathon in twelve weeks?",
+      "absent_terms": [
+        "marathon"
+      ],
+      "id": "u-040",
+      "answerable": false,
+      "evidence": []
+    }
+  ]
+}

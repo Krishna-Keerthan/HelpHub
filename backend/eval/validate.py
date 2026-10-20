@@ -1,37 +1,20 @@
-"""Evaluation corpus and question-set checks.
+"""Evaluation corpus and question-set checks (pure: no database, no network).
 
-Usage (from backend/):  uv run python -m eval.validate [--fake]
+Usage (from backend/):  uv run python -m eval.validate
 
-Ingests the corpus through the real services into a throw-away tenant, with its
-own Elasticsearch index prefix ``eval-<uuid>-``, checks every question's
-evidence, and prints counts. The tenant and the indices are always removed.
-``--fake`` uses fake embeddings (no model download). No LLM is ever called.
-
-The tenant is registered through the auth service (reserved slug namespace) and
-removed by id; all Elasticsearch access goes through ``eval.guard.GuardedEs``.
+Loads the corpus and questions.yaml and checks the schema. Evidence resolution
+against ingested chunks (``check_evidence``) is used by the Session D runner.
 """
 
-import argparse
-import asyncio
 import sys
 import uuid
 from collections import Counter
-from collections.abc import AsyncIterator, Sequence
-from contextlib import asynccontextmanager
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import yaml
-
-from app.db.repositories import chunks as chunks_repo
-from app.db.tenant_context import tenant_transaction
-from app.services import documents as documents_service
-from app.services.embeddings import EmbeddingProvider, FakeEmbeddingProvider
-from app.services.es_client import alias_name
-from eval import guard, lifecycle
-from eval.guard import GuardedEs
-from eval.lock import LockHeld, hold_lock
 
 EVAL_DIR = Path(__file__).resolve().parent
 VALID_SPLITS = {"dev", "test"}
@@ -54,12 +37,6 @@ class IngestedChunk:
     slug: str
     chunk_index: int
     content: str
-
-
-@dataclass(frozen=True)
-class EvalEnv:
-    tenant_id: uuid.UUID
-    user_id: uuid.UUID
 
 
 # --- loading and schema --------------------------------------------------------------
@@ -179,87 +156,18 @@ def relevant_ids(
 # --- throw-away tenant and index prefix -----------------------------------------------
 
 
-@asynccontextmanager
-async def eval_environment(es: Any) -> AsyncIterator[EvalEnv]:
-    """A dedicated tenant and ``eval-<12 hex>-`` index prefix, journalled and
-    always cleaned up (see ``eval.lifecycle``)."""
-    async with lifecycle.eval_run(es) as run:
-        if run.tenant_id is None or run.user_id is None:
-            raise RuntimeError("eval run has no tenant")
-        yield EvalEnv(run.tenant_id, run.user_id)
-
-
-async def ingest_corpus(
-    env: EvalEnv,
-    docs: Sequence[CorpusDoc],
-    provider: EmbeddingProvider,
-    es: Any,
-) -> list[IngestedChunk]:
-    """Create, embed, store and index every document; return all its chunks."""
-    chunks: list[IngestedChunk] = []
-    for doc in docs:
-        document, _ = await documents_service.create_or_get(
-            env.tenant_id, env.user_id, doc.title, doc.content
-        )
-        await documents_service.ingest_document(
-            env.tenant_id, document.id, provider, es
-        )
-        async with tenant_transaction(env.tenant_id) as session:
-            rows = await chunks_repo.list_for_indexing(
-                session, env.tenant_id, document.id
-            )
-        chunks.extend(
-            IngestedChunk(chunk_id, document.id, doc.slug, index, content)
-            for chunk_id, index, content in rows
-        )
-    await es.indices.refresh(index=alias_name())
-    return chunks
-
-
 # --- command line -----------------------------------------------------------------------
 
 
-async def run(use_fake: bool) -> int:
+def main() -> int:
     docs = load_corpus(EVAL_DIR / "corpus")
     rows = load_questions(EVAL_DIR / "questions.yaml")
     errors = validate_schema(rows)
-    es = GuardedEs.connect()
-    provider: EmbeddingProvider
-    if use_fake:
-        provider = FakeEmbeddingProvider()
-    else:
-        from app.services.embeddings import default_provider
-
-        provider = default_provider()
-    try:
-        async with eval_environment(es) as env:
-            chunks = await ingest_corpus(env, docs, provider, es)
-            if not errors:
-                errors += check_evidence(rows, chunks)
-            print(f"documents: {len(docs)}  chunks: {len(chunks)}")
-    finally:
-        await es.close()
-    summary = summarize(rows) if not errors else {"total": len(rows)}
-    print(f"questions: {summary}")
+    print(f"documents: {len(docs)}")
+    print(f"questions: {summarize(rows) if not errors else {'total': len(rows)}}")
     for error in errors:
         print(f"ERROR {error}")
     return 1 if errors else 0
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--fake", action="store_true", help="fake embeddings")
-    fake = parser.parse_args().fake
-    try:
-        guard.assert_not_production()
-        with hold_lock():
-            return asyncio.run(run(fake))
-    except guard.ProductionRefused as exc:
-        print(f"refusing to run: {exc}", file=sys.stderr)
-        return 2
-    except LockHeld as exc:
-        print(f"refusing to start: {exc}", file=sys.stderr)
-        return 2
 
 
 if __name__ == "__main__":
