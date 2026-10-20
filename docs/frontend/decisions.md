@@ -37,3 +37,21 @@ The backend has no escalation event, status or field (docs/api/chat-stream.md, "
 
 ## D3. API contract source
 Types are generated from `docs/api/openapi.json` once the backend shell commits it (merge `cleanup/lean` into this branch; do not copy the file). SSE event payloads are not in the schema; they come from `docs/api/chat-stream.md`.
+
+## D4. Node version
+- Pinned major: **24** (`frontend/.nvmrc` = `24`, `package.json` `engines.node` = `24.x`). Local: v24.22.0 (fnm).
+- Vercel supports it: "Current available versions are: 24.x (default), 22.x"; the version is overridden by `engines.node` in `package.json`, and `24.x` deploys the latest 24.x. The page does not distinguish Hobby from other plans, so Hobby support is inferred, not stated. Source: https://vercel.com/docs/functions/runtimes/node-js/node-js-versions (last updated 2026-02-27). Node 20 deprecation date (2026-10-01) is from the same page's related-links list, not verified further.
+- CI: `.github/workflows/ci.yml` has no frontend job yet and is outside this shell's tree. **Request for whoever owns CI:** add a frontend job using `actions/setup-node` with `node-version-file: frontend/.nvmrc` (the action reads `.nvmrc` or `package.json`, and the file input is ignored if `node-version` is also set; so do not set both). Source: https://github.com/actions/setup-node/blob/main/docs/advanced-usage.md. Then run `npm ci && npm run lint && npm run typecheck && npm test && npm run build` in `frontend/`. Not built, therefore not verified.
+
+## D5. Uploads: known limitation
+- Vercel caps a function request body at 4.5 MB (D1 sources). The backend's own limit is `max_upload_bytes = 5 * 1024 * 1024` (5 MiB) in `backend/app/core/config.py:70`. The Vercel cap is the tighter one.
+- The UI rejects files over **4 MB** (4 * 1024 * 1024 bytes) before sending, with a clear message; that leaves room for multipart overhead under 4.5 MB. No second upload path is built.
+- Whether a 4 MB file plus multipart overhead really passes Vercel's limit is unverified (not deployed).
+
+## D6. Tooling notes
+- `openapi-typescript@7.13.0` declares `typescript@^5.x` as a peer; the project uses 6.0.3 (typescript-eslint requires `<6.1.0`, so 7.x is not usable). An npm `overrides` entry forces the peer to the project TypeScript. Generation and `tsc` both succeed with it; no deeper compatibility check was done.
+- Types: `npm run gen:api` reads `../docs/api/openapi.json` (the committed contract, no copy) and writes `src/lib/api/schema.d.ts`.
+- Next.js 16 renamed Middleware to **Proxy** (`src/proxy.ts`); route protection uses that (node_modules/next/dist/docs/01-app/01-getting-started/16-proxy.md).
+
+## D7. Backend gap for "token expired" (amendment 2)
+The backend returns the same `401 {"detail": "Not authenticated"}` for missing, expired and invalid access tokens (`backend/app/api/deps.py:_unauthorized`; the reason is only logged). So there is no distinguishable signal from upstream. The BFF derives it itself: it decodes the access-token `exp` claim (unverified, a hint only) and answers `401 {"code": "token_expired"}` when the cookie is missing or past `exp`, and also maps any upstream 401 to `token_expired`. The client refreshes once and retries once; a second 401 or a refresh 401 ends the session. No backend change needed.
