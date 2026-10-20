@@ -279,6 +279,88 @@ async def test_logout_revokes_the_family(
     assert (await refresh(client, first["refresh_token"])).status_code == 401
 
 
+async def logout(client: AsyncClient, token: str, **kwargs: Any) -> Any:
+    return await client.post("/auth/logout", json={"refresh_token": token}, **kwargs)
+
+
+async def test_logout_works_with_an_expired_access_token_or_none(
+    client: AsyncClient, make_tenant: MakeTenant
+) -> None:
+    tenant = await make_tenant()
+    pair = await login(client, tenant)
+    claims = jwt.decode(pair["access_token"], options={"verify_signature": False})
+    expired = jwt.encode(
+        {**claims, "exp": datetime.now(UTC) - timedelta(minutes=5)},
+        settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+    )
+
+    response = await logout(client, pair["refresh_token"], headers=bearer(expired))
+
+    assert response.status_code == 204
+    assert (await refresh(client, pair["refresh_token"])).status_code == 401
+    other = await login(client, tenant)
+    assert (
+        await logout(client, other["refresh_token"])
+    ).status_code == 204  # no header
+    assert (await refresh(client, other["refresh_token"])).status_code == 401
+
+
+async def test_logout_of_a_revoked_token_answers_the_same(
+    client: AsyncClient, make_tenant: MakeTenant
+) -> None:
+    pair = await login(client, await make_tenant())
+    first = await logout(client, pair["refresh_token"])
+    second = await logout(client, pair["refresh_token"])
+
+    assert (first.status_code, first.content) == (second.status_code, second.content)
+    assert second.status_code == 204
+
+
+async def test_logout_with_a_bad_token_answers_204_and_revokes_nothing(
+    client: AsyncClient, make_tenant: MakeTenant
+) -> None:
+    pair = await login(client, await make_tenant())
+    tampered = pair["refresh_token"][:-4] + (
+        "AAAA" if not pair["refresh_token"].endswith("AAAA") else "BBBB"
+    )
+    unknown = create_refresh_token(
+        uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), datetime.now(UTC) + timedelta(days=1)
+    )
+    expired = create_refresh_token(
+        uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), datetime.now(UTC) - timedelta(days=1)
+    )
+
+    for bad in (tampered, pair["access_token"], unknown, expired, "not-a-jwt"):
+        response = await logout(client, bad)
+        assert response.status_code == 204
+        assert response.content == b""
+
+    assert (
+        await refresh(client, pair["refresh_token"])
+    ).status_code == 200  # still live
+
+
+async def test_logout_cannot_reach_another_tenants_tokens(
+    client: AsyncClient, make_tenant: MakeTenant
+) -> None:
+    a, b = await make_tenant(), await make_tenant()
+    pair_a, pair_b = await login(client, a), await login(client, b)
+    # Signed by us, but names tenant B with tenant A's token id: the lookup runs
+    # in B's tenant context, finds nothing, and A's family is untouched.
+    crossed = create_refresh_token(
+        b["user_id"],
+        b["id"],
+        jti_of(pair_a["refresh_token"]),
+        datetime.now(UTC) + timedelta(days=1),
+    )
+
+    assert (await logout(client, crossed)).status_code == 204
+    assert (await refresh(client, pair_a["refresh_token"])).status_code == 200
+    assert (await logout(client, pair_a["refresh_token"])).status_code == 204
+    assert (await refresh(client, pair_b["refresh_token"])).status_code == 200  # B kept
+
+
 async def test_logout_does_not_touch_other_logins(
     client: AsyncClient, make_tenant: MakeTenant
 ) -> None:
