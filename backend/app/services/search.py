@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 from app.db.repositories import chunks as chunks_repo
 from app.db.repositories import documents as documents_repo
-from app.db.repositories.chunks import SearchHit, SearchQuery
+from app.db.repositories.chunks import SearchHit, SearchMode, SearchQuery
 from app.db.session import DbSession
 from app.db.tenant_context import tenant_transaction
 from app.services.embeddings import EmbeddingProvider
@@ -66,8 +66,9 @@ async def search_in_session(
     session: DbSession,
     tenant_id: uuid.UUID,
     query: str,
-    embedding: list[float],
+    embedding: list[float] | None,
     k: int,
+    mode: SearchMode = "hybrid",
 ) -> SearchResult:
     """Fused top-k, with an exact vector branch when ANN misses some of the tenant.
 
@@ -77,9 +78,11 @@ async def search_in_session(
     rerun the statement with the exact vector order.
     """
     words, codes = split_query(query)
-    terms = SearchQuery(embedding, words, tuple(codes), k)
+    terms = SearchQuery(embedding, words, tuple(codes), k, mode)
     rows = await chunks_repo.search(session, tenant_id, terms)
     wanted = chunks_repo.CANDIDATES
+    if mode == "keyword":  # no vector branch, so no ANN completeness to check
+        return SearchResult(rows.hits, used_fallback=False)
     if rows.vector_candidates >= wanted:
         return SearchResult(rows.hits, used_fallback=False)
     available = await chunks_repo.count_for_tenant(session, tenant_id, limit=wanted)
@@ -96,11 +99,16 @@ async def search_in_session(
 
 
 async def search(
-    tenant_id: uuid.UUID, query: str, k: int, provider: EmbeddingProvider
+    tenant_id: uuid.UUID,
+    query: str,
+    k: int,
+    provider: EmbeddingProvider,
+    mode: SearchMode = "hybrid",
 ) -> list[TitledHit]:
-    embedding = await provider.embed_query(query)  # no transaction open
+    # Keyword mode never calls the embedding provider.
+    embedding = None if mode == "keyword" else await provider.embed_query(query)
     async with tenant_transaction(tenant_id) as session:
-        result = await search_in_session(session, tenant_id, query, embedding, k)
+        result = await search_in_session(session, tenant_id, query, embedding, k, mode)
         titles = await documents_repo.titles_for(
             session, tenant_id, list({hit.document_id for hit in result.hits})
         )

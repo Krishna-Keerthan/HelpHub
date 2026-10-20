@@ -14,6 +14,7 @@ class SearchRequest(BaseModel):
         ),
     ]
     k: Annotated[int, Field(ge=1, le=50)] = DEFAULT_K
+    mode: Literal["hybrid", "vector", "keyword"] = "hybrid"
 
 
 class SearchHitRead(BaseModel):
@@ -26,6 +27,8 @@ class SearchHitRead(BaseModel):
     content: str
     char_start: int
     char_end: int
-    score: float  # cosine similarity to the query
+    score: float | None  # cosine similarity to the query; null in keyword mode
     rrf_score: float  # orders the results
     found_by: list[Literal["vector", "keyword"]]
+    vector_rank: int | None  # 1-based rank among vector candidates, if found there
+    keyword_rank: int | None  # 1-based rank among keyword candidates, if found there
