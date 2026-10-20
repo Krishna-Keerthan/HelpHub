@@ -27,11 +27,11 @@ Do not rotate a role's password repeatedly while connecting through the pooler: 
 
 An enabled event trigger `ensure_rls` (event `ddl_command_end`) calls the function `rls_auto_enable`. Every table created in the database gets `ENABLE ROW LEVEL SECURITY` with no policy, including `alembic_version`, `tenants` and `users` (verified by a query run by the user on Supabase). A local Postgres has no such trigger.
 
-Effect: `tenants` has RLS on and no policy, so `helphub_app` is denied (`new row violates row-level security policy for table "tenants"`). `scripts/seed_tenant.py` failed this way with nothing written. Locally `tenants` has RLS off and the owner is a superuser, so the same code passes.
+Effect before migration 0011: `tenants` had RLS on and no policy, so `helphub_app` was denied (`new row violates row-level security policy for table "tenants"`). `scripts/seed_tenant.py` failed this way with nothing written. Locally RLS was off and the owner is a superuser, so the same code passed.
 
 The body of `rls_auto_enable` has not been read by us; the user may add it here. Until then, do not assume what else it does.
 
-Resolution (planned, not yet in the repo): a migration run as `helphub_owner` that disables RLS on `tenants` (and does not leave RLS enabled without a policy on any other table), plus an invariant test that every table has either RLS with a policy or RLS off. With both in place, local and Supabase are identical in this respect.
+Resolution (in the repo): migration `0011_tenants_rls.py` enables RLS on `tenants` with explicit policies `TO helphub_app` for SELECT and INSERT only (the commands the app runs; no UPDATE or DELETE policy, no FORCE). `tests/migrations/test_rls_invariant.py` requires every table in `public` except `alembic_version` to have RLS enabled and at least one policy. Local, CI and Supabase now behave the same. Because there is no FORCE, the owner bypasses RLS: the runtime service must never get `MIGRATION_DATABASE_URL` (see AR-21).
 
 ## Container measurement (C2, 2026-10-17)
 Image `backend/Dockerfile` (python:3.12-slim, uv, non-root uid 10001, model baked at `/srv/backend/.cache/fastembed`, one uvicorn process; image 787 MB on disk). Run with `--memory=512m --memory-swap=512m --cpus=0.1`, DB = Supabase session pooler from the dev box, no `GROQ_API_KEY` (so chat streamed an LLM-unavailable response: retrieval and embedding ran, the Groq call did not). Load: register, one text document, then one 10-page PDF upload + 5 concurrent `POST /chat/stream`. Sampler runs inside the container every 100 ms (RSS and PSS of all processes, cgroup `memory.peak`).
