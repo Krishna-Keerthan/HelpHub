@@ -58,3 +58,24 @@ Only meaningful against a sleeping backend (Render free, after ~15 min idle) or 
 
 ## 7. Logout
 Click **Log out**. Expected: `POST /api/auth/logout` 200 `{"sent":true}`, cookies cleared, landing on `/login`; the upstream request carries the refresh token in the body and **no** `Authorization` header; replaying the old RT via curl as in 3.2 returns 401. Repeat after deleting `hh_at` (expired access token): expected the same result, because logout no longer needs it. Replaying logout with an already revoked or tampered token via curl against the BACKEND should also return 204 (same answer either way).
+
+## Observed run: 2026-10-20 (partial, terminal only)
+
+Setup: `TEST_EMAIL`, `TEST_PASSWORD`, `BACKEND_URL` were set. Backend at `http://127.0.0.1:8000` (`/health` 200). Own dev server: `npm run dev -p 3100` with `BACKEND_URL` from the shell (no `.env.local`). Backend not modified.
+
+**Blocker for every step that needs a session:** the shell has no tenant slug (login needs `tenant_slug`). `qa` failed (401), and `POST /auth/register` answers 403 `Registration is disabled`, so step 0.3 cannot create a workspace. No further slugs were guessed. The authenticated parts of 1.2-1.3, 2, 3.2-3.3, 4, 5 and 7 are **not run** until a slug is provided (e.g. `TEST_TENANT_SLUG`).
+
+| Step | Expected | Observed |
+|---|---|---|
+| 1.1 | redirect to `/login?next=%2Fdocuments` | 307 to `/login?next=%2Fdocuments`. Matches. |
+| 1.2-1.3 | login 200, cookie flags/expiry | Not run (no slug). |
+| 1.4 | wrong password: error, no cookies | `POST /api/auth/login` 401 `{"code":"invalid_credentials"}`, 0 `Set-Cookie`. Matches (UI text not checked). |
+| 1.5 | `next=//evil.test` stays on-site | Not run: browser behaviour. |
+| 2 | refresh rotation, retry, parallel tabs | Not run (no session; Web Lock and tab behaviour need a browser). Only: `GET /api/documents` with no cookies gives 401 `{"code":"token_expired"}`. Matches. |
+| 3.2 | replay spent RT-A: 401, cookies cleared | Not run with a real RT. With a bogus RT: 401 and both cookies cleared (`Max-Age=0`, HttpOnly, SameSite=lax). Backend "refresh token reuse" log and `forced_logout` line not checked. |
+| 3.3 | RT-B rejected after reuse, no loop | Not run (no session; the redirect needs a browser). |
+| 3.4 | bad or missing Origin gives 403 `bad_origin` | Both 403 `{"code":"bad_origin"}`. Matches. |
+| 4.1-4.4 | 4 MB upload, over-limit, delete | Not run (no session). 4.2 and the 4.5 MB Vercel limit also need a browser or a Vercel preview. |
+| 5 | chat stream | Not run (no session; incremental delivery needs a live stream). |
+| 6 | cold start | Not run: needs stopping the backend, which is not ours to stop; Render sleep needs a deployed instance. |
+| 7 (partial) | logout works without a valid access token | App logout with a bogus RT: 200 `{"sent":true}`, cookies cleared. Backend `/auth/logout` with a tampered token: 204. Matches. **Not run:** after expiring the access token and logging out, replaying the old RT fails (needs a real session). |
