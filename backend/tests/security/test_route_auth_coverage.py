@@ -18,8 +18,10 @@ PUBLIC_ROUTES: set[tuple[str, str]] = {
     ("POST", "/auth/login"),
     # Exempt on purpose: the credential is the signed refresh token in the body
     # (an access token is rejected, see tests/auth/test_refresh_tokens.py), verified
-    # before any database access. /auth/logout is NOT exempt: it needs a bearer token.
+    # before any database access. /auth/logout is exempt for the same reason, so a
+    # client whose access token already expired can still revoke its family.
     ("POST", "/auth/refresh"),
+    ("POST", "/auth/logout"),
 }
 # Served by FastAPI itself (not APIRoute instances).
 DOCS_PATHS = {"/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}

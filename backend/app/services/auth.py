@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from app.core.config import settings
-from app.core.principal import Principal
 from app.core.security import (
     DUMMY_HASH,
     InvalidTokenError,
@@ -208,16 +207,23 @@ async def refresh(refresh_token: str) -> TokenPair:
     return pair
 
 
-async def logout(principal: Principal, refresh_token: str) -> None:
-    """Revoke the whole family of ``refresh_token``, which must be the caller's own."""
-    claims = _parse_refresh(refresh_token)
-    if claims.user_id != principal.user_id or claims.tenant_id != principal.tenant_id:
-        raise InvalidRefreshToken("not_owner")
-    async with tenant_transaction(principal.tenant_id) as session:
-        row = await refresh_repo.get_for_update(
-            session, principal.tenant_id, claims.jti
-        )
-        if row is not None and row.user_id == principal.user_id:
-            await refresh_repo.revoke_family(
-                session, principal.tenant_id, row.family_id
-            )
+async def logout(refresh_token: str) -> str:
+    """Revoke the whole family of ``refresh_token``; returns a log-safe outcome.
+
+    The signed refresh token is the credential (signature, expiry and type are
+    verified before any database access) and the tenant comes from it only.
+    An invalid, unknown or already revoked token is not an error: the caller
+    answers the same way, so logout is not an oracle for token state.
+    """
+    try:
+        claims = parse_refresh_token(refresh_token)
+    except InvalidTokenError as exc:
+        return exc.reason
+    async with tenant_transaction(claims.tenant_id) as session:
+        row = await refresh_repo.get_for_update(session, claims.tenant_id, claims.jti)
+        if row is None or row.user_id != claims.user_id:
+            return "unknown_token"
+        if row.revoked_at is not None:
+            return "already_revoked"
+        await refresh_repo.revoke_family(session, claims.tenant_id, row.family_id)
+    return "revoked"
