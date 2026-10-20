@@ -112,3 +112,52 @@ test("a stream that ends without done is reported, and the conversation id is re
   await waitFor(() => expect(f.calls).toHaveLength(2));
   expect(bodies[1]).toMatchObject({ conversation_id: "c9", message: "two" });
 });
+
+test("answers are a polite live region marked busy only while streaming", async () => {
+  routeFetch({
+    "POST /api/chat/stream": () =>
+      sse(["token", { text: "Hi" }], ["done", { conversation_id: "c1", status: "complete", cited: [] }]),
+  });
+  render(<ChatView />);
+  expect(screen.getByRole("list", { name: "Conversation" })).toBeInTheDocument();
+  ask("hello");
+  const answer = (await screen.findByText("Hi")).parentElement as HTMLElement;
+  expect(answer).toHaveAttribute("aria-live", "polite");
+  await waitFor(() => expect(answer).toHaveAttribute("aria-busy", "false"));
+});
+
+test("focus returns to the input only when it was in the form; it is never stolen", async () => {
+  routeFetch({
+    "POST /api/chat/stream": () => sse(["done", { conversation_id: "c1", status: "complete", cited: [] }]),
+  });
+  render(<div><a href="#x">elsewhere</a><ChatView /></div>);
+  const input = screen.getByLabelText("Your question");
+  const other = screen.getByRole("link", { name: "elsewhere" });
+
+  other.focus();
+  ask("one");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Ask" })).toBeEnabled());
+  await new Promise((r) => setTimeout(r, 10));
+  expect(other).toHaveFocus();
+
+  input.focus();
+  ask("two");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Ask" })).toBeEnabled());
+  await waitFor(() => expect(input).toHaveFocus());
+});
+
+test("the searching state is an informational polite status, errors stay alerts", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  routeFetch({
+    "POST /api/chat/stream": async () => {
+      await gate;
+      return sse(["error", { conversation_id: "c1", code: "llm_timeout" }]);
+    },
+  });
+  render(<ChatView />);
+  ask("hello");
+  expect(await screen.findByRole("status")).toHaveTextContent("Searching");
+  release();
+  expect(await screen.findByRole("alert")).toHaveTextContent("took too long");
+});

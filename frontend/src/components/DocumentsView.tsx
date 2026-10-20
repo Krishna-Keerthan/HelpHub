@@ -89,12 +89,13 @@ export function DocumentsView() {
     <section>
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-semibold">Documents</h1>
-        <label className="ml-auto inline-flex min-h-10 cursor-pointer items-center rounded bg-accent px-3 text-sm text-accent-fg">
+        <label className="ml-auto inline-flex min-h-10 cursor-pointer items-center rounded bg-accent px-3 text-sm text-accent-fg focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent">
           {uploading ? "Uploading…" : "Upload"}
           <input
             ref={fileInput}
             type="file"
             aria-label="Upload a document"
+            aria-describedby="upload-hint"
             className="sr-only"
             disabled={uploading}
             onChange={(e) => {
@@ -107,7 +108,7 @@ export function DocumentsView() {
           Refresh
         </button>
       </div>
-      <p className="mb-3 text-xs text-muted">Files up to 4 MB.</p>
+      <p id="upload-hint" className="mb-3 text-xs text-muted">Files up to 4 MB.</p>
       {message && (
         <p role="alert" className="mb-3 text-sm text-danger">
           {message}
@@ -118,7 +119,7 @@ export function DocumentsView() {
       ) : docs.length === 0 ? (
         <p className="text-sm text-muted">No documents yet.</p>
       ) : (
-        <ul className="divide-y divide-line">
+        <ul aria-label="Documents" className="divide-y divide-line">
           {docs.map((d) => (
             <li key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
               <span className="min-w-0 flex-1 basis-40 truncate">{d.title}</span>

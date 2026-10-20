@@ -42,3 +42,9 @@
   --color-info: var(--info);
   --color-info-fg: var(--info-fg);
 }
+
+/* Visible keyboard focus everywhere; components never remove it. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ChatHttpError, streamChat } from "@/lib/api/client";
 import { applyEvent, newTurn, REFUSAL_MESSAGE, streamErrorMessage, type Turn } from "@/lib/ui/chat-state";
+import { Notice } from "./Notice";
 import { failureMessage } from "@/lib/ui/failure";
 
 const MAX_MESSAGE_CHARS = 2000;
@@ -45,7 +46,7 @@ function Answer({ turn }: { turn: Turn }) {
           {streamErrorMessage(turn.errorCode)}
         </p>
       )}
-      {turn.status === "streaming" && !turn.answer && <p className="text-sm text-muted">Searching…</p>}
+      {turn.status === "streaming" && !turn.answer && <Notice className="mt-1 rounded">Searching…</Notice>}
       <Citations turn={turn} />
     </>
   );
@@ -57,6 +58,7 @@ export function ChatView() {
   const conversationId = useRef<string | null>(null);
   const abort = useRef<AbortController | null>(null);
   const nextId = useRef(1);
+  const input = useRef<HTMLInputElement>(null);
 
   useEffect(() => () => abort.current?.abort(), []);
 
@@ -68,6 +70,8 @@ export function ChatView() {
     const form = e.currentTarget;
     const message = String(new FormData(form).get("message") ?? "").trim();
     if (!message || busy) return;
+    // Keep focus only if it was already in the form; never pull it from elsewhere.
+    const focusWasInForm = form.contains(document.activeElement);
     form.reset();
     const id = nextId.current++;
     setTurns((cur) => [...cur, newTurn(id, message)]);
@@ -96,17 +100,22 @@ export function ChatView() {
       update(id, (t) => ({ ...t, status: "error", errorText: text }));
     } finally {
       setBusy(false);
+      const a = document.activeElement;
+      if (focusWasInForm && (a === document.body || a === null)) {
+        // The submit button was disabled while answering and dropped focus; give it back.
+        setTimeout(() => input.current?.focus(), 0);
+      }
     }
   }
 
   return (
     <section className="flex flex-col gap-4">
       <h1 className="text-xl font-semibold">Chat</h1>
-      <ol className="space-y-6">
+      <ol aria-label="Conversation" className="space-y-6">
         {turns.map((t) => (
           <li key={t.id}>
             <p className="break-words font-medium">{t.question}</p>
-            <div className="mt-1 text-fg" aria-live="polite">
+            <div className="mt-1 text-fg" aria-live="polite" aria-busy={t.status === "streaming"}>
               <Answer turn={t} />
             </div>
           </li>
@@ -114,6 +123,7 @@ export function ChatView() {
       </ol>
       <form onSubmit={onSubmit} className="flex flex-col gap-2 sm:flex-row" aria-label="Ask a question">
         <input
+          ref={input}
           name="message"
           required
           maxLength={MAX_MESSAGE_CHARS}

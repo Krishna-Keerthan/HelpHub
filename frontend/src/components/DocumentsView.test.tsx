@@ -23,6 +23,8 @@ test("lists documents", async () => {
   render(<DocumentsView />);
   expect(await screen.findByText("Refund policy")).toBeInTheDocument();
   expect(screen.getByText("Setup guide")).toBeInTheDocument();
+  expect(screen.getByRole("list", { name: "Documents" })).toBeInTheDocument();
+  expect(screen.getByLabelText("Upload a document")).toHaveAccessibleDescription("Files up to 4 MB.");
 });
 
 test("a file over 4 MB is rejected client-side with a clear message and nothing is sent", async () => {
