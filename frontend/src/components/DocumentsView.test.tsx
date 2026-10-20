@@ -24,7 +24,7 @@ test("lists documents", async () => {
   expect(await screen.findByText("Refund policy")).toBeInTheDocument();
   expect(screen.getByText("Setup guide")).toBeInTheDocument();
   expect(screen.getByRole("list", { name: "Documents" })).toBeInTheDocument();
-  expect(screen.getByLabelText("Upload a document")).toHaveAccessibleDescription("Files up to 4 MB.");
+  expect(screen.getByLabelText("Upload a document")).toHaveAccessibleDescription(/Files up to 4 MB\. Plain-text documents are also capped at about 500,000 extracted characters\./);
 });
 
 test("a file over 4 MB is rejected client-side with a clear message and nothing is sent", async () => {
@@ -47,6 +47,19 @@ test("exactly 4 MB is uploaded, then the list reloads", async () => {
   pick(new File([new Uint8Array(4 * 1024 * 1024)], "ok.pdf", { type: "application/pdf" }));
   expect(await screen.findByText("ok.pdf")).toBeInTheDocument();
   expect(f.keys()).toEqual(["GET /api/documents", "POST /api/documents/upload", "GET /api/documents"]);
+});
+
+test("server 413 on upload shows the backend's message and both limits", async () => {
+  routeFetch({
+    "GET /api/documents": () => Response.json([]),
+    "POST /api/documents/upload": () => Response.json({ detail: "Document is too large" }, { status: 413 }),
+  });
+  render(<DocumentsView />);
+  await screen.findByText("No documents yet.");
+  pick(new File(["x"], "long.txt"));
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("Document is too large");
+  expect(alert).toHaveTextContent("500,000 extracted characters");
 });
 
 test("server 415 on upload is explained", async () => {

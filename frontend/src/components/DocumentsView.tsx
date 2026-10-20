@@ -14,6 +14,13 @@ function retryAfter(res: Response): number | null {
   return n > 0 ? n : null;
 }
 
+// The backend's 413 detail says which limit was hit (file, request body or extracted text); show it.
+function tooLargeMessage(error: unknown): string {
+  const detail = typeof (error as { detail?: unknown } | undefined)?.detail === "string" ? (error as { detail: string }).detail : null;
+  const cap = "Documents are limited to 4 MB and about 500,000 extracted characters.";
+  return detail ? `The server rejected this file: ${detail}. ${cap}` : `The server rejected this file as too large. ${cap}`;
+}
+
 export function DocumentsView() {
   const [docs, setDocs] = useState<Doc[] | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -61,12 +68,12 @@ export function DocumentsView() {
     try {
       const form = new FormData();
       form.append("file", file);
-      const { response } = await api.POST("/documents/upload", {
+      const { response, error } = await api.POST("/documents/upload", {
         body: { file: "" },
         bodySerializer: () => form,
       });
       if (response.ok) await load();
-      else if (response.status === 413) setMessage("The server rejected this file as too large.");
+      else if (response.status === 413) setMessage(tooLargeMessage(error));
       else if (response.status === 415) setMessage("This file type is not supported.");
       else setMessage(failureMessage(response.status, null, retryAfter(response)));
     } catch {
@@ -113,7 +120,7 @@ export function DocumentsView() {
           Refresh
         </button>
       </div>
-      <p id="upload-hint" className="mb-3 text-xs text-muted">Files up to 4 MB.</p>
+      <p id="upload-hint" className="mb-3 text-xs text-muted">Files up to 4 MB. Plain-text documents are also capped at about 500,000 extracted characters.</p>
       {message && (
         <p role="alert" className="mb-3 text-sm text-danger">
           {message}
