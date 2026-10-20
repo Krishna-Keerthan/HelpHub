@@ -83,3 +83,32 @@ test("cold start (503) on load shows the waking message", async () => {
   render(<DocumentsView />);
   expect(await screen.findByRole("alert")).toHaveTextContent("waking up");
 });
+
+test("loading state is announced politely, then replaced by the list", async () => {
+  routeFetch({ "GET /api/documents": () => Response.json([doc("1", "A")]) });
+  render(<DocumentsView />);
+  expect(screen.getByRole("status")).toHaveTextContent("Loading documents");
+  expect(await screen.findByText("A")).toBeInTheDocument();
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+});
+
+test("empty state explains what to do", async () => {
+  routeFetch({ "GET /api/documents": () => Response.json([]) });
+  render(<DocumentsView />);
+  expect(await screen.findByText("No documents yet.")).toBeInTheDocument();
+  expect(screen.getByText(/Upload a file up to 4 MB/)).toBeInTheDocument();
+});
+
+test("a failed load shows an alert and Try again recovers", async () => {
+  let n = 0;
+  routeFetch({
+    "GET /api/documents": () =>
+      n++ === 0 ? Response.json({ code: "x" }, { status: 500 }) : Response.json([doc("1", "Back")]),
+  });
+  render(<DocumentsView />);
+  expect(await screen.findByRole("alert")).toHaveTextContent("Something went wrong");
+  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+  expect(await screen.findByText("Back")).toBeInTheDocument();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+});

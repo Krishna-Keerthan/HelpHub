@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
+import { Notice } from "./Notice";
 import { failureMessage, MAX_UPLOAD_BYTES, uploadTooLargeMessage } from "@/lib/ui/failure";
 
 type Doc = components["schemas"]["DocumentRead"];
@@ -17,6 +18,7 @@ export function DocumentsView() {
   const [docs, setDocs] = useState<Doc[] | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -25,10 +27,13 @@ export function DocumentsView() {
       if (data) {
         setDocs(data);
         setMessage(null);
+        setLoadFailed(false);
       } else {
+        setLoadFailed(true);
         setMessage(failureMessage(response.status, null, retryAfter(response)));
       }
     } catch {
+      setLoadFailed(true);
       setMessage("Could not reach the service. Check your connection and try again.");
     }
   }, []);
@@ -114,10 +119,18 @@ export function DocumentsView() {
           {message}
         </p>
       )}
+      {loadFailed && (
+        <button type="button" className="mb-3 min-h-10 rounded border border-line px-3 text-sm" onClick={() => void load()}>
+          Try again
+        </button>
+      )}
       {docs === null ? (
-        !message && <p className="text-sm text-muted">Loading…</p>
+        !message && <Notice className="rounded">Loading documents…</Notice>
       ) : docs.length === 0 ? (
-        <p className="text-sm text-muted">No documents yet.</p>
+        <div className="rounded border border-dashed border-line p-6 text-center">
+          <p>No documents yet.</p>
+          <p className="mt-1 text-sm text-muted">Upload a file up to 4 MB and it becomes searchable in chat.</p>
+        </div>
       ) : (
         <ul aria-label="Documents" className="divide-y divide-line">
           {docs.map((d) => (

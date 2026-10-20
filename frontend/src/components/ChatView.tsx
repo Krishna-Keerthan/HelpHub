@@ -111,6 +111,11 @@ export function ChatView() {
   return (
     <section className="flex flex-col gap-4">
       <h1 className="text-xl font-semibold">Chat</h1>
+      {turns.length === 0 && (
+        <p className="rounded border border-dashed border-line p-6 text-center text-muted">
+          Ask a question about your documents. Answers cite the documents they come from.
+        </p>
+      )}
       <ol aria-label="Conversation" className="space-y-6">
         {turns.map((t) => (
           <li key={t.id}>

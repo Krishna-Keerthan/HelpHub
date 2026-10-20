@@ -161,3 +161,13 @@ test("the searching state is an informational polite status, errors stay alerts"
   release();
   expect(await screen.findByRole("alert")).toHaveTextContent("took too long");
 });
+
+test("empty state invites a first question and disappears after asking", async () => {
+  routeFetch({
+    "POST /api/chat/stream": () => sse(["done", { conversation_id: "c1", status: "complete", cited: [] }]),
+  });
+  render(<ChatView />);
+  expect(screen.getByText(/Ask a question about your documents/)).toBeInTheDocument();
+  ask("hello");
+  await waitFor(() => expect(screen.queryByText(/Ask a question about your documents/)).not.toBeInTheDocument());
+});
