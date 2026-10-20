@@ -1,0 +1,140 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { api } from "@/lib/api/client";
+import type { components } from "@/lib/api/schema";
+import { failureMessage, MAX_UPLOAD_BYTES, uploadTooLargeMessage } from "@/lib/ui/failure";
+
+type Doc = components["schemas"]["DocumentRead"];
+const POLL_MS = 4000;
+
+function retryAfter(res: Response): number | null {
+  const n = Number(res.headers.get("Retry-After"));
+  return n > 0 ? n : null;
+}
+
+export function DocumentsView() {
+  const [docs, setDocs] = useState<Doc[] | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const { data, response } = await api.GET("/documents");
+      if (data) {
+        setDocs(data);
+        setMessage(null);
+      } else {
+        setMessage(failureMessage(response.status, null, retryAfter(response)));
+      }
+    } catch {
+      setMessage("Could not reach the service. Check your connection and try again.");
+    }
+  }, []);
+
+  useEffect(() => {
+    // Initial fetch on mount; setState happens after the awaited request, not synchronously.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
+  }, [load]);
+
+  const hasPending = docs?.some((d) => d.status === "PENDING") ?? false;
+  useEffect(() => {
+    if (!hasPending) return;
+    const t = setTimeout(() => void load(), POLL_MS);
+    return () => clearTimeout(t);
+  }, [hasPending, docs, load]);
+
+  async function onUpload(file: File) {
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setMessage(uploadTooLargeMessage(file.size));
+      return;
+    }
+    setUploading(true);
+    setMessage(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const { response } = await api.POST("/documents/upload", {
+        body: { file: "" },
+        bodySerializer: () => form,
+      });
+      if (response.ok) await load();
+      else if (response.status === 413) setMessage("The server rejected this file as too large.");
+      else if (response.status === 415) setMessage("This file type is not supported.");
+      else setMessage(failureMessage(response.status, null, retryAfter(response)));
+    } catch {
+      setMessage("Upload failed. Check your connection and try again.");
+    } finally {
+      setUploading(false);
+      if (fileInput.current) fileInput.current.value = "";
+    }
+  }
+
+  async function onDelete(doc: Doc) {
+    if (!window.confirm(`Delete "${doc.title}"? This cannot be undone.`)) return;
+    try {
+      const { response } = await api.DELETE("/documents/{document_id}", {
+        params: { path: { document_id: doc.id } },
+      });
+      if (response.ok) setDocs((cur) => cur?.filter((d) => d.id !== doc.id) ?? null);
+      else setMessage(failureMessage(response.status, null, retryAfter(response)));
+    } catch {
+      setMessage("Delete failed. Check your connection and try again.");
+    }
+  }
+
+  return (
+    <section>
+      <div className="mb-4 flex items-center gap-3">
+        <h1 className="text-xl font-semibold">Documents</h1>
+        <label className="ml-auto cursor-pointer rounded bg-zinc-900 px-3 py-1.5 text-sm text-white">
+          {uploading ? "Uploading…" : "Upload"}
+          <input
+            ref={fileInput}
+            type="file"
+            aria-label="Upload a document"
+            className="sr-only"
+            disabled={uploading}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void onUpload(file);
+            }}
+          />
+        </label>
+        <button type="button" className="text-sm underline" onClick={() => void load()}>
+          Refresh
+        </button>
+      </div>
+      <p className="mb-3 text-xs text-zinc-500">Files up to 4 MB.</p>
+      {message && (
+        <p role="alert" className="mb-3 text-sm text-red-700">
+          {message}
+        </p>
+      )}
+      {docs === null ? (
+        !message && <p className="text-sm text-zinc-500">Loading…</p>
+      ) : docs.length === 0 ? (
+        <p className="text-sm text-zinc-500">No documents yet.</p>
+      ) : (
+        <ul className="divide-y divide-zinc-200">
+          {docs.map((d) => (
+            <li key={d.id} className="flex items-center gap-3 py-2">
+              <span className="flex-1 truncate">{d.title}</span>
+              <span className="text-xs text-zinc-500">{d.status}</span>
+              <button
+                type="button"
+                aria-label={`Delete ${d.title}`}
+                className="text-sm text-red-700 underline"
+                onClick={() => void onDelete(d)}
+              >
+                Delete
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
