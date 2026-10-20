@@ -618,11 +618,6 @@
             "description": "Validation Error"
           }
         },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
         "summary": "Logout",
         "tags": [
           "auth"
