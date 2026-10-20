@@ -79,3 +79,9 @@ Setup: `TEST_EMAIL`, `TEST_PASSWORD`, `BACKEND_URL` were set. Backend at `http:/
 | 5 | chat stream | Not run (no session; incremental delivery needs a live stream). |
 | 6 | cold start | Not run: needs stopping the backend, which is not ours to stop; Render sleep needs a deployed instance. |
 | 7 (partial) | logout works without a valid access token | App logout with a bogus RT: 200 `{"sent":true}`, cookies cleared. Backend `/auth/logout` with a tampered token: 204. Matches. **Not run:** after expiring the access token and logging out, replaying the old RT fails (needs a real session). |
+
+### Second attempt: 2026-10-20, slug `local-dev`
+
+`POST /auth/login` directly on the backend with slug `local-dev` and the `TEST_EMAIL`/`TEST_PASSWORD` pair answers **401 `Invalid credentials`** (and 401 `invalid_credentials` through the BFF). The backend cannot tell a wrong slug, a wrong email and a wrong password apart, so one of the three does not match the account. Nothing else was tried (login is limited to 5 attempts per 60 s per account). Every authenticated step stays **not run**: login, documents and chat through the BFF, refresh rotation, replay of an old refresh token, logout after the access token expired, the 4 MB upload through the dev server.
+
+Planned way to expire the access token without waiting: send the request with only the `hh_rt` cookie (exactly what deleting `hh_at` in DevTools does). A genuinely expired-but-present JWT cannot be made without the signing key, so that variant is not covered. The 4 MB upload through the dev server does not test Vercel's 4.5 MB limit.
