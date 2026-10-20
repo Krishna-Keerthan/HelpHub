@@ -75,3 +75,11 @@ Tests: `src/lib/api/session.test.ts` (single-flight, lock/adoption, backoff, ind
 - Browsers without `navigator.locks` fall back to same-tab single-flight only.
 - Fake-backend tests model the documented rules; they are not a run against the real backend. A real-backend check (rotation, reuse revocation, cold start through `/health`) needs the backend running: not done.
 - Render's behaviour for requests held during spin-up (versus connection errors/503) is not documented in the page I read, so `wakeBackend` treats both as "not up yet".
+
+## D9. Accepted risk AR-F1: refresh response lost (token rotated, browser holds the old one)
+- **Risk:** see D8 residual risks. A refresh that reached the backend but whose answer was lost can make the next refresh look like reuse and revoke the token family, forcing a new login.
+- **Why accepted:** it needs a failure in the narrow window between the backend committing the rotation and the browser receiving the answer; the fix (grace window or idempotency key) is a backend change.
+- **Measurement plan:** each occurrence logs one JSON line `{"metric":"refresh_indeterminate","reason":"network_or_timeout|upstream_status|bad_body","instance_count":n}`, and each forced logout logs `{"metric":"forced_logout","reason":"refresh_rejected|no_session",...}` (`lib/server/events.ts`; no tokens, bodies or error messages). Counts are per serverless instance, so total them from the Vercel logs. Review after the first week of real use: if `refresh_indeterminate` is followed by `forced_logout/refresh_rejected` for the same user more than occasionally, ask the backend shell for the grace window. No threshold has been measured yet: unverified.
+
+## D10. `exp` is a refresh hint, never authorization
+The BFF reads the access token's `exp` (unverified) only to decide whether to refresh before calling FastAPI, with a 5 s margin for clock skew (`isExpired`). A token whose `exp` looks valid is still forwarded and FastAPI decides (tests in `passthrough.test.ts`). Nothing in the Next.js code grants access from `exp` or any other claim.

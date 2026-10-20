@@ -6,6 +6,7 @@ import {
   REFRESH_COOKIE,
   setSessionCookies,
 } from "./cookies";
+import { countEvent } from "./events";
 import { forbiddenOrigin, originAllowed } from "./origin";
 import {
   backendUrl,
@@ -25,7 +26,10 @@ import {
 export async function handleRefresh(req: NextRequest, deps: Deps = realDeps): Promise<NextResponse> {
   if (!originAllowed(req)) return forbiddenOrigin() as NextResponse;
   const rt = readCookie(req.cookies, REFRESH_COOKIE);
-  if (!rt) return NextResponse.json({ code: "no_session" }, { status: 401 });
+  if (!rt) {
+    countEvent("forced_logout", "no_session");
+    return NextResponse.json({ code: "no_session" }, { status: 401 });
+  }
 
   const result = await refreshUpstream(rt, deps);
   switch (result.kind) {
@@ -35,6 +39,7 @@ export async function handleRefresh(req: NextRequest, deps: Deps = realDeps): Pr
       return res;
     }
     case "rejected": {
+      countEvent("forced_logout", "refresh_rejected");
       const res = NextResponse.json({ code: "session_expired" }, { status: 401 });
       clearSessionCookies(res, req.url);
       return res;
@@ -42,6 +47,7 @@ export async function handleRefresh(req: NextRequest, deps: Deps = realDeps): Pr
     case "waking":
       return NextResponse.json({ code: "service_waking" }, { status: 503, headers: { "Retry-After": "5" } });
     case "indeterminate":
+      countEvent("refresh_indeterminate", result.reason);
       return NextResponse.json({ code: "refresh_indeterminate" }, { status: 502 });
   }
 }

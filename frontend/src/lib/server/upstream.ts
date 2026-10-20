@@ -69,7 +69,7 @@ export type RefreshResult =
   /** Backend not reachable; the refresh token was NOT sent, so the session is untouched and retry is safe. */
   | { kind: "waking" }
   /** The token was sent but no usable answer came back; it may already be rotated. Do NOT resend it. */
-  | { kind: "indeterminate" };
+  | { kind: "indeterminate"; reason: "network_or_timeout" | "upstream_status" | "bad_body" };
 
 const REFRESH_TIMEOUT_MS = 45_000;
 
@@ -96,10 +96,10 @@ export async function refreshUpstream(
       REFRESH_TIMEOUT_MS,
     );
   } catch {
-    return { kind: "indeterminate" };
+    return { kind: "indeterminate", reason: "network_or_timeout" };
   }
   if (res.status === 401) return { kind: "rejected" };
-  if (!res.ok) return { kind: "indeterminate" };
+  if (!res.ok) return { kind: "indeterminate", reason: "upstream_status" };
   try {
     const pair = (await res.json()) as Partial<Pair>;
     if (typeof pair.access_token === "string" && typeof pair.refresh_token === "string") {
@@ -108,5 +108,5 @@ export async function refreshUpstream(
   } catch {
     // fall through
   }
-  return { kind: "indeterminate" };
+  return { kind: "indeterminate", reason: "bad_body" };
 }

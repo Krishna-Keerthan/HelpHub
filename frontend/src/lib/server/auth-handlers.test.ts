@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { ACCESS_COOKIE, REFRESH_COOKIE } from "./cookies";
+import { eventCount } from "./events";
 import { handleLogin, handleLogout, handleRefresh } from "./auth-handlers";
 import { createAuthedFetch } from "../api/authed-fetch";
 import { refreshWithBackoff, resetSessionForTests, type SessionDeps } from "../api/session";
@@ -189,5 +190,36 @@ describe("handleLogin / handleLogout", () => {
   test("logout rejects a foreign origin", async () => {
     const res = await handleLogout(req("/api/auth/logout", { origin: "http://evil.test" }));
     expect(res.status).toBe(403);
+  });
+});
+
+describe("auth event counters", () => {
+  test("indeterminate and forced-logout reasons are counted and logged without tokens", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const before = {
+      ind: eventCount("refresh_indeterminate", "network_or_timeout"),
+      rej: eventCount("forced_logout", "refresh_rejected"),
+      none: eventCount("forced_logout", "no_session"),
+    };
+    const lost = fakeBackend();
+    lost.setRefresh("throw");
+    await handleRefresh(req("/api/auth/refresh", { cookies: { [REFRESH_COOKIE]: "rt-secret-0" } }), lost.deps);
+    await handleRefresh(req("/api/auth/refresh", { cookies: { [REFRESH_COOKIE]: "stale-secret" } }), fakeBackend().deps);
+    await handleRefresh(req("/api/auth/refresh"), fakeBackend().deps);
+    expect(eventCount("refresh_indeterminate", "network_or_timeout")).toBe(before.ind + 1);
+    expect(eventCount("forced_logout", "refresh_rejected")).toBe(before.rej + 1);
+    expect(eventCount("forced_logout", "no_session")).toBe(before.none + 1);
+    const lines = info.mock.calls.map((c) => String(c[0]));
+    expect(lines.some((l) => l.includes('"metric":"refresh_indeterminate"'))).toBe(true);
+    expect(lines.join("\n")).not.toMatch(/secret|rt-0/);
+    info.mockRestore();
+  });
+
+  test("waking (token never sent) is not counted as indeterminate or forced logout", async () => {
+    const be = fakeBackend();
+    be.setHealthy(false);
+    const before = eventCount("refresh_indeterminate", "network_or_timeout") + eventCount("forced_logout", "refresh_rejected");
+    await handleRefresh(req("/api/auth/refresh", { cookies: { [REFRESH_COOKIE]: "rt-0" } }), be.deps);
+    expect(eventCount("refresh_indeterminate", "network_or_timeout") + eventCount("forced_logout", "refresh_rejected")).toBe(before);
   });
 });

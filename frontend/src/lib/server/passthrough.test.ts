@@ -115,4 +115,27 @@ describe("passthrough", () => {
     expect(await post.json()).toEqual({ code: "service_waking" });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
+
+  test("exp only decides whether to refresh: a future exp is NOT authorization, upstream still decides", async () => {
+    // Forged-looking token with a far-future exp: the BFF forwards it and trusts only FastAPI's answer.
+    const forged = { [ACCESS_COOKIE]: fakeJwt(inMinutes(60 * 24 * 365), "forged") };
+    const fetchImpl = spy(() => Response.json({ detail: "Not authenticated" }, { status: 401 }));
+    const res = await passthrough(req("/api/documents", { method: "GET", cookies: forged }), ["documents"], {
+      fetch: fetchImpl as unknown as typeof fetch,
+      sleep: noSleep,
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1); // exp did not short-circuit to "allowed"
+    expect(res.status).toBe(401);
+  });
+
+  test("clock-skew margin: a token within 5 s of exp is refreshed first; 30 s left is still sent", async () => {
+    const fetchImpl = spy(() => Response.json([]));
+    const deps = { fetch: fetchImpl as unknown as typeof fetch, sleep: noSleep };
+    const now = Math.floor(Date.now() / 1000);
+    const near = await passthrough(req("/api/documents", { method: "GET", cookies: { [ACCESS_COOKIE]: fakeJwt(now + 3) } }), ["documents"], deps);
+    expect(near.status).toBe(401);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    await passthrough(req("/api/documents", { method: "GET", cookies: { [ACCESS_COOKIE]: fakeJwt(now + 30) } }), ["documents"], deps);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
 });
