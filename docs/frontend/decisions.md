@@ -55,3 +55,23 @@ Types are generated from `docs/api/openapi.json` once the backend shell commits 
 
 ## D7. Backend gap for "token expired" (amendment 2)
 The backend returns the same `401 {"detail": "Not authenticated"}` for missing, expired and invalid access tokens (`backend/app/api/deps.py:_unauthorized`; the reason is only logged). So there is no distinguishable signal from upstream. The BFF derives it itself: it decodes the access-token `exp` claim (unverified, a hint only) and answers `401 {"code": "token_expired"}` when the cookie is missing or past `exp`, and also maps any upstream 401 to `token_expired`. The client refreshes once and retries once; a second 401 or a refresh 401 ends the session. No backend change needed.
+
+## D8. Refresh design (full BFF)
+Cookies: `hh_at` (access) and `hh_rt` (refresh), both httpOnly, `SameSite=Lax`, path `/`, `Secure` except on plain-http localhost. Origin check (own origin or `ALLOWED_ORIGINS`; missing Origin rejected) on every non-GET route handler.
+
+Flow: the browser calls `/api/*`; `lib/server/passthrough.ts` forwards with `Bearer` from `hh_at` and never refreshes. Missing/expired/rejected access token -> `401 {code:"token_expired"}` (D7). The client (`lib/api/authed-fetch.ts`) refreshes once through `POST /api/auth/refresh`, retries the original request once, and does not loop. `proxy.ts` only checks that `hh_rt` exists (redirect to `/login`).
+
+### Why a parallel refresh cannot trip reuse detection
+The backend marks a refresh token used on first spend and revokes the whole family if a used token comes back (`backend/app/services/auth.py`, `reuse_detected`). So the same cookie must never be spent twice. Layers, from the client down:
+1. **Same tab:** every caller shares one in-flight promise (`refreshSession`), so N parallel 401s make one `/api/auth/refresh` call.
+2. **Other tabs, same browser profile (same cookie jar):** `navigator.locks` serialises refreshes under one lock name. Inside the lock a caller compares the time its request was *sent* with the last refresh stamp (localStorage); if another tab refreshed after that, it adopts the new cookies and sends nothing. The second tab therefore reads the already-rotated cookie, never the old one.
+3. **Several serverless instances:** they share no memory and need none. A refresh request reaches an instance only from layers 1-2, so at most one per rotation exists, and each instance reads the current cookie from the request itself. Different devices/browsers have separate logins and therefore separate token families.
+4. **Cold start:** the refresh token is sent upstream at most once per call. The route first wakes the backend with repeatable `GET /health` (bounded: 4 attempts x 25 s); if it never answers, `503 service_waking` is returned, nothing was spent and cookies are untouched; the client retries (2 more times with backoff) and shows a "service waking up" state (`onServiceWaking`). The cookie is cleared only when the refresh call itself returns 401.
+
+Tests: `src/lib/api/session.test.ts` (single-flight, lock/adoption, backoff, indeterminate not retried), `src/lib/server/auth-handlers.test.ts` (rotation against a fake backend that revokes the family on reuse, 6 parallel callers -> 1 rotation; the uncoordinated double-spend -> 401, cookies cleared, session ends once with no retry loop; cold start leaves cookies and token untouched), `passthrough.test.ts`, `upstream.test.ts`, `proxy.test.ts`.
+
+### Residual risks (unverified against the real backend)
+- **Lost response:** if the refresh request reached the backend but the answer is lost (timeout/5xx), the token may already be rotated while the browser still holds the old one; the next refresh then looks like reuse and revokes the family. The route reports `502 refresh_indeterminate`, keeps the cookies and the client does not auto-retry, but the user may still be forced to log in again. A short reuse grace window or idempotency key on the backend would remove this. **Config/feature request for the backend shell**; not done here.
+- Browsers without `navigator.locks` fall back to same-tab single-flight only.
+- Fake-backend tests model the documented rules; they are not a run against the real backend. A real-backend check (rotation, reuse revocation, cold start through `/health`) needs the backend running: not done.
+- Render's behaviour for requests held during spin-up (versus connection errors/503) is not documented in the page I read, so `wakeBackend` treats both as "not up yet".
