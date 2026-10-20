@@ -13,7 +13,7 @@ Not run yet. Every "Expected" below is a prediction from the code and tests, **u
 ## 1. Login and route protection
 1. Visit `$APP/documents` with no cookies. Expected: redirect to `/login?next=%2Fdocuments`.
 2. Log in with workspace `qa`, the email and password. Expected: `POST /api/auth/login` 200, body `{"ok":true}` (no tokens in the body), then land on `/documents`.
-3. Cookies: `hh_at` and `hh_rt` both `HttpOnly`, `SameSite=Lax`, Path `/`, **not** `Secure` (http localhost). `hh_at` expiry ~15 min, `hh_rt` ~7 days.
+3. Cookies: `hh_at` and `hh_rt` both `HttpOnly`, `SameSite=Lax`, Path `/`, **not** `Secure` (http localhost). `hh_at` lifetime equals the access token's (the backend default is 15 minutes; the local app overrides it to 60 minutes, exp minus iat = 3600 s, so expect Max-Age 3599 locally), `hh_rt` ~7 days.
 4. Wrong password. Expected: "Email, password or workspace is wrong.", no cookies set.
 5. `$APP/login?next=//evil.test` then log in. Expected: lands on `/documents`, not off-site.
 
@@ -93,7 +93,7 @@ Setup: slug from `TEST_TENANT_SLUG`, credentials from the shell (never printed).
 | Step | Expected | Observed |
 |---|---|---|
 | 1.2 | login 200 `{"ok":true}` | 200 `{"ok":true}`, no tokens in the body. Matches. |
-| 1.3 | HttpOnly, SameSite=Lax, Path `/`, not Secure; `hh_at` ~15 min, `hh_rt` ~7 days | HttpOnly, SameSite=lax, Path `/`, no Secure. `hh_rt` Max-Age 604800 (7 days). **`hh_at` Max-Age 3599 (~1 h), not ~15 min:** the checklist's "~15 min" is wrong for this backend (the cookie follows the backend's token lifetime). |
+| 1.3 | HttpOnly, SameSite=Lax, Path `/`, not Secure; `hh_at` = token lifetime (default 15 min), `hh_rt` ~7 days | HttpOnly, SameSite=lax, Path `/`, no Secure. `hh_rt` Max-Age 604800 (7 days). `hh_at` Max-Age 3599 (~1 h): the backend's access-token default is 15 minutes, but the local app overrides it to 60 minutes (verified exp minus iat = 3600 s), and the cookie lifetime follows the token. Not a defect. |
 | 1.4 | wrong password, no cookies | 401 `invalid_credentials`, 0 cookies. Matches. |
 | 2.2 | no `hh_at`: 401 `token_expired`, refresh, retry | `GET /api/documents` with only `hh_rt`: 401 `{"code":"token_expired"}`. `POST /api/auth/refresh` 200 `{"ok":true}`. The browser-side retry is not run (needs a browser). |
 | 2.3 | `hh_rt` changes, `hh_at` returns | Both set; `hh_rt` differs from RT-A. Matches. `GET /api/documents` with the new `hh_at`: 200. |
