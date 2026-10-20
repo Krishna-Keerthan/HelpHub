@@ -40,7 +40,7 @@ export function LoginForm() {
     }
   }
 
-  const input = "mt-1 w-full rounded border border-zinc-300 px-3 py-2";
+  const input = "mt-1 min-h-10 w-full rounded border border-line bg-surface px-3 py-2 text-fg";
   return (
     <form onSubmit={onSubmit} className="space-y-4" aria-label="Log in">
       <label className="block text-sm">
@@ -56,14 +56,14 @@ export function LoginForm() {
         <input name="password" type="password" required autoComplete="current-password" className={input} />
       </label>
       {error && (
-        <p role="alert" className="text-sm text-red-700">
+        <p role="alert" className="text-sm text-danger">
           {error}
         </p>
       )}
       <button
         type="submit"
         disabled={busy}
-        className="w-full rounded bg-zinc-900 px-3 py-2 text-white disabled:opacity-50"
+        className="min-h-10 w-full rounded bg-accent px-3 py-2 text-accent-fg disabled:opacity-50"
       >
         {busy ? "Logging in…" : "Log in"}
       </button>

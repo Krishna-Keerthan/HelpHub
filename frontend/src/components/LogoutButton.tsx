@@ -9,7 +9,7 @@ export function LogoutButton() {
     <button
       type="button"
       disabled={busy}
-      className="text-sm underline disabled:opacity-50"
+      className="min-h-10 px-1 text-sm underline disabled:opacity-50"
       onClick={async () => {
         setBusy(true);
         try {

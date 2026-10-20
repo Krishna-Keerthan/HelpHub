@@ -87,9 +87,9 @@ export function DocumentsView() {
 
   return (
     <section>
-      <div className="mb-4 flex items-center gap-3">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-semibold">Documents</h1>
-        <label className="ml-auto cursor-pointer rounded bg-zinc-900 px-3 py-1.5 text-sm text-white">
+        <label className="ml-auto inline-flex min-h-10 cursor-pointer items-center rounded bg-accent px-3 text-sm text-accent-fg">
           {uploading ? "Uploading…" : "Upload"}
           <input
             ref={fileInput}
@@ -103,30 +103,30 @@ export function DocumentsView() {
             }}
           />
         </label>
-        <button type="button" className="text-sm underline" onClick={() => void load()}>
+        <button type="button" className="min-h-10 px-1 text-sm underline" onClick={() => void load()}>
           Refresh
         </button>
       </div>
-      <p className="mb-3 text-xs text-zinc-500">Files up to 4 MB.</p>
+      <p className="mb-3 text-xs text-muted">Files up to 4 MB.</p>
       {message && (
-        <p role="alert" className="mb-3 text-sm text-red-700">
+        <p role="alert" className="mb-3 text-sm text-danger">
           {message}
         </p>
       )}
       {docs === null ? (
-        !message && <p className="text-sm text-zinc-500">Loading…</p>
+        !message && <p className="text-sm text-muted">Loading…</p>
       ) : docs.length === 0 ? (
-        <p className="text-sm text-zinc-500">No documents yet.</p>
+        <p className="text-sm text-muted">No documents yet.</p>
       ) : (
-        <ul className="divide-y divide-zinc-200">
+        <ul className="divide-y divide-line">
           {docs.map((d) => (
-            <li key={d.id} className="flex items-center gap-3 py-2">
-              <span className="flex-1 truncate">{d.title}</span>
-              <span className="text-xs text-zinc-500">{d.status}</span>
+            <li key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+              <span className="min-w-0 flex-1 basis-40 truncate">{d.title}</span>
+              <span className="text-xs text-muted">{d.status}</span>
               <button
                 type="button"
                 aria-label={`Delete ${d.title}`}
-                className="text-sm text-red-700 underline"
+                className="min-h-10 px-1 text-sm text-danger underline"
                 onClick={() => void onDelete(d)}
               >
                 Delete

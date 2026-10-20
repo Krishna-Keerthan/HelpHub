@@ -16,7 +16,7 @@ function Citations({ turn }: { turn: Turn }) {
         <li
           key={s.chunk_id}
           title={`Document ${s.document_id}, section ${s.chunk_index}`}
-          className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs"
+          className="rounded-full bg-chip px-2 py-0.5 text-xs"
         >
           [{s.index}] {s.document_title}
         </li>
@@ -28,7 +28,7 @@ function Citations({ turn }: { turn: Turn }) {
 function Answer({ turn }: { turn: Turn }) {
   if (turn.errorText) {
     return (
-      <p role="alert" className="text-sm text-red-700">
+      <p role="alert" className="text-sm text-danger">
         {turn.errorText}
       </p>
     );
@@ -38,14 +38,14 @@ function Answer({ turn }: { turn: Turn }) {
       {turn.status === "no_answer" ? (
         <p>{REFUSAL_MESSAGE}</p>
       ) : (
-        <p className="whitespace-pre-wrap">{turn.answer}</p>
+        <p className="whitespace-pre-wrap break-words">{turn.answer}</p>
       )}
       {turn.status === "error" && (
-        <p role="alert" className="mt-1 text-sm text-red-700">
+        <p role="alert" className="mt-1 text-sm text-danger">
           {streamErrorMessage(turn.errorCode)}
         </p>
       )}
-      {turn.status === "streaming" && !turn.answer && <p className="text-sm text-zinc-500">Searching…</p>}
+      {turn.status === "streaming" && !turn.answer && <p className="text-sm text-muted">Searching…</p>}
       <Citations turn={turn} />
     </>
   );
@@ -105,23 +105,23 @@ export function ChatView() {
       <ol className="space-y-6">
         {turns.map((t) => (
           <li key={t.id}>
-            <p className="font-medium">{t.question}</p>
-            <div className="mt-1 text-zinc-800" aria-live="polite">
+            <p className="break-words font-medium">{t.question}</p>
+            <div className="mt-1 text-fg" aria-live="polite">
               <Answer turn={t} />
             </div>
           </li>
         ))}
       </ol>
-      <form onSubmit={onSubmit} className="flex gap-2" aria-label="Ask a question">
+      <form onSubmit={onSubmit} className="flex flex-col gap-2 sm:flex-row" aria-label="Ask a question">
         <input
           name="message"
           required
           maxLength={MAX_MESSAGE_CHARS}
           aria-label="Your question"
           placeholder="Ask about your documents"
-          className="flex-1 rounded border border-zinc-300 px-3 py-2"
+          className="min-h-10 flex-1 rounded border border-line bg-surface px-3 py-2 text-fg"
         />
-        <button type="submit" disabled={busy} className="rounded bg-zinc-900 px-4 py-2 text-white disabled:opacity-50">
+        <button type="submit" disabled={busy} className="min-h-10 rounded bg-accent px-4 py-2 text-accent-fg disabled:opacity-50">
           {busy ? "Answering…" : "Ask"}
         </button>
       </form>

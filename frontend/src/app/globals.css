@@ -1,1 +1,44 @@
 @import "tailwindcss";
+
+/* Semantic colour tokens. Components use these names, never raw palette colours. */
+:root {
+  color-scheme: light dark;
+  --surface: #ffffff;
+  --fg: #18181b;
+  --muted: #52525b;
+  --line: #d4d4d8;
+  --chip: #f4f4f5;
+  --accent: #1d4ed8;
+  --accent-fg: #ffffff;
+  --danger: #b91c1c;
+  --info: #fef3c7;
+  --info-fg: #78350f;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #111113;
+    --fg: #f4f4f5;
+    --muted: #a1a1aa;
+    --line: #3f3f46;
+    --chip: #27272a;
+    --accent: #60a5fa;
+    --accent-fg: #0b1220;
+    --danger: #f87171;
+    --info: #422006;
+    --info-fg: #fde68a;
+  }
+}
+
+@theme inline {
+  --color-surface: var(--surface);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-chip: var(--chip);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+  --color-info-fg: var(--info-fg);
+}
