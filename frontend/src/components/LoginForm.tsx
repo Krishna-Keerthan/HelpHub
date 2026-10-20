@@ -40,7 +40,7 @@ export function LoginForm() {
     }
   }
 
-  const input = "mt-1 min-h-10 w-full rounded border border-line bg-surface px-3 py-2 text-fg";
+  const input = "mt-1 min-h-10 w-full rounded border border-control-border bg-surface px-3 py-2 text-fg";
   return (
     <form onSubmit={onSubmit} className="space-y-4" aria-label="Log in">
       <label className="block text-sm">

@@ -120,7 +120,7 @@ export function DocumentsView() {
         </p>
       )}
       {loadFailed && (
-        <button type="button" className="mb-3 min-h-10 rounded border border-line px-3 text-sm" onClick={() => void load()}>
+        <button type="button" className="mb-3 min-h-10 rounded border border-control-border px-3 text-sm" onClick={() => void load()}>
           Try again
         </button>
       )}

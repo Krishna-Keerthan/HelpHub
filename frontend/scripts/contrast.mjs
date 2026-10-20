@@ -30,9 +30,10 @@ const PAIRS = [
   ["danger", "surface", 4.5, "error text"],
   ["info-fg", "info", 4.5, "status notices"],
   ["accent", "surface", 3, "focus ring (non-text, 3:1)"],
+  ["control-border", "surface", 3, "input/button borders (non-text, 3:1)"],
 ];
-// Reported but not enforced: non-text contrast (WCAG 1.4.11) for control borders.
-const INFO_PAIRS = [["line", "surface", 3, "input/button borders (non-text, 3:1)"]];
+// Reported but not enforced: --line is decorative only (dividers, dashed placeholders), not a control border.
+const INFO_PAIRS = [["line", "surface", 3, "decorative dividers"]];
 
 let failed = 0;
 console.log("theme  pair                    ratio  min   result");
