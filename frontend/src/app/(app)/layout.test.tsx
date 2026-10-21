@@ -20,3 +20,9 @@ test("shell has a skip link first, then banner, labelled navigation and a focusa
   const all = Array.from(document.body.querySelectorAll("a, button"));
   expect(all[0]).toBe(skip);
 });
+
+test("main is widened only for pages that mark themselves wide", () => {
+  render(<AppLayout><p>content</p></AppLayout>);
+  expect(screen.getByRole("main").className).toContain("max-w-3xl");
+  expect(screen.getByRole("main").className).toContain("has-[[data-wide]]:max-w-5xl");
+});

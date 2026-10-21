@@ -63,7 +63,7 @@ export function CompareView() {
   const unique = allLoaded ? uniqueDocumentIds(loadedHits) : new Map<SearchMode, Set<string>>();
 
   return (
-    <section>
+    <section data-wide>
       <h1 className="mb-4 text-xl font-semibold">Compare retrieval</h1>
       <form
         className="mb-2 flex flex-wrap gap-2"

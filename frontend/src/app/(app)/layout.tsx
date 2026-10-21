@@ -24,7 +24,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <LogoutButton />
         </div>
       </header>
-      <main id="content" tabIndex={-1} className="mx-auto max-w-3xl p-4 focus:outline-none">{children}</main>
+      <main id="content" tabIndex={-1} className="mx-auto max-w-3xl p-4 focus:outline-none has-[[data-wide]]:max-w-5xl">{children}</main>
     </>
   );
 }
