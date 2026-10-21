@@ -25,6 +25,8 @@ FIELDS = {
     "score",
     "rrf_score",
     "found_by",
+    "vector_rank",
+    "keyword_rank",
 }
 
 

@@ -106,3 +106,21 @@ async def test_no_cors_headers_without_configured_origins(
 ) -> None:
     _, headers = await cors_headers(monkeypatch, "https://app.test", "")
     assert "access-control-allow-origin" not in headers
+
+
+@pytest.mark.parametrize("field", ["database_url", "migration_database_url"])
+@pytest.mark.parametrize(
+    "prefix", ["postgresql://", "postgresql+psycopg://", "postgres://"]
+)
+def test_database_urls_must_use_the_asyncpg_driver(field: str, prefix: str) -> None:
+    url = f"{prefix}user:s3cret-pw@localhost/db"
+    with pytest.raises(ValidationError) as exc_info:
+        make(**{field: url})
+    message = str(exc_info.value)
+    assert "postgresql+asyncpg://" in message
+    assert "s3cret-pw" not in message and "user:" not in message
+
+
+def test_asyncpg_urls_are_accepted_and_migration_url_is_optional() -> None:
+    assert make().database_url.startswith("postgresql+asyncpg://")
+    assert make(migration_database_url=None).database_dsn is not None

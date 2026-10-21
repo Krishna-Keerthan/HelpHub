@@ -22,6 +22,8 @@ def _read(results: list[search_service.TitledHit]) -> list[SearchHitRead]:
             score=r.hit.score,
             rrf_score=r.hit.rrf_score,
             found_by=list(r.hit.found_by),  # type: ignore[arg-type]
+            vector_rank=r.hit.vector_rank,
+            keyword_rank=r.hit.keyword_rank,
         )
         for r in results
     ]
@@ -35,7 +37,7 @@ async def search(
 ) -> list[SearchHitRead]:
     try:
         results = await search_service.search(
-            principal.tenant_id, data.query, data.k, provider
+            principal.tenant_id, data.query, data.k, provider, data.mode
         )
     except EmbeddingUnavailableError:
         raise HTTPException(

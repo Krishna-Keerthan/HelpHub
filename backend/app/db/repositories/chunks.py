@@ -1,7 +1,7 @@
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
@@ -21,6 +21,7 @@ from app.db.models import Chunk
 CHUNKS_EMBEDDING_INDEX = "ix_chunks_embedding_hnsw"
 EMBEDDING_DIM = 384
 MAX_K = 50
+SearchMode = Literal["hybrid", "vector", "keyword"]
 MIN_EF_SEARCH = 40
 MAX_EF_SEARCH = 1000
 
@@ -42,14 +43,14 @@ vec AS MATERIALIZED (
     FROM chunks
     WHERE {tenant}
     ORDER BY {order_by}
-    LIMIT :cand
+    LIMIT :vec_cand
 ),
 kw AS MATERIALIZED (
     SELECT c.id, ts_rank_cd(c.search_tsv, q.tsq) AS rank_value
     FROM chunks c, q
     WHERE c.{tenant} AND c.search_tsv @@ q.tsq
     ORDER BY rank_value DESC, c.id
-    LIMIT :cand
+    LIMIT :kw_cand
 ),
 ranked AS (
     SELECT id, 'vector' AS source, row_number() OVER (ORDER BY distance + 0, id) AS pos
@@ -60,7 +61,9 @@ ranked AS (
 ),
 fused AS (
     SELECT id, sum(1.0 / (:rrf_k + pos))::float8 AS rrf_score, min(pos) AS best_pos,
-           array_agg(source ORDER BY source DESC) AS found_by
+           array_agg(source ORDER BY source DESC) AS found_by,
+           max(pos) FILTER (WHERE source = 'vector') AS vector_rank,
+           max(pos) FILTER (WHERE source = 'keyword') AS keyword_rank
     FROM ranked
     GROUP BY id
     ORDER BY rrf_score DESC, best_pos, id
@@ -68,7 +71,8 @@ fused AS (
 )
 SELECT c.id AS chunk_id, c.document_id, c.chunk_index, c.text AS content,
        c.char_start, c.char_end, 1 - (c.embedding <=> :vec) AS score,
-       f.rrf_score, f.found_by, (SELECT count(*) FROM vec) AS vector_candidates
+       f.rrf_score, f.found_by, (SELECT count(*) FROM vec) AS vector_candidates,
+       f.vector_rank, f.keyword_rank
 FROM fused f
 JOIN chunks c ON c.id = f.id AND c.{tenant}
 ORDER BY f.rrf_score DESC, f.best_pos, c.id
@@ -89,9 +93,13 @@ class SearchHit:
     content: str
     char_start: int
     char_end: int
-    score: float  # cosine similarity to the query, whichever branch found it
+    score: (
+        float | None
+    )  # cosine to the query, whichever branch found it; None in keyword mode
     rrf_score: float  # orders the results
     found_by: tuple[str, ...]  # "vector", "keyword" or both
+    vector_rank: int | None = None  # 1-based position in the vector candidates
+    keyword_rank: int | None = None  # 1-based position in the keyword candidates
 
 
 @dataclass(frozen=True)
@@ -123,10 +131,13 @@ def _tsquery_sql(code_count: int) -> str:
 
 @dataclass(frozen=True)
 class SearchQuery:
-    embedding: list[float]
+    embedding: list[float] | None  # None only for mode "keyword"
     words: str  # plain words, OR'd in the full-text branch
     codes: tuple[str, ...]  # identifiers, each matched as an exact phrase
     k: int
+    # Which candidate sets feed the fused query: a branch not wanted gets
+    # LIMIT 0, so the statement (and its tenant filters) stays the same.
+    mode: SearchMode = "hybrid"
 
 
 def search_statement(
@@ -141,7 +152,8 @@ def search_statement(
         bindparam("vec", query.embedding, type_=Vector(EMBEDDING_DIM)),
         bindparam("tid", tenant_id),
         bindparam("k", clamp_k(query.k)),
-        bindparam("cand", CANDIDATES),
+        bindparam("vec_cand", 0 if query.mode == "keyword" else CANDIDATES),
+        bindparam("kw_cand", 0 if query.mode == "vector" else CANDIDATES),
         bindparam("rrf_k", RRF_K),
         bindparam("words", query.words),
     ]
@@ -176,7 +188,7 @@ async def search(
             {"ef": str(min(max(MIN_EF_SEARCH, CANDIDATES), MAX_EF_SEARCH))},
         )
     rows = list(await session.execute(search_statement(tenant_id, query, exact=exact)))
-    hits = [SearchHit(*row[:8], tuple(row[8])) for row in rows]
+    hits = [SearchHit(*row[:8], tuple(row[8]), *row[10:12]) for row in rows]
     return SearchRows(hits, rows[0][9] if rows else 0)
 
 

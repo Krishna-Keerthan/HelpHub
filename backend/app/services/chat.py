@@ -196,10 +196,12 @@ async def _run(
             document_title=titles[hit.document_id],
             chunk_index=hit.chunk_index,
             content=hit.content,
-            score=hit.score,
+            score=score,
         )
         for hit in result.hits
-        if hit.score >= settings.min_retrieval_score and hit.document_id in titles
+        if (score := hit.score) is not None
+        and score >= settings.min_retrieval_score
+        and hit.document_id in titles
     ]
     if not qualified:
         outcome.status = "no_answer"

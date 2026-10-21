@@ -351,13 +351,42 @@
             "title": "Found By",
             "type": "array"
           },
+          "keyword_rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keyword Rank"
+          },
           "rrf_score": {
             "title": "Rrf Score",
             "type": "number"
           },
           "score": {
-            "title": "Score",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "vector_rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vector Rank"
           }
         },
         "required": [
@@ -370,7 +399,9 @@
           "char_end",
           "score",
           "rrf_score",
-          "found_by"
+          "found_by",
+          "vector_rank",
+          "keyword_rank"
         ],
         "title": "SearchHitRead",
         "type": "object"
@@ -383,6 +414,16 @@
             "minimum": 1.0,
             "title": "K",
             "type": "integer"
+          },
+          "mode": {
+            "default": "hybrid",
+            "enum": [
+              "hybrid",
+              "vector",
+              "keyword"
+            ],
+            "title": "Mode",
+            "type": "string"
           },
           "query": {
             "maxLength": 1000,

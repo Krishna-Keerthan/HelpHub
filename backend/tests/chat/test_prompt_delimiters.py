@@ -176,7 +176,26 @@ def test_no_sources_still_builds_a_valid_prompt() -> None:
         ("[1, 99]", 3, [1]),
         ("no citations", 3, []),
         ("[1]", 0, []),
+        ("see \uff3b1\uff3d", 3, [1]),
+        ("see \uff3b1, 2\uff3d and \u30103\u3011", 3, [1, 2, 3]),
+        ("see \uff3b1]", 3, [1]),
+        ("see \uff3b\uff11\uff3d", 3, []),  # fullwidth digit is not a source number
+        ("see \uff3b99\uff3d", 3, []),
     ],
 )
 def test_parse_citations(answer: str, n: int, expected: list[int]) -> None:
     assert parse_citations(answer, n) == expected
+
+
+@pytest.mark.parametrize(
+    "marker", ["\uff3b1\uff3d", "\uff3b 2 \uff3d", "\u30101\u3011", "\uff3b1, 2]"]
+)
+def test_fullwidth_marker_in_a_document_cannot_spoof_a_citation(marker: str) -> None:
+    built = build_messages([], [source(f"fact {marker} here")], QUESTION)
+    block = built.messages[-2]["content"]
+    assert marker not in block
+    assert parse_citations(block, 3) == [1]  # only the real "[1]" label survives
+
+
+def test_prompt_asks_for_ascii_square_brackets_only() -> None:
+    assert "ASCII square brackets only" in SYSTEM_PROMPT

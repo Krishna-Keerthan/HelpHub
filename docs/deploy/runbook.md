@@ -3,6 +3,7 @@
 ## Connection defaults
 - Both the app (`DATABASE_URL`) and migrations (`MIGRATION_DATABASE_URL`) use the Supabase **session pooler**, port 5432, username `role.<project-ref>`. Measured working with no asyncpg changes (spikes.md section 1).
 - If the app is ever moved to the transaction pooler (port 6543), set asyncpg `statement_cache_size=0` in `app/db/session.py`; without it 174 of 180 test transactions failed with SQLSTATE 26000.
+- The Supabase dashboard shows `postgresql://...`; add `+asyncpg` (`postgresql+asyncpg://...`) before pasting it, because the app refuses to start with any other prefix.
 - Migrations run only as `helphub_owner`, never as `postgres` (otherwise Supabase grants the API roles access to new tables; spikes.md section 4).
 
 ## Supabase role setup (once, as `postgres` over the session pooler)
@@ -18,7 +19,20 @@ GRANT USAGE ON SCHEMA public TO helphub_app;
 ALTER DEFAULT PRIVILEGES FOR ROLE helphub_owner IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO helphub_app;
 ALTER DEFAULT PRIVILEGES FOR ROLE helphub_owner IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO helphub_app;
 ```
+pgvector must live in schema `public`: create it as `postgres` with the SQL `create extension vector with schema public`. The dashboard toggle installs it in schema `extensions`, where `to_regtype('vector')` is null for `helphub_owner` and `helphub_app` (search_path is `"$user", public`) and `helphub_owner` (not a superuser) cannot create it itself because the extension is not trusted. Migration 0001's `CREATE EXTENSION IF NOT EXISTS vector` is a no-op once it exists.
+Migrations are run from a copy of the tracked files with no `.env` (`git archive HEAD backend | tar -x -C <dir>`), with `MIGRATION_DATABASE_URL` and the other settings variables in the shell environment, because `alembic/env.py` loads `app.core.config.settings`, which reads `.env` if one exists.
+
 Do not rotate a role's password repeatedly while connecting through the pooler: the pooler kept rejecting the new password and repeated failures tripped its circuit breaker (`ECIRCUITBREAKER`, all new connections blocked for minutes).
+
+### Platform behaviour: Supabase auto-enables RLS on new tables (verified 2026-10-20)
+
+An enabled event trigger `ensure_rls` (event `ddl_command_end`) calls the function `rls_auto_enable`. Every table created in the database gets `ENABLE ROW LEVEL SECURITY` with no policy, including `alembic_version`, `tenants` and `users` (verified by a query run by the user on Supabase). A local Postgres has no such trigger.
+
+Effect before migration 0011: `tenants` had RLS on and no policy, so `helphub_app` was denied (`new row violates row-level security policy for table "tenants"`). `scripts/seed_tenant.py` failed this way with nothing written. Locally RLS was off and the owner is a superuser, so the same code passed.
+
+The body of `rls_auto_enable` has not been read by us; the user may add it here. Until then, do not assume what else it does.
+
+Resolution (in the repo): migration `0011_tenants_rls.py` enables RLS on `tenants` with explicit policies `TO helphub_app` for SELECT and INSERT only (the commands the app runs; no UPDATE or DELETE policy, no FORCE). `tests/migrations/test_rls_invariant.py` requires every table in `public` except `alembic_version` to have RLS enabled and at least one policy. Local, CI and Supabase now behave the same. Because there is no FORCE, the owner bypasses RLS: the runtime service must never get `MIGRATION_DATABASE_URL` (see AR-21).
 
 ## Container measurement (C2, 2026-10-17)
 Image `backend/Dockerfile` (python:3.12-slim, uv, non-root uid 10001, model baked at `/srv/backend/.cache/fastembed`, one uvicorn process; image 787 MB on disk). Run with `--memory=512m --memory-swap=512m --cpus=0.1`, DB = Supabase session pooler from the dev box, no `GROQ_API_KEY` (so chat streamed an LLM-unavailable response: retrieval and embedding ran, the Groq call did not). Load: register, one text document, then one 10-page PDF upload + 5 concurrent `POST /chat/stream`. Sampler runs inside the container every 100 ms (RSS and PSS of all processes, cgroup `memory.peak`).
