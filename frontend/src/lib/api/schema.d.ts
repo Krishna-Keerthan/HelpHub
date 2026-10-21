@@ -452,10 +452,14 @@ export interface components {
             document_title: string;
             /** Found By */
             found_by: ("vector" | "keyword")[];
+            /** Keyword Rank */
+            keyword_rank: number | null;
             /** Rrf Score */
             rrf_score: number;
             /** Score */
-            score: number;
+            score: number | null;
+            /** Vector Rank */
+            vector_rank: number | null;
         };
         /** SearchRequest */
         SearchRequest: {
@@ -464,6 +468,12 @@ export interface components {
              * @default 5
              */
             k: number;
+            /**
+             * Mode
+             * @default hybrid
+             * @enum {string}
+             */
+            mode: "hybrid" | "vector" | "keyword";
             /** Query */
             query: string;
         };
