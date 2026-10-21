@@ -14,6 +14,7 @@ test("shell has a skip link first, then banner, labelled navigation and a focusa
   const nav = screen.getByRole("navigation", { name: "Main" });
   expect(nav).toHaveTextContent("Documents");
   expect(nav).toHaveTextContent("Chat");
+  expect(screen.getByRole("link", { name: "Compare" })).toHaveAttribute("href", "/compare");
   expect(screen.getByRole("main")).toHaveAttribute("id", "content");
   // DOM order = tab order: skip link precedes the header.
   const all = Array.from(document.body.querySelectorAll("a, button"));

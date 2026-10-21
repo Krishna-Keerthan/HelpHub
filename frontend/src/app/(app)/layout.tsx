@@ -18,6 +18,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <nav aria-label="Main" className="flex gap-4 text-sm">
           <Link href="/documents">Documents</Link>
           <Link href="/chat">Chat</Link>
+          <Link href="/compare">Compare</Link>
         </nav>
         <div className="ml-auto">
           <LogoutButton />
