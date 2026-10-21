@@ -122,3 +122,50 @@ test("an empty query sends nothing", () => {
   fireEvent.click(screen.getByRole("button", { name: "Compare" }));
   expect(f.calls).toHaveLength(0);
 });
+
+const markerCount = () => screen.queryAllByText("Only in this list").length;
+
+test("no marker while a column is still loading", async () => {
+  routeFetch({
+    "POST /api/search": byMode({
+      vector: () => Response.json([hit("a")]),
+      keyword: () => Response.json([hit("b")]),
+      hybrid: () => new Promise<Response>(() => {}) as unknown as Response, // never settles
+    }),
+  });
+  render(<CompareView />);
+  await search();
+  await screen.findByRole("list", { name: "Vector results" });
+  await screen.findByRole("list", { name: "Keyword results" });
+  expect(screen.getByRole("region", { name: "Hybrid" })).toHaveTextContent("Searching…");
+  expect(markerCount()).toBe(0);
+});
+
+test("no marker while a column has errored", async () => {
+  routeFetch({
+    "POST /api/search": byMode({
+      vector: () => Response.json([hit("a")]),
+      keyword: () => Response.json([hit("b")]),
+      hybrid: () => new Response("{}", { status: 500 }),
+    }),
+  });
+  render(<CompareView />);
+  await search();
+  await screen.findByRole("alert");
+  await screen.findByRole("list", { name: "Keyword results" });
+  expect(markerCount()).toBe(0);
+});
+
+test("markers appear once all three columns have loaded", async () => {
+  routeFetch({
+    "POST /api/search": byMode({
+      vector: () => Response.json([hit("a")]),
+      keyword: () => Response.json([hit("b")]),
+      hybrid: () => Response.json([hit("b")]),
+    }),
+  });
+  render(<CompareView />);
+  await search();
+  await waitFor(() => expect(markerCount()).toBe(1));
+  expect(within(screen.getByRole("list", { name: "Vector results" })).getByText("Only in this list")).toBeInTheDocument();
+});

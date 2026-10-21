@@ -57,7 +57,10 @@ export function CompareView() {
     const col = columns[mode];
     if (col?.state === "done") loadedHits[mode] = col.hits;
   }
-  const unique = uniqueDocumentIds(loadedHits);
+  // Overlap is only meaningful when every column loaded; with one missing or pending, a "unique"
+  // document might simply be in the list we do not have yet.
+  const allLoaded = MODES.every(({ mode }) => loadedHits[mode] !== undefined);
+  const unique = allLoaded ? uniqueDocumentIds(loadedHits) : new Map<SearchMode, Set<string>>();
 
   return (
     <section>
