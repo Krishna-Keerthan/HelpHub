@@ -1,0 +1,57 @@
+"""Refuse to run tests or migrations against anything but a local database.
+
+The message names the variable only; a URL (it carries the password) and the
+host are never printed. ``python -m tests.helpers.db_guard`` is the gate's check.
+"""
+
+import sys
+from urllib.parse import urlsplit
+
+LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "db", "postgres"})
+
+
+def host_is_local(url: str | None) -> bool:
+    if not url:
+        return False
+    try:
+        host = (urlsplit(url).hostname or "").lower()
+    except ValueError:
+        return False
+    return host in LOCAL_HOSTS
+
+
+def non_local_variables(urls: dict[str, str | None]) -> list[str]:
+    """Names of the variables whose host is not local (or that are unset)."""
+    return [name for name, url in urls.items() if not host_is_local(url)]
+
+
+def refusal_message(names: list[str]) -> str | None:
+    if not names:
+        return None
+    return (
+        f"refusing to run: {', '.join(names)} not local "
+        "(host must be localhost, 127.0.0.1, ::1, db or postgres)"
+    )
+
+
+def current_refusal() -> str | None:
+    from app.core.config import settings
+
+    migration = settings.migration_database_dsn
+    return refusal_message(
+        non_local_variables(
+            {
+                "DATABASE_URL": settings.database_dsn.get_secret_value(),
+                "MIGRATION_DATABASE_URL": (
+                    migration.get_secret_value() if migration else None
+                ),
+            }
+        )
+    )
+
+
+if __name__ == "__main__":
+    message = current_refusal()
+    if message:
+        print(message, file=sys.stderr)
+        sys.exit(3)
