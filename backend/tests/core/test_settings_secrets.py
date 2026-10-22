@@ -10,7 +10,7 @@ from pydantic import SecretStr, ValidationError
 from app.core.config import Settings
 
 DB_PASSWORD = "db-pass-4f1c9a"
-OWNER_PASSWORD = "owner-pass-82be0d"
+OWNER_PASSWORD = "fake-owner-password"
 JWT = "jwt-secret-" + "k" * 32
 CF_ACCOUNT = "cf-account-5d2e"
 CF_TOKEN = "cf-token-91ac3b"

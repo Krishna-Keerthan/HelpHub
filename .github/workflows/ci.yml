@@ -92,7 +92,7 @@ jobs:
         run: |
           docker run --rm \
             -e DATABASE_URL=postgresql+asyncpg://x:y@localhost/x \
-            -e JWT_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef \
+            -e JWT_SECRET=fake-ci-placeholder-jwt-secret-000000000000000000 \
             -e CLOUDFLARE_ACCOUNT_ID=ci-placeholder \
             -e CLOUDFLARE_API_TOKEN=ci-placeholder \
             helphub-backend:ci python -c "
