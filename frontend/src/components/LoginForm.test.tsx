@@ -63,3 +63,27 @@ test("429 shows Retry-After seconds; cold start shows the waking message", async
   fill();
   expect(await screen.findByRole("alert")).toHaveTextContent("waking up");
 });
+
+test("demo button calls the demo route with no body and goes to the app", async () => {
+  const f = routeFetch({ "POST /api/auth/demo": () => Response.json({ ok: true }) });
+  render(<LoginForm demoAvailable />);
+  expect(screen.getByText(/shared, read-only account/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Try the demo" }));
+  await waitFor(() => expect(replace).toHaveBeenCalledWith("/documents"));
+  expect(f.calls[0]!.req.method).toBe("POST");
+  expect(await f.calls[0]!.req.text()).toBe("");
+});
+
+test("demo button is disabled when the server has no demo configured", () => {
+  render(<LoginForm />);
+  expect((screen.getByRole("button", { name: "Try the demo" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByText(/not configured/)).toBeTruthy();
+});
+
+test("demo failure shows a message", async () => {
+  routeFetch({ "POST /api/auth/demo": () => Response.json({ code: "demo_unavailable" }, { status: 503 }) });
+  render(<LoginForm demoAvailable />);
+  fireEvent.click(screen.getByRole("button", { name: "Try the demo" }));
+  await screen.findByText("The demo is not available right now.");
+  expect(replace).not.toHaveBeenCalled();
+});

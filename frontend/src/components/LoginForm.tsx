@@ -2,10 +2,10 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { login } from "@/lib/api/client";
+import { demoLogin, login } from "@/lib/api/client";
 import { failureMessage, safeNext } from "@/lib/ui/failure";
 
-export function LoginForm() {
+export function LoginForm({ demoAvailable = false }: { demoAvailable?: boolean }) {
   const router = useRouter();
   const next = safeNext(useSearchParams().get("next"));
   const [error, setError] = useState<string | null>(null);
@@ -40,8 +40,30 @@ export function LoginForm() {
     }
   }
 
+  async function onDemo() {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await demoLogin();
+      if (result.ok) {
+        router.replace(next);
+        return;
+      }
+      setError(
+        result.code === "demo_unavailable"
+          ? "The demo is not available right now."
+          : failureMessage(result.status, result.code, result.retryAfter),
+      );
+    } catch {
+      setError("Could not reach the service. Check your connection and try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const input = "mt-1 min-h-10 w-full rounded border border-control-border bg-surface px-3 py-2 text-fg";
   return (
+    <>
     <form onSubmit={onSubmit} className="space-y-4" aria-label="Log in">
       <label className="block text-sm">
         Workspace
@@ -68,5 +90,21 @@ export function LoginForm() {
         {busy ? "Logging in…" : "Log in"}
       </button>
     </form>
+    <div className="mt-6 border-t border-line pt-4">
+      <button
+        type="button"
+        onClick={() => void onDemo()}
+        disabled={busy || !demoAvailable}
+        className="min-h-10 w-full rounded border border-control-border px-3 py-2 disabled:opacity-50"
+      >
+        Try the demo
+      </button>
+      <p className="mt-2 text-xs text-muted">
+        {demoAvailable
+          ? "The demo is a shared, read-only account. Other visitors may see your conversations, so do not enter personal information."
+          : "The demo is not configured on this server."}
+      </p>
+    </div>
+    </>
   );
 }

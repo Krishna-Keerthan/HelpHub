@@ -32,6 +32,15 @@ export async function login(body: LoginBody): Promise<{ ok: true } | { ok: false
   return { ok: false, status: res.status, code, retryAfter: retry > 0 ? retry : null };
 }
 
+/** Log in as the shared demo viewer. The credentials live on the server; nothing is sent from here. */
+export async function demoLogin(): Promise<{ ok: true } | { ok: false; status: number; code: string; retryAfter: number | null }> {
+  const res = await fetch(apiUrl("/auth/demo"), { method: "POST" });
+  if (res.ok) return { ok: true };
+  const code = ((await res.json().catch(() => ({}))) as { code?: string }).code ?? "login_failed";
+  const retry = Number(res.headers.get("Retry-After"));
+  return { ok: false, status: res.status, code, retryAfter: retry > 0 ? retry : null };
+}
+
 /** Log out through the BFF; local cookies are cleared even if the backend is down. */
 export async function logout(): Promise<void> {
   await fetch(apiUrl("/auth/logout"), { method: "POST" });

@@ -60,6 +60,14 @@ export async function handleLogin(req: NextRequest, deps: Deps = realDeps): Prom
   } catch {
     return NextResponse.json({ code: "bad_request" }, { status: 400 });
   }
+  return loginUpstream(req, body, deps);
+}
+
+/**
+ * Shared login path (also used by the demo login): wake the backend, post the credentials,
+ * and set the session cookies. The one place that writes the session cookies after a login.
+ */
+async function loginUpstream(req: NextRequest, body: unknown, deps: Deps): Promise<NextResponse> {
   if (!(await wakeBackend(deps))) {
     return NextResponse.json({ code: "service_waking" }, { status: 503, headers: { "Retry-After": "5" } });
   }
@@ -85,6 +93,32 @@ export async function handleLogin(req: NextRequest, deps: Deps = realDeps): Prom
   const out = NextResponse.json({ ok: true });
   setSessionCookies(out, req.url, pair);
   return out;
+}
+
+const DEMO_VARS = ["DEMO_EMAIL", "DEMO_PASSWORD", "DEMO_TENANT_SLUG"] as const;
+
+/** Server-only: the names of the demo variables that are unset or empty. */
+export function missingDemoVars(env: Record<string, string | undefined> = process.env): string[] {
+  return DEMO_VARS.filter((n) => !env[n]);
+}
+
+/** Logs in as the shared demo viewer. Credentials come from server env only and never leave it. */
+export async function handleDemoLogin(
+  req: NextRequest,
+  deps: Deps = realDeps,
+  env: Record<string, string | undefined> = process.env,
+): Promise<NextResponse> {
+  if (!originAllowed(req)) return forbiddenOrigin() as NextResponse;
+  const missing = missingDemoVars(env);
+  if (missing.length > 0) {
+    console.error(JSON.stringify({ metric: "demo_unavailable", missing }));
+    return NextResponse.json({ code: "demo_unavailable" }, { status: 503 });
+  }
+  return loginUpstream(
+    req,
+    { email: env.DEMO_EMAIL, password: env.DEMO_PASSWORD, tenant_slug: env.DEMO_TENANT_SLUG },
+    deps,
+  );
 }
 
 

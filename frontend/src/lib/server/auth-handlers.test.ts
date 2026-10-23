@@ -2,10 +2,10 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { ACCESS_COOKIE, REFRESH_COOKIE } from "./cookies";
 import { eventCount } from "./events";
-import { handleLogin, handleLogout, handleRefresh } from "./auth-handlers";
+import { handleDemoLogin, handleLogin, handleLogout, handleRefresh, missingDemoVars } from "./auth-handlers";
 import { createAuthedFetch } from "../api/authed-fetch";
 import { refreshWithBackoff, resetSessionForTests, type SessionDeps } from "../api/session";
-import { BACKEND, fakeBackend, fakeJwt, inMinutes, req } from "@/test/helpers";
+import { BACKEND, fakeBackend, fakeJwt, inMinutes, noSleep, ORIGIN, req } from "@/test/helpers";
 
 beforeEach(() => {
   vi.stubEnv("BACKEND_URL", BACKEND);
@@ -262,5 +262,83 @@ describe("auth event counters", () => {
     const before = eventCount("refresh_indeterminate", "network_or_timeout") + eventCount("forced_logout", "refresh_rejected");
     await handleRefresh(req("/api/auth/refresh", { cookies: { [REFRESH_COOKIE]: "rt-0" } }), be.deps);
     expect(eventCount("refresh_indeterminate", "network_or_timeout") + eventCount("forced_logout", "refresh_rejected")).toBe(before);
+  });
+});
+
+describe("handleDemoLogin", () => {
+  const PW = "demo-pw-secret-123";
+  const env = { DEMO_EMAIL: "viewer@demo.test", DEMO_PASSWORD: PW, DEMO_TENANT_SLUG: "demo" };
+  const demoReq = (origin: string | null = ORIGIN) => req("/api/auth/demo", { origin });
+
+  function loginBackend(status: number) {
+    const bodies: string[] = [];
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const path = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url).pathname;
+      if (path === "/health") return new Response("{}");
+      if (path === "/auth/login") {
+        bodies.push(String(init?.body));
+        return status === 200
+          ? Response.json({ access_token: fakeJwt(inMinutes(15)), refresh_token: "rt-demo" })
+          : Response.json({ detail: "Invalid credentials" }, { status });
+      }
+      return new Response("{}", { status: 404 });
+    };
+    return { deps: { fetch: fetchImpl, sleep: noSleep }, bodies };
+  }
+
+  test("success uses the server env and sets the same cookies as a normal login", async () => {
+    const be = loginBackend(200);
+    const res = await handleDemoLogin(demoReq(), be.deps, env);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(JSON.parse(be.bodies[0]!)).toEqual({ email: env.DEMO_EMAIL, password: PW, tenant_slug: "demo" });
+    expect(cookiesOf(res).find((c) => c.startsWith(`${REFRESH_COOKIE}=rt-demo`))).toMatch(/HttpOnly/i);
+    expect(cookiesOf(res).some((c) => c.startsWith(`${ACCESS_COOKIE}=`))).toBe(true);
+  });
+
+  test("wrong credentials -> 401 invalid_credentials, no cookies", async () => {
+    const res = await handleDemoLogin(demoReq(), loginBackend(401).deps, env);
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ code: "invalid_credentials" });
+    expect(cookiesOf(res)).toEqual([]);
+  });
+
+  test("foreign or missing Origin -> 403 before anything is sent", async () => {
+    const be = loginBackend(200);
+    for (const origin of ["http://evil.test", null]) {
+      expect((await handleDemoLogin(demoReq(origin), be.deps, env)).status).toBe(403);
+    }
+    expect(be.bodies).toEqual([]);
+  });
+
+  test("missing env vars -> 503 demo_unavailable, names only in the log, no secrets anywhere", async () => {
+    const be = loginBackend(200);
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await handleDemoLogin(demoReq(), be.deps, { DEMO_PASSWORD: PW });
+    expect(res.status).toBe(503);
+    const text = await res.text();
+    expect(JSON.parse(text)).toEqual({ code: "demo_unavailable" });
+    const logged = err.mock.calls.flat().join(" ");
+    expect(logged).toContain("DEMO_EMAIL");
+    expect(logged).not.toContain(PW);
+    expect(text).not.toContain(PW);
+    expect(be.bodies).toEqual([]);
+    expect(missingDemoVars({ DEMO_EMAIL: "", DEMO_PASSWORD: "x", DEMO_TENANT_SLUG: "y" })).toEqual(["DEMO_EMAIL"]);
+    err.mockRestore();
+  });
+
+  test("the password appears in no response body, header or log line", async () => {
+    const logs = [vi.spyOn(console, "info"), vi.spyOn(console, "error"), vi.spyOn(console, "log"), vi.spyOn(console, "warn")];
+    logs.forEach((l) => l.mockImplementation(() => {}));
+    for (const status of [200, 401, 500]) {
+      const res = await handleDemoLogin(demoReq(), loginBackend(status).deps, env);
+      const headers = [...res.headers.entries()].flat().join(" ");
+      expect(headers).not.toContain(PW);
+      expect(await res.text()).not.toContain(PW);
+    }
+    for (const l of logs) {
+      expect(l.mock.calls.flat().join(" ")).not.toContain(PW);
+      l.mockRestore();
+    }
   });
 });
