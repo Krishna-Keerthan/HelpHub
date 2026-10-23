@@ -171,3 +171,36 @@ test("empty state invites a first question and disappears after asking", async (
   ask("hello");
   await waitFor(() => expect(screen.queryByText(/Ask a question about your documents/)).not.toBeInTheDocument());
 });
+
+test("lenticular markers show as [n] in the answer; chips still follow done.cited", async () => {
+  routeFetch({
+    "POST /api/chat/stream": () =>
+      sse(
+        ["sources", { conversation_id: "c1", sources: [source(1, "Refund policy"), source(2, "Storage quotas")] }],
+        ["token", { text: "Free up space" }],
+        ["token", { text: "【2】." }],
+        ["done", { conversation_id: "c1", status: "complete", cited: [2] }],
+      ),
+  });
+  render(<ChatView />);
+  ask("What if uploads fail?");
+  expect(await screen.findByText("Free up space[2].")).toBeInTheDocument();
+  const sources = await screen.findByRole("list", { name: "Sources" });
+  expect(sources).toHaveTextContent("[2] Storage quotas");
+  expect(sources).not.toHaveTextContent("Refund policy");
+});
+
+test("a marker for a source that is not in done.cited adds no chip", async () => {
+  routeFetch({
+    "POST /api/chat/stream": () =>
+      sse(
+        ["sources", { conversation_id: "c1", sources: [source(1, "Refund policy")] }],
+        ["token", { text: "Five days［1］." }],
+        ["done", { conversation_id: "c1", status: "complete", cited: [] }],
+      ),
+  });
+  render(<ChatView />);
+  ask("q");
+  expect(await screen.findByText("Five days[1].")).toBeInTheDocument();
+  expect(screen.queryByRole("list", { name: "Sources" })).toBeNull();
+});

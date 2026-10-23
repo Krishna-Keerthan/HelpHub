@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ChatHttpError, streamChat } from "@/lib/api/client";
 import { applyEvent, newTurn, REFUSAL_MESSAGE, streamErrorMessage, type Turn } from "@/lib/ui/chat-state";
+import { displayCitations } from "@/lib/ui/citation-display";
 import { Notice } from "./Notice";
 import { failureMessage } from "@/lib/ui/failure";
 
@@ -39,7 +40,7 @@ function Answer({ turn }: { turn: Turn }) {
       {turn.status === "no_answer" ? (
         <p>{REFUSAL_MESSAGE}</p>
       ) : (
-        <p className="whitespace-pre-wrap break-words">{turn.answer}</p>
+        <p className="whitespace-pre-wrap break-words">{displayCitations(turn.answer)}</p>
       )}
       {turn.status === "error" && (
         <p role="alert" className="mt-1 text-sm text-danger">
