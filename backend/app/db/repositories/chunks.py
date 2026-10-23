@@ -46,7 +46,8 @@ vec AS MATERIALIZED (
     LIMIT :vec_cand
 ),
 kw AS MATERIALIZED (
-    SELECT c.id, ts_rank_cd(c.search_tsv, q.tsq) AS rank_value
+    SELECT c.id, ts_rank_cd(c.search_tsv, q.tsq) AS rank_value,
+           ts_rank_cd(c.search_tsv, q.tsq, 32) AS text_score
     FROM chunks c, q
     WHERE c.{tenant} AND c.search_tsv @@ q.tsq
     ORDER BY rank_value DESC, c.id
@@ -72,9 +73,10 @@ fused AS (
 SELECT c.id AS chunk_id, c.document_id, c.chunk_index, c.text AS content,
        c.char_start, c.char_end, 1 - (c.embedding <=> :vec) AS score,
        f.rrf_score, f.found_by, (SELECT count(*) FROM vec) AS vector_candidates,
-       f.vector_rank, f.keyword_rank
+       f.vector_rank, f.keyword_rank, kw.text_score
 FROM fused f
 JOIN chunks c ON c.id = f.id AND c.{tenant}
+LEFT JOIN kw ON kw.id = f.id
 ORDER BY f.rrf_score DESC, f.best_pos, c.id
 """
 # ANN: the HNSW index can supply this order.
@@ -100,6 +102,9 @@ class SearchHit:
     found_by: tuple[str, ...]  # "vector", "keyword" or both
     vector_rank: int | None = None  # 1-based position in the vector candidates
     keyword_rank: int | None = None  # 1-based position in the keyword candidates
+    # ts_rank_cd normalised by rank/(rank+1) (flag 32), in [0, 1); None when the
+    # chunk was not in the keyword branch. Internal: never ordered by, never in the API.
+    text_score: float | None = None
 
 
 @dataclass(frozen=True)
@@ -188,7 +193,7 @@ async def search(
             {"ef": str(min(max(MIN_EF_SEARCH, CANDIDATES), MAX_EF_SEARCH))},
         )
     rows = list(await session.execute(search_statement(tenant_id, query, exact=exact)))
-    hits = [SearchHit(*row[:8], tuple(row[8]), *row[10:12]) for row in rows]
+    hits = [SearchHit(*row[:8], tuple(row[8]), *row[10:13]) for row in rows]
     return SearchRows(hits, rows[0][9] if rows else 0)
 
 
