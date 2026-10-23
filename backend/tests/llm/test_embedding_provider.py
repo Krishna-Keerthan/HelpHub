@@ -42,6 +42,9 @@ class StubModel:
 
 def test_real_dependency_resolves_to_fastembed_without_loading_model(monkeypatch):
     monkeypatch.setattr(FastEmbedProvider, "_model", None)
+    # Independent of the ambient EMBEDDING_PROVIDER, and of a cached provider.
+    monkeypatch.setattr(settings, "embedding_provider", "local")
+    monkeypatch.setattr(embeddings, "_provider", None)
     # Call the dependency itself: the autouse override only affects the app.
     provider = get_embedding_provider()
     assert isinstance(provider, FastEmbedProvider)
