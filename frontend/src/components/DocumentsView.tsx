@@ -59,7 +59,7 @@ export function DocumentsView() {
     void (async () => {
       try {
         const { data } = await api.GET("/auth/me");
-        if ((data?.role as string | undefined) === "viewer") setReadOnly(true);
+        if (data?.role === "viewer") setReadOnly(true);
       } catch {
         /* keep the control */
       }
