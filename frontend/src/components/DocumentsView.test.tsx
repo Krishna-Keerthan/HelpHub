@@ -15,6 +15,9 @@ const doc = (id: string, title: string, status = "READY") => ({
 
 afterEach(() => vi.restoreAllMocks());
 
+// The role lookup (GET /api/auth/me) is not what these tests are about.
+const docKeys = (f: { keys: () => string[] }) => f.keys().filter((k) => k !== "GET /api/auth/me");
+
 const pick = (file: File) =>
   fireEvent.change(screen.getByLabelText("Upload a document"), { target: { files: [file] } });
 
@@ -33,7 +36,7 @@ test("a file over 4 MB is rejected client-side with a clear message and nothing 
   await screen.findByText("No documents yet.");
   pick(new File([new Uint8Array(4 * 1024 * 1024 + 1)], "big.pdf", { type: "application/pdf" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("limited to 4 MB");
-  expect(f.keys()).toEqual(["GET /api/documents"]);
+  expect(docKeys(f)).toEqual(["GET /api/documents"]);
 });
 
 test("exactly 4 MB is uploaded, then the list reloads", async () => {
@@ -46,7 +49,7 @@ test("exactly 4 MB is uploaded, then the list reloads", async () => {
   await screen.findByText("No documents yet.");
   pick(new File([new Uint8Array(4 * 1024 * 1024)], "ok.pdf", { type: "application/pdf" }));
   expect(await screen.findByText("ok.pdf")).toBeInTheDocument();
-  expect(f.keys()).toEqual(["GET /api/documents", "POST /api/documents/upload", "GET /api/documents"]);
+  expect(docKeys(f)).toEqual(["GET /api/documents", "POST /api/documents/upload", "GET /api/documents"]);
 });
 
 test("server 413 on upload shows the backend's message and both limits", async () => {
@@ -83,7 +86,7 @@ test("delete asks for confirmation; cancel sends nothing, confirm deletes", asyn
 
   vi.spyOn(window, "confirm").mockReturnValueOnce(false);
   fireEvent.click(del);
-  expect(f.keys()).toEqual(["GET /api/documents"]);
+  expect(docKeys(f)).toEqual(["GET /api/documents"]);
 
   vi.spyOn(window, "confirm").mockReturnValueOnce(true);
   fireEvent.click(del);
@@ -124,4 +127,35 @@ test("a failed load shows an alert and Try again recovers", async () => {
   expect(await screen.findByText("Back")).toBeInTheDocument();
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+});
+
+test("a viewer sees no upload control and a read-only note", async () => {
+  routeFetch({
+    "GET /api/documents": () => Response.json([doc("1", "A")]),
+    "GET /api/auth/me": () => Response.json({ id: "u", email: "v@x.co", role: "viewer" }),
+  });
+  render(<DocumentsView />);
+  await screen.findByText("Read-only account: uploads are disabled.");
+  expect(screen.queryByLabelText("Upload a document")).toBeNull();
+});
+
+test("an admin still sees the upload control", async () => {
+  routeFetch({
+    "GET /api/documents": () => Response.json([]),
+    "GET /api/auth/me": () => Response.json({ id: "u", email: "a@x.co", role: "admin" }),
+  });
+  render(<DocumentsView />);
+  await screen.findByText("No documents yet.");
+  expect(screen.getByLabelText("Upload a document")).toBeInTheDocument();
+});
+
+test("a 403 on upload says the account is read-only", async () => {
+  routeFetch({
+    "GET /api/documents": () => Response.json([]),
+    "POST /api/documents/upload": () => Response.json({ detail: "Forbidden" }, { status: 403 }),
+  });
+  render(<DocumentsView />);
+  await screen.findByText("No documents yet.");
+  pick(new File(["x"], "a.txt"));
+  expect(await screen.findByRole("alert")).toHaveTextContent("read-only");
 });

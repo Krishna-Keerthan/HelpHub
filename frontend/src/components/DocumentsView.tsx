@@ -9,6 +9,8 @@ import { failureMessage, MAX_UPLOAD_BYTES, uploadTooLargeMessage } from "@/lib/u
 type Doc = components["schemas"]["DocumentRead"];
 const POLL_MS = 4000;
 
+const READ_ONLY_MESSAGE = "This account is read-only, so it cannot upload documents.";
+
 function retryAfter(res: Response): number | null {
   const n = Number(res.headers.get("Retry-After"));
   return n > 0 ? n : null;
@@ -26,6 +28,7 @@ export function DocumentsView() {
   const [message, setMessage] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [readOnly, setReadOnly] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -51,6 +54,18 @@ export function DocumentsView() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    // Viewers cannot upload; hide the control. A failed lookup leaves it shown (the backend still enforces).
+    void (async () => {
+      try {
+        const { data } = await api.GET("/auth/me");
+        if ((data?.role as string | undefined) === "viewer") setReadOnly(true);
+      } catch {
+        /* keep the control */
+      }
+    })();
+  }, []);
+
   const hasPending = docs?.some((d) => d.status === "PENDING") ?? false;
   useEffect(() => {
     if (!hasPending) return;
@@ -73,6 +88,7 @@ export function DocumentsView() {
         bodySerializer: () => form,
       });
       if (response.ok) await load();
+      else if (response.status === 403) setMessage(READ_ONLY_MESSAGE);
       else if (response.status === 413) setMessage(tooLargeMessage(error));
       else if (response.status === 415) setMessage("This file type is not supported.");
       else setMessage(failureMessage(response.status, null, retryAfter(response)));
@@ -101,6 +117,9 @@ export function DocumentsView() {
     <section>
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-semibold">Documents</h1>
+        {readOnly ? (
+          <span className="ml-auto text-sm text-muted">Read-only account: uploads are disabled.</span>
+        ) : (
         <label className="ml-auto inline-flex min-h-10 cursor-pointer items-center rounded bg-accent px-3 text-sm text-accent-fg focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent">
           {uploading ? "Uploading…" : "Upload"}
           <input
@@ -116,11 +135,14 @@ export function DocumentsView() {
             }}
           />
         </label>
-        <button type="button" className="min-h-10 px-1 text-sm underline" onClick={() => void load()}>
+        )}
+        <button type="button" className={`min-h-10 px-1 text-sm underline${readOnly ? " ml-3" : ""}`} onClick={() => void load()}>
           Refresh
         </button>
       </div>
-      <p id="upload-hint" className="mb-3 text-xs text-muted">Files up to 4 MB. Plain-text documents are also capped at about 500,000 extracted characters.</p>
+      {!readOnly && (
+        <p id="upload-hint" className="mb-3 text-xs text-muted">Files up to 4 MB. Plain-text documents are also capped at about 500,000 extracted characters.</p>
+      )}
       {message && (
         <p role="alert" className="mb-3 text-sm text-danger">
           {message}
