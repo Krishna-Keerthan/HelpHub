@@ -503,7 +503,7 @@ export interface components {
              * @default agent
              * @enum {string}
              */
-            role: "admin" | "agent";
+            role: "admin" | "agent" | "viewer";
         };
         /** UserRead */
         UserRead: {
@@ -525,7 +525,7 @@ export interface components {
              * Role
              * @enum {string}
              */
-            role: "admin" | "agent";
+            role: "admin" | "agent" | "viewer";
             /**
              * Tenant Id
              * Format: uuid
