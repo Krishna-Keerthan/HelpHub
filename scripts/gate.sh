@@ -114,14 +114,18 @@ rm -f "$out"
 
 step "security tests" uv run pytest -q tests/security
 
-# pip-audit is warn-only and tolerates no network.
-echo "=== pip-audit (warn-only) ===" >> "$REPORT"
-if timeout 90 uv run pip-audit > /tmp/gate-audit.txt 2>&1; then
-  cat /tmp/gate-audit.txt >> "$REPORT"
-  echo "ok    pip-audit"
+# Production dependencies: blocking, same script as CI. Fails closed, so it also
+# fails when the advisory database cannot be reached (no network).
+step "pip-audit (production, blocking)" timeout 120 "$ROOT/scripts/audit_deps.sh" prod
+
+# Full environment including dev: warnings only, never fails the gate.
+echo "=== pip-audit (full, warn-only) ===" >> "$REPORT"
+timeout 120 "$ROOT/scripts/audit_deps.sh" full > /tmp/gate-audit.txt 2>&1
+cat /tmp/gate-audit.txt >> "$REPORT"
+if grep -q "^WARNING" /tmp/gate-audit.txt; then
+  echo "warn  pip-audit (full environment, non-blocking; see report)"
 else
-  cat /tmp/gate-audit.txt >> "$REPORT"
-  echo "warn  pip-audit (findings or no network; see report)"
+  echo "ok    pip-audit (full environment)"
 fi
 
 if [[ $FULL -eq 1 ]]; then

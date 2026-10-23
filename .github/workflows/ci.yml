@@ -74,11 +74,14 @@ jobs:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
-      - name: pip-audit (fails on any known vulnerability)
+      - name: pip-audit, production dependencies (fails on any known vulnerability)
         working-directory: backend
         run: |
           uv sync --frozen
-          uv run pip-audit
+          ../scripts/audit_deps.sh prod
+      - name: pip-audit, full environment incl. dev (warnings only, never fails)
+        working-directory: backend
+        run: ../scripts/audit_deps.sh full
 
   image:
     name: image build
