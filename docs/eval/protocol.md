@@ -56,3 +56,10 @@ Report counts with their denominators (for example 1/12 and 2/18), for DEV and T
 2. The 8 older unanswerable questions in `backend/eval/questions.yaml` (`answerable: false`) are excluded. The unanswerable set is exactly the 31 kept questions of section 1.
 3. The TEST runner refuses to run if `docs/eval/test_result.json` exists. That file is the lock. A re-run needs the file deleted and a written amendment here first.
 4. The measurement uses the production embedding model: `EMBEDDING_PROVIDER=cloudflare` (`@cf/baai/bge-small-en-v1.5`, cls pooling), in a dedicated eval tenant. Vectors from any other provider are not used.
+
+**Amendment 2 (2026-10-23).** Written before any further measurement.
+
+1. The `embed` step of `scripts/eval_gate.py` loaded each corpus document without its `# Title` first line, while the app ingests the whole file. The corpus measured in the first DEV sweep and in the single TEST run therefore differs from the production ingest path. Evidence: keyword-mode results changed (for example q-001: rank 4 became missing) although keyword search uses no vectors, and the same script run on the original tenant reproduced `docs/demo/mode-summary.md` and `docs/demo/queries.json` exactly.
+2. Consequence: the first DEV numbers (`docs/eval/dev_tuning.json`) and the first TEST numbers (`docs/eval/test_result.json`) are **INVALID for the decision** and must not be quoted as findings. They are kept for audit only. `test_result.json` stays untouched and the lock stays.
+3. Definition of the later re-run: (a) fix `embed` to use the app's ingest path and verify the corpus (chunk texts and keyword ranks equal the original tenant's); (b) re-run DEV with the same selection rule and grids (section 5); (c) ONE more TEST run, writing `docs/eval/test_result_2.json` (the runner is changed to use that name only in that step, with its own lock). Both TEST results are reported together with this explanation.
+4. No re-run happens before the deploy. Until then the gate stays at 0.59, which is a known weak point (AR-10).

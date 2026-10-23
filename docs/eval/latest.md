@@ -147,7 +147,9 @@ Vector exact fallback fired for 0 of 40 questions.
 
 - none
 
-## Gate evaluation under docs/eval/protocol.md (Cloudflare vectors; supersedes "Gate analysis" below)
+## Gate evaluation under docs/eval/protocol.md: INVALID MEASUREMENT (see protocol Amendment 2)
+
+**Do not quote these numbers as findings.** The eval tenant was loaded without each document's `# Title` line, so the corpus differs from the production ingest path. The raw numbers are kept below for audit only. The gate remains at 0.59 and is a known weak point.
 
 Embeddings: `@cf/baai/bge-small-en-v1.5` (production model), 49 chunks / 24 documents in the dedicated tenant `eval-cloudflare`. Hybrid top-5, a question is answered if one hit has cosine >= t. Rule fixed on DEV, TEST run once (`docs/eval/test_result.json`).
 
@@ -159,7 +161,7 @@ Embeddings: `@cf/baai/bge-small-en-v1.5` (production model), 49 chunks / 24 docu
 
 Chosen by the protocol: minimise max(A_dev, U_dev); R1 is never strictly better than R0, so R0. **TEST fails** the criterion (A <= 15% and U <= 15%, i.e. at most 1/12 and at most 2/18). Wrongly refused: q-017 (code), q-031 and q-032 (keyword). Wrongly answered: u-006, u-010, u-014, u-016 (all near_miss).
 
-Caveats: small samples (20 and 12 answerable, 13 and 18 unanswerable); with n = 18 even zero errors only bounds the true wrong-answer rate near 17% (rule of three: 3/18). The text score gave no gain over cosine alone on DEV. The gate stays at 0.59; no production code changed.
+Caveats (apply only if the measurement is repeated on the correct corpus): small samples (20 and 12 answerable, 13 and 18 unanswerable); with n = 18 even zero errors only bounds the true wrong-answer rate near 17% (rule of three: 3/18). The text score gave no gain over cosine alone on DEV. The gate stays at 0.59; no production code changed. Both the DEV and TEST figures above are invalid (Amendment 2).
 
 ## Gate analysis (closes AR-10) [older: Elasticsearch-era numbers, local vectors, superseded by the section above]
 
