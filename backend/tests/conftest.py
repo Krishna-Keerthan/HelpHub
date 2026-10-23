@@ -15,6 +15,12 @@ from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from tests.helpers.db_guard import current_refusal  # isort: skip  (before any app import)
+
+_EARLY_REFUSAL = current_refusal()
+if _EARLY_REFUSAL:  # settings failed or not local: refuse before app code loads
+    raise pytest.UsageError(_EARLY_REFUSAL)
+
 from app.api.deps import get_embedding_provider, get_llm_provider
 from app.core.config import settings
 from app.core.errors import sqlstate_of
@@ -22,7 +28,6 @@ from app.core.ratelimit import limiter
 from app.core.security import create_access_token, hash_password
 from app.main import app
 from app.services.embeddings import FakeEmbeddingProvider
-from tests.helpers.db_guard import current_refusal
 from tests.helpers.fakes import FakeLLMProvider
 
 # gate-allow: secret fake value used only by this test
