@@ -1,22 +1,19 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Annotated
 
-from fastapi import Depends, FastAPI, HTTPException
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.auth import router as auth_router
 from app.api.chat import router as chat_router
 from app.api.conversations import router as conversations_router
 from app.api.documents import router as documents_router
+from app.api.health import router as health_router
 from app.api.search import router as search_router
 from app.api.users import router as users_router
 from app.core.config import settings
-from app.db.health import ping
-from app.db.session import get_session
 from app.services.embeddings import warm_up_default_provider
-from app.services.es_client import close_es
+from app.services.embeddings_cloudflare import close_client as close_embedding_client
 from app.services.llm import close_groq_client
 
 
@@ -26,31 +23,37 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await warm_up_default_provider()
     yield
     await close_groq_client()
-    await close_es()
+    await close_embedding_client()
 
 
-app = FastAPI(title="HelpHub", lifespan=lifespan)
-app.include_router(auth_router)
-app.include_router(users_router)
-app.include_router(documents_router)
-app.include_router(search_router)
-app.include_router(chat_router)
-app.include_router(conversations_router)
+def create_app() -> FastAPI:
+    """Build the app from the current settings (tests call it with other settings)."""
+    production = settings.is_production
+    application = FastAPI(
+        title="HelpHub",
+        lifespan=lifespan,
+        # The interactive docs and the schema are not served in production.
+        docs_url=None if production else "/docs",
+        redoc_url=None if production else "/redoc",
+        openapi_url=None if production else "/openapi.json",
+    )
+    if settings.cors_origin_list:
+        application.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origin_list,
+            allow_methods=["GET", "POST", "DELETE"],
+            allow_headers=["Authorization", "Content-Type"],
+            allow_credentials=False,  # bearer tokens in headers, no cookies
+            max_age=600,
+        )
+    application.include_router(health_router)
+    application.include_router(auth_router)
+    application.include_router(users_router)
+    application.include_router(documents_router)
+    application.include_router(search_router)
+    application.include_router(chat_router)
+    application.include_router(conversations_router)
+    return application
 
 
-@app.get("/health")
-async def health() -> dict[str, str]:
-    return {"status": "ok"}
-
-
-@app.get("/health/db")
-async def health_db(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> dict[str, str]:
-    try:
-        ok = await ping(session)
-    except (SQLAlchemyError, OSError) as exc:
-        raise HTTPException(status_code=503, detail="database unavailable") from exc
-    if not ok:
-        raise HTTPException(status_code=503, detail="database unavailable")
-    return {"status": "ok"}
+app = create_app()

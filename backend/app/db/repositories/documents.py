@@ -1,5 +1,6 @@
 import uuid
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 from sqlalchemy import Select, delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -12,24 +13,26 @@ from app.db.models import Document
 CONTENT_HASH_CONSTRAINT = "uq_documents_tenant_id_content_hash"
 
 
+@dataclass(frozen=True)
+class NewDocument:
+    title: str
+    raw_text: str
+    content_hash: str
+    created_by: uuid.UUID
+
+
 async def insert_if_absent(
-    session: AsyncSession,
-    tenant_id: uuid.UUID,
-    *,
-    title: str,
-    raw_text: str,
-    content_hash: str,
-    created_by: uuid.UUID,
+    session: AsyncSession, tenant_id: uuid.UUID, new: NewDocument
 ) -> Document | None:
     """Insert a PENDING document; None if the tenant already has this hash."""
     stmt = (
         pg_insert(Document)
         .values(
             tenant_id=tenant_id,
-            title=title,
-            raw_text=raw_text,
-            content_hash=content_hash,
-            created_by=created_by,
+            title=new.title,
+            raw_text=new.raw_text,
+            content_hash=new.content_hash,
+            created_by=new.created_by,
         )
         .on_conflict_do_nothing(constraint=CONTENT_HASH_CONSTRAINT)
         .returning(Document)
@@ -153,36 +156,3 @@ async def delete_document(
         )
     )
     return result.rowcount == 1
-
-
-async def set_search_index_status(
-    session: AsyncSession,
-    tenant_id: uuid.UUID,
-    document_id: uuid.UUID,
-    search_index_status: str,
-    *,
-    error: str | None = None,
-) -> bool:
-    """Record the ES copy's state; ``status`` and ``error`` are never touched."""
-    result = await session.execute(
-        update(Document)
-        .where(Document.tenant_id == tenant_id, Document.id == document_id)
-        .values(
-            search_index_status=search_index_status,
-            search_index_error=error,
-            updated_at=func.now(),
-        )
-        .execution_options(synchronize_session=False)
-    )
-    return result.rowcount > 0
-
-
-async def ready_document_ids(
-    session: AsyncSession, tenant_id: uuid.UUID
-) -> list[uuid.UUID]:
-    result = await session.scalars(
-        select(Document.id)
-        .where(Document.tenant_id == tenant_id, Document.status == "READY")
-        .order_by(Document.created_at, Document.id)
-    )
-    return list(result)

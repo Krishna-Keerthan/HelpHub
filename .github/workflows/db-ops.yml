@@ -1,0 +1,77 @@
+name: DB operations (manual)
+
+# Manual dispatch only. No schedule: do not add one until a manual run of each job
+# has been checked (docs/deploy/deploy-plan.md).
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "What to run against the production database"
+        type: choice
+        options: [migrate, backup]
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  UV_VERSION: "0.12.23"
+
+jobs:
+  migrate:
+    if: inputs.operation == 'migrate'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: Alembic upgrade as the owner role (session pooler)
+        working-directory: backend
+        env:
+          # Secret of the "production" environment: helphub_owner over the session pooler.
+          MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+          # Settings needs these to import; the values are not used by alembic.
+          DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          uv sync --frozen --no-dev
+          uv run alembic upgrade head
+          uv run alembic current
+
+  backup:
+    if: inputs.operation == 'backup'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - name: Refuse to run unless the repository is private
+        env:
+          REPO_PRIVATE: ${{ github.event.repository.private }}
+        run: |
+          if [ "$REPO_PRIVATE" != "true" ]; then
+            echo "Artifacts of a public repository may be readable by others; not storing a database dump."
+            exit 1
+          fi
+      - name: Dump, encrypt, discard the plaintext
+        env:
+          MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          # asyncpg-style URL -> libpq URL
+          PGURL="${MIGRATION_DATABASE_URL/postgresql+asyncpg:/postgresql:}"
+          PGURL="${PGURL%%\?*}"
+          pg_dump --no-owner --no-privileges --format=custom --file=dump.pgdump "$PGURL"
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$BACKUP_PASSPHRASE" \
+            --symmetric --cipher-algo AES256 --output helphub-backup.pgdump.gpg dump.pgdump
+          shred -u dump.pgdump
+          ls -l helphub-backup.pgdump.gpg | awk '{print "encrypted size bytes:", $5}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: helphub-backup-${{ github.run_id }}
+          path: helphub-backup.pgdump.gpg
+          retention-days: 14
+          if-no-files-found: error

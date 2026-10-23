@@ -12,9 +12,16 @@ from app.main import app
 # Adding a route here is a security decision: it is reachable without a token.
 PUBLIC_ROUTES: set[tuple[str, str]] = {
     ("GET", "/health"),
-    ("GET", "/health/db"),
+    # Readiness probe for the host and the uptime bot; returns only ok/not ready.
+    ("GET", "/health/ready"),
     ("POST", "/auth/register"),
     ("POST", "/auth/login"),
+    # Exempt on purpose: the credential is the signed refresh token in the body
+    # (an access token is rejected, see tests/auth/test_refresh_tokens.py), verified
+    # before any database access. /auth/logout is exempt for the same reason, so a
+    # client whose access token already expired can still revoke its family.
+    ("POST", "/auth/refresh"),
+    ("POST", "/auth/logout"),
 }
 # Served by FastAPI itself (not APIRoute instances).
 DOCS_PATHS = {"/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
@@ -24,6 +31,19 @@ AUTH_DEPENDENCIES = {
     deps.get_current_user,
     deps.get_current_principal,
     deps.require_admin,
+}
+
+# A viewer is read-only. Every write route must pass through one of these gates
+# (admin or non-viewer) unless it is listed here as open to every role on purpose.
+WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+WRITE_GATES = {deps.require_admin, deps.require_writer}
+WRITE_OPEN_TO_VIEWERS: set[tuple[str, str]] = {
+    ("POST", "/search"),  # a read, sent as POST for the body
+    ("POST", "/chat/stream"),  # creates the viewer's own conversations and messages
+    ("POST", "/auth/register"),
+    ("POST", "/auth/login"),
+    ("POST", "/auth/refresh"),
+    ("POST", "/auth/logout"),
 }
 
 
@@ -52,7 +72,7 @@ def _api_routes() -> list[tuple[str, set[str], Dependant]]:
 
 def test_route_discovery_sees_included_routers() -> None:
     paths = {path for path, _, _ in _api_routes()}
-    assert {"/health", "/auth/me", "/documents", "/search/keyword"} <= paths
+    assert {"/health", "/auth/me", "/documents", "/search"} <= paths
     assert len(paths) >= 10
 
 
@@ -95,8 +115,6 @@ REQUIRED_ROUTES = [
     "/auth/register",
     "/documents",
     "/search",
-    "/search/keyword",
-    "/search/hybrid",
     "/chat/stream",
 ]
 
@@ -109,3 +127,19 @@ def test_route_count_has_a_floor() -> None:
 def test_required_routes_are_present() -> None:
     paths = {path for path, _, _ in _api_routes()}
     assert [p for p in REQUIRED_ROUTES if p not in paths] == []
+
+
+def test_every_write_route_is_gated_against_viewers_or_explicitly_open() -> None:
+    ungated = []
+    for path, methods, dependant in _api_routes():
+        for method in methods & WRITE_METHODS:
+            if (method, path) in WRITE_OPEN_TO_VIEWERS:
+                continue
+            if not set(_calls(dependant)) & WRITE_GATES:
+                ungated.append(f"{method} {path}")
+    assert ungated == []
+
+
+def test_write_open_allowlist_has_no_stale_entries() -> None:
+    existing = {(m, path) for path, methods, _ in _api_routes() for m in methods}
+    assert WRITE_OPEN_TO_VIEWERS <= existing

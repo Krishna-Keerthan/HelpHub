@@ -5,7 +5,13 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 
-from app.api.deps import AdminUser, CurrentPrincipal, Embedder, Principal
+from app.api.deps import (
+    AdminUser,
+    CurrentPrincipal,
+    Embedder,
+    Principal,
+    WriterPrincipal,
+)
 from app.api.uploads import (
     MULTIPART_OVERHEAD,
     media_type,
@@ -13,7 +19,7 @@ from app.api.uploads import (
     read_bounded,
 )
 from app.core.config import settings
-from app.schemas.document import ChunkRead, DocumentCreate, DocumentRead
+from app.schemas.document import DocumentCreate, DocumentRead
 from app.services import documents as documents_service
 from app.services import extraction
 from app.services.embeddings import EmbeddingProvider
@@ -87,6 +93,10 @@ async def _create_and_ingest(
             status.HTTP_409_CONFLICT,
             detail="Document changed while it was being processed; retry",
         ) from None
+    except documents_service.EmbeddingUnavailable:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, detail="Embedding service unavailable"
+        ) from None
     except documents_service.IngestionError:
         raise HTTPException(
             status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Document ingestion failed"
@@ -108,7 +118,7 @@ async def _create_and_ingest(
 )
 async def create_document(
     request: Request,
-    principal: CurrentPrincipal,
+    principal: WriterPrincipal,
     provider: Embedder,
     response: Response,
 ) -> DocumentRead:
@@ -140,7 +150,7 @@ async def create_document(
 )
 async def upload_document(
     request: Request,
-    principal: CurrentPrincipal,
+    principal: WriterPrincipal,
     provider: Embedder,
     response: Response,
 ) -> DocumentRead:
@@ -215,24 +225,6 @@ async def get_document(
     except documents_service.DocumentNotFound:
         raise _not_found() from None
     return DocumentRead.model_validate(document)
-
-
-@router.get("/{document_id}/chunks", response_model=list[ChunkRead])
-async def list_chunks(
-    document_id: uuid.UUID,
-    principal: CurrentPrincipal,
-    limit: Annotated[
-        int, Query(ge=1, le=documents_service.MAX_LIMIT)
-    ] = documents_service.DEFAULT_LIMIT,
-    offset: Annotated[int, Query(ge=0)] = 0,
-) -> list[ChunkRead]:
-    try:
-        chunks = await documents_service.list_chunks(
-            principal.tenant_id, document_id, limit=limit, offset=offset
-        )
-    except documents_service.DocumentNotFound:
-        raise _not_found() from None
-    return [ChunkRead.model_validate(chunk) for chunk in chunks]
 
 
 @router.delete(

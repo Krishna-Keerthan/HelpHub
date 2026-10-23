@@ -6,9 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.repositories.chunks import (
     CHUNKS_EMBEDDING_INDEX,
-    explain_statement,
-    vector_search,
-    vector_search_statement,
+    SearchQuery,
+    search,
+    search_statement,
 )
 from app.db.tenant_context import set_tenant
 from tests.conftest import (
@@ -18,6 +18,7 @@ from tests.conftest import (
     insert_document,
     unit_vector,
 )
+from tests.helpers.plans import explain_statement
 from tests.isolation.ann_helpers import ensure_ann_reachable
 
 SHARED_TEXT = (
@@ -148,11 +149,11 @@ async def test_filtered_ann_with_hnsw(owner_conn, app_conn, two_tenants_seeded):
     async with AsyncSession(bind=app_conn) as session:
         await set_tenant(session, ta["id"])
         await app_conn.execute(text("SET LOCAL enable_seqscan = off"))
-        hits = await vector_search(session, ta["id"], q, 3)
+        hits = (await search(session, ta["id"], SearchQuery(q, "", (), 3))).hits
         # The plan of the very statement the service runs must use the HNSW
         # index, otherwise this test would pass by accident through a seq scan.
         plan = await session.execute(
-            explain_statement(vector_search_statement(ta["id"], q, 3))
+            explain_statement(search_statement(ta["id"], SearchQuery(q, "", (), 3)))
         )
         plan_text = "\n".join(row[0] for row in plan)
 
@@ -183,31 +184,6 @@ async def test_search_raw_sql_no_tenant_context(
     assert result.scalar_one() == 1
 
 
-@pytest.mark.asyncio
-async def test_get_other_tenant_chunks_returns_404(
-    client, owner_conn, two_tenants_seeded
-):
-    ta = two_tenants_seeded["tenant_a"]
-    tb = two_tenants_seeded["tenant_b"]
-    doc_a = await insert_document(owner_conn, ta["id"], created_by=ta["user_id"])
-    doc_b = await insert_document(owner_conn, tb["id"], created_by=tb["user_id"])
-    await insert_chunk(owner_conn, ta["id"], doc_a)
-    await insert_chunk(owner_conn, tb["id"], doc_b)
-    await owner_conn.commit()
-    headers = auth_headers(ta)
-
-    # A real tenant-B document id is a 404 for tenant A, same as a random id.
-    response = await client.get(f"/documents/{doc_b}/chunks", headers=headers)
-    assert response.status_code == 404
-    unknown = await client.get(f"/documents/{uuid.uuid4()}/chunks", headers=headers)
-    assert unknown.status_code == 404
-
-    # Positive control: A can read its own document's chunks.
-    own = await client.get(f"/documents/{doc_a}/chunks", headers=headers)
-    assert own.status_code == 200
-    assert len(own.json()) == 1
-
-
 @pytest.mark.parametrize("k", [0, 51])
 @pytest.mark.asyncio
 async def test_search_k_outside_1_to_50_is_422(client, two_tenants_seeded, k):
@@ -221,7 +197,7 @@ async def test_search_k_outside_1_to_50_is_422(client, two_tenants_seeded, k):
 
 def test_search_statement_is_tenant_filtered_and_materialized():
     tid = uuid.uuid4()
-    statement = vector_search_statement(tid, unit_vector(1.0), 3)
+    statement = search_statement(tid, SearchQuery(unit_vector(1.0), "", (), 3))
     assert "AS MATERIALIZED" in statement.text
     assert "WHERE tenant_id = :tid" in statement.text
     assert statement.compile().params["tid"] == tid

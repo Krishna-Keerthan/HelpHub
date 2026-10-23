@@ -4,6 +4,7 @@ from datetime import datetime
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     CheckConstraint,
+    Computed,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
@@ -15,7 +16,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import TSVECTOR, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -36,6 +37,7 @@ class Chunk(Base):
         ),
         # Small-tenant search, the exact fallback and tenant delete (0005).
         Index("ix_chunks_tenant_id", "tenant_id"),
+        Index("ix_chunks_search_tsv", "search_tsv", postgresql_using="gin"),
         Index(
             "ix_chunks_embedding_hnsw",
             "embedding",
@@ -57,6 +59,10 @@ class Chunk(Base):
     char_start: Mapped[int] = mapped_column(Integer)
     char_end: Mapped[int] = mapped_column(Integer)
     embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIM))
+    # Full-text copy of ``text``, maintained by Postgres (migration 0009).
+    search_tsv: Mapped[str | None] = mapped_column(
+        TSVECTOR, Computed("to_tsvector('english', text)", persisted=True)
+    )
     embedding_model: Mapped[str] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.api.deps import Principal
 from app.core.config import settings
+from app.db.tenant_context import tenant_transaction
 from app.services import chat
 from app.services.chat import (
     REFUSAL_TEXT,
@@ -17,7 +18,7 @@ from app.services.chat import (
     TokenEvent,
 )
 from app.services.embeddings import FakeEmbeddingProvider
-from app.services.search import search_chunks
+from app.services.search import search_in_session
 from tests.conftest import (
     MakeTenant,
     SeededTenant,
@@ -74,12 +75,8 @@ async def seed_chunk(
 
 
 async def ask(tenant: SeededTenant, llm: FakeLLMProvider) -> list[Any]:
-    return [
-        event
-        async for event in chat.chat_events(
-            principal_of(tenant), None, QUESTION, AxisQueryEmbedder(), llm
-        )
-    ]
+    ctx = await chat.prepare_chat(principal_of(tenant), None, QUESTION)
+    return [event async for event in chat.stream_answer(ctx, AxisQueryEmbedder(), llm)]
 
 
 async def rows(owner_conn: AsyncConnection, tenant: SeededTenant) -> list[Any]:
@@ -136,8 +133,9 @@ async def test_empty_tenant_gets_the_same_refusal(
 
 
 async def measured_score(tenant: SeededTenant) -> float:
-    hits = await search_chunks(tenant["id"], unit_vector(1.0), 1)
-    return hits.hits[0].score
+    async with tenant_transaction(tenant["id"]) as session:
+        result = await search_in_session(session, tenant["id"], "", unit_vector(1.0), 1)
+    return result.hits[0].score
 
 
 async def test_score_exactly_at_threshold_calls_the_llm_once(
@@ -203,3 +201,67 @@ async def test_refusal_token_is_never_model_output(
     events = await ask(tenant, llm)
     assert "MODEL-SAID-THIS" not in str(events)
     assert llm.calls == 0
+
+
+async def seed_keyword_only_chunk(
+    owner_conn: AsyncConnection, tenant: SeededTenant, filler_score: float
+) -> uuid.UUID:
+    """50 vector-closer fillers push a low-cosine chunk out of the vector branch.
+
+    The chunk is found only through the text branch (it holds the question's
+    identifier-like token), with cosine 0.2 to the query.
+    """
+    document_id = await insert_document(
+        owner_conn, tenant["id"], created_by=tenant["user_id"], title="Gate doc"
+    )
+    for i in range(50):
+        await insert_chunk(
+            owner_conn,
+            tenant["id"],
+            document_id,
+            chunk_index=i,
+            content=f"filler {i}",
+            embedding=with_score(filler_score),
+        )
+    target = await insert_chunk(
+        owner_conn,
+        tenant["id"],
+        document_id,
+        chunk_index=50,
+        content="KEYWORD-ONLY-TEXT uniq-question-4711",
+        embedding=with_score(0.2),
+    )
+    await owner_conn.commit()
+    async with tenant_transaction(tenant["id"]) as session:
+        found = await search_in_session(
+            session, tenant["id"], QUESTION, unit_vector(1.0), 5
+        )
+    by_id = {hit.chunk_id: hit for hit in found.hits}
+    assert by_id[target].found_by == ("keyword",)  # precondition of both tests
+    assert by_id[target].score < THRESHOLD
+    return target
+
+
+async def test_chunk_found_only_by_text_search_below_threshold_is_refused(
+    owner_conn: AsyncConnection, make_tenant: MakeTenant
+) -> None:
+    """The gate looks at cosine, not at which branch found the chunk."""
+    tenant = await make_tenant()
+    await seed_keyword_only_chunk(owner_conn, tenant, filler_score=0.5)
+    llm = FakeLLMProvider()
+    events = await ask(tenant, llm)
+    await assert_refused(owner_conn, tenant, llm, events)
+
+
+async def test_text_only_chunk_below_threshold_is_left_out_of_the_prompt(
+    owner_conn: AsyncConnection, make_tenant: MakeTenant
+) -> None:
+    tenant = await make_tenant()
+    target = await seed_keyword_only_chunk(owner_conn, tenant, filler_score=0.9)
+    llm = FakeLLMProvider()
+    events = await ask(tenant, llm)
+    assert llm.calls == 1
+    sources_event = events[0]
+    assert isinstance(sources_event, SourcesEvent)
+    assert target not in [s.chunk_id for s in sources_event.sources]
+    assert "KEYWORD-ONLY-TEXT" not in "\n".join(m["content"] for m in llm.last_messages)

@@ -8,23 +8,22 @@ database connection or row locks.
 
 import hashlib
 import logging
-import traceback
 import uuid
-from pathlib import Path
-
-from elasticsearch import AsyncElasticsearch
-from sqlalchemy import Row
 
 from app.core.config import settings
+from app.core.errors import sqlstate_of, traceback_frames
 from app.db.models import Document
 from app.db.models.chunk import EMBEDDING_DIM
 from app.db.repositories import chunks as chunks_repo
 from app.db.repositories import documents as documents_repo
 from app.db.tenant_context import tenant_transaction
-from app.services import search_sync
 from app.services.chunker import chunk_text
-from app.services.embeddings import EmbeddingError, EmbeddingProvider, validate_vectors
-from app.services.es_client import get_es
+from app.services.embeddings import (
+    EmbeddingError,
+    EmbeddingProvider,
+    EmbeddingUnavailableError,
+    validate_vectors,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +55,10 @@ class IngestionError(DocumentError):
     pass
 
 
+class EmbeddingUnavailable(IngestionError):
+    """The hosted embedding provider failed; the document is FAILED and retryable."""
+
+
 # Only these messages are safe to store; anything else is stored as its class
 # name alone (a driver error can echo SQL or row values).
 _SAFE_MESSAGE_ERRORS = (DocumentError, EmbeddingError)
@@ -74,35 +77,6 @@ def prepare_text(content: str) -> str:
             f"document exceeds {settings.max_document_chars} characters"
         )
     return text
-
-
-def sqlstate_of(exc: BaseException) -> str | None:
-    """SQLSTATE of a database error, if any.
-
-    Walks SQLAlchemy's wrapper (.orig) and the cause chain down to the asyncpg
-    exception; both levels carry the same code.
-    """
-    seen: set[int] = set()
-    current: BaseException | None = exc
-    while current is not None and id(current) not in seen:
-        seen.add(id(current))
-        code = getattr(current, "sqlstate", None)
-        if isinstance(code, str):
-            return code
-        current = getattr(current, "orig", None) or current.__cause__
-    return None
-
-
-def _frames(exc: BaseException) -> str:
-    """Traceback frames as ``file:line in func``, outermost first.
-
-    traceback.extract_tb rather than format_tb: the frame locations are what
-    we need; format_tb would also print each frame's source line.
-    """
-    return " > ".join(
-        f"{Path(frame.filename).name}:{frame.lineno} in {frame.name}"
-        for frame in traceback.extract_tb(exc.__traceback__)
-    )
 
 
 def _log_failure(
@@ -129,7 +103,7 @@ def _log_failure(
         type(exc).__name__,
         sqlstate_of(exc) or "-",
         detail,
-        _frames(exc),
+        traceback_frames(exc),
     )
 
 
@@ -166,10 +140,12 @@ async def create_or_get(
             created = await documents_repo.insert_if_absent(
                 session,
                 tenant_id,
-                title=title,
-                raw_text=raw_text,
-                content_hash=digest,
-                created_by=user_id,
+                documents_repo.NewDocument(
+                    title=title,
+                    raw_text=raw_text,
+                    content_hash=digest,
+                    created_by=user_id,
+                ),
             )
             if created is not None:
                 return created, True
@@ -190,7 +166,6 @@ async def ingest_document(
     tenant_id: uuid.UUID,
     document_id: uuid.UUID,
     provider: EmbeddingProvider,
-    es: AsyncElasticsearch | None = None,
 ) -> Document:
     """Chunk, embed and store ``document_id``; it ends READY or FAILED.
 
@@ -214,9 +189,9 @@ async def ingest_document(
     except Exception as exc:
         _log_failure("ingestion failed", exc, tenant_id, document_id)
         await _mark_failed(tenant_id, document_id, exc)
+        if isinstance(exc, EmbeddingUnavailableError):
+            raise EmbeddingUnavailable("embedding provider unavailable") from exc
         raise IngestionError("ingestion failed") from exc
-    # READY is committed; the search copy is best effort (never raises).
-    await search_sync.index_document(tenant_id, document_id, es or get_es())
     return document
 
 
@@ -309,30 +284,8 @@ async def get_document(tenant_id: uuid.UUID, document_id: uuid.UUID) -> Document
     return document
 
 
-async def list_chunks(
-    tenant_id: uuid.UUID,
-    document_id: uuid.UUID,
-    *,
-    limit: int = DEFAULT_LIMIT,
-    offset: int = 0,
-) -> list[Row[tuple[uuid.UUID, int, str, int, int]]]:
-    async with tenant_transaction(tenant_id) as session:
-        if await documents_repo.get_metadata(session, tenant_id, document_id) is None:
-            raise DocumentNotFound("document not found")
-        return await chunks_repo.list_for_document(
-            session,
-            tenant_id,
-            document_id,
-            limit=max(1, min(limit, MAX_LIMIT)),
-            offset=max(0, offset),
-        )
-
-
-async def delete_document(
-    tenant_id: uuid.UUID, document_id: uuid.UUID, es: AsyncElasticsearch | None = None
-) -> None:
+async def delete_document(tenant_id: uuid.UUID, document_id: uuid.UUID) -> None:
     async with tenant_transaction(tenant_id) as session:
         deleted = await documents_repo.delete_document(session, tenant_id, document_id)
     if not deleted:
         raise DocumentNotFound("document not found")
-    await search_sync.delete_document_chunks(tenant_id, document_id, es or get_es())

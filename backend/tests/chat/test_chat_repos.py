@@ -6,8 +6,10 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from app.db.pagination import Page
 from app.db.repositories import chat_messages as messages_repo
 from app.db.repositories import conversations as conversations_repo
+from app.db.repositories.chat_messages import NewMessage
 from app.db.repositories.conversations import ConversationNotOwned
 from app.db.tenant_context import tenant_transaction
 from tests.conftest import MakeTenant
@@ -88,16 +90,14 @@ async def test_history_is_in_insert_order_and_skips_unhelpful_assistant_rows(
                 a["id"],
                 a["user_id"],
                 conv.id,
-                role=role,
-                content=content,
-                status=status,
+                NewMessage(role=role, content=content, status=status),
             )
     async with tenant_transaction(a["id"]) as session:
         history = await messages_repo.recent_history(
             session, a["id"], a["user_id"], conv.id, 4
         )
         everything = await messages_repo.list_for_conversation(
-            session, a["id"], a["user_id"], conv.id, limit=50, offset=0
+            session, a["id"], a["user_id"], conv.id, Page(50)
         )
     # q1 a1 q2 q3 q4 qualify (refusal and failed rows do not); the last 4 remain.
     assert [m.content for m in history] == ["a1", "q2", "q3", "q4"]
@@ -124,9 +124,7 @@ async def seeded_conversation(owner_conn: AsyncConnection, make_tenant: MakeTena
                 a["id"],
                 a["user_id"],
                 conv.id,
-                role=role,
-                content=f"{role} text",
-                status="complete",
+                NewMessage(role=role, content=f"{role} text", status="complete"),
             )
     return a, other_user, b, conv
 
@@ -143,14 +141,14 @@ async def test_message_reads_return_nothing_for_other_users_and_tenants(
             session, a["id"], other_user, conv.id, 10
         )
         foreign_user_list = await messages_repo.list_for_conversation(
-            session, a["id"], other_user, conv.id, limit=10, offset=0
+            session, a["id"], other_user, conv.id, Page(10)
         )
     async with tenant_transaction(b["id"]) as session:
         foreign_tenant_history = await messages_repo.recent_history(
             session, b["id"], b["user_id"], conv.id, 10
         )
         foreign_tenant_list = await messages_repo.list_for_conversation(
-            session, b["id"], b["user_id"], conv.id, limit=10, offset=0
+            session, b["id"], b["user_id"], conv.id, Page(10)
         )
     assert len(own) == 2
     assert foreign_user_history == [] and foreign_user_list == []
@@ -188,9 +186,7 @@ async def test_add_refuses_a_conversation_the_user_does_not_own(
                     tenant_id,
                     user_id,
                     conv.id,
-                    role="user",
-                    content="injected",
-                    status="complete",
+                    NewMessage(role="user", content="injected", status="complete"),
                 )
     count = (
         await owner_conn.execute(

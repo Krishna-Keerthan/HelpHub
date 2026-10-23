@@ -12,21 +12,20 @@ so a cancelled task still completes the write).
 
 import asyncio
 import logging
-import traceback
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 from app.core.config import settings
+from app.core.errors import sqlstate_of, traceback_frames
 from app.core.principal import Principal
 from app.db.repositories import chat_messages as messages_repo
 from app.db.repositories import conversations as conversations_repo
 from app.db.repositories import documents as documents_repo
+from app.db.repositories.chat_messages import NewMessage
 from app.db.tenant_context import tenant_transaction
-from app.services.documents import sqlstate_of
-from app.services.embeddings import EmbeddingProvider
+from app.services.embeddings import EmbeddingProvider, EmbeddingUnavailableError
 from app.services.llm import LLMError, LLMProvider, Message
 from app.services.prompts import PromptSource, build_messages, parse_citations
 from app.services.search import search_in_session
@@ -38,6 +37,7 @@ REFUSAL_TEXT = (
     "I couldn't find anything in your knowledge base that answers this question."
 )
 INTERNAL_ERROR = "internal_error"
+EMBEDDING_UNAVAILABLE = "embedding_unavailable"
 
 
 class ConversationNotFound(Exception):
@@ -119,9 +119,7 @@ async def prepare_chat(
             tenant_id,
             principal.user_id,
             conversation.id,
-            role="user",
-            content=question,
-            status="complete",
+            NewMessage(role="user", content=question, status="complete"),
         )
         await conversations_repo.touch(
             session, tenant_id, principal.user_id, conversation.id
@@ -153,6 +151,9 @@ async def stream_answer(
     except LLMError as exc:
         logger.warning("chat llm failed: error=%s", type(exc).__name__)
         outcome.status, outcome.error_code = "failed", exc.code
+    except EmbeddingUnavailableError as exc:
+        logger.warning("chat embedding failed: error=%s", type(exc).__name__)
+        outcome.status, outcome.error_code = "failed", EMBEDDING_UNAVAILABLE
     except Exception as exc:  # noqa: BLE001 - logged by class; never leaves the stream
         _log_failure("chat failed", exc, ctx)
         outcome.status, outcome.error_code = "failed", INTERNAL_ERROR
@@ -173,18 +174,6 @@ async def stream_answer(
         )
 
 
-async def chat_events(
-    principal: Principal,
-    conversation_id: uuid.UUID | None,
-    question: str,
-    embedder: EmbeddingProvider,
-    llm: LLMProvider,
-) -> AsyncIterator[ChatEvent]:
-    ctx = await prepare_chat(principal, conversation_id, question)
-    async for event in stream_answer(ctx, embedder, llm):
-        yield event
-
-
 async def _run(
     ctx: ChatContext,
     embedder: EmbeddingProvider,
@@ -195,7 +184,7 @@ async def _run(
     embedding = await embedder.embed_query(ctx.question)  # no transaction open
     async with tenant_transaction(tenant_id) as session:
         result = await search_in_session(
-            session, tenant_id, embedding, settings.chat_top_k
+            session, tenant_id, ctx.question, embedding, settings.chat_top_k
         )
         titles = await documents_repo.titles_for(
             session, tenant_id, list({hit.document_id for hit in result.hits})
@@ -207,10 +196,12 @@ async def _run(
             document_title=titles[hit.document_id],
             chunk_index=hit.chunk_index,
             content=hit.content,
-            score=hit.score,
+            score=score,
         )
         for hit in result.hits
-        if hit.score >= settings.min_retrieval_score and hit.document_id in titles
+        if (score := hit.score) is not None
+        and score >= settings.min_retrieval_score
+        and hit.document_id in titles
     ]
     if not qualified:
         outcome.status = "no_answer"
@@ -262,11 +253,13 @@ async def _save_assistant(ctx: ChatContext, outcome: _Outcome) -> bool:
                 tenant_id,
                 ctx.principal.user_id,
                 ctx.conversation_id,
-                role="assistant",
-                content="".join(outcome.parts),
-                status=outcome.status,
-                sources=outcome.sources,
-                model=outcome.model,
+                NewMessage(
+                    role="assistant",
+                    content="".join(outcome.parts),
+                    status=outcome.status,
+                    sources=outcome.sources,
+                    model=outcome.model,
+                ),
             )
             await conversations_repo.touch(
                 session, tenant_id, ctx.principal.user_id, ctx.conversation_id
@@ -279,16 +272,12 @@ async def _save_assistant(ctx: ChatContext, outcome: _Outcome) -> bool:
 
 def _log_failure(message: str, exc: BaseException, ctx: ChatContext) -> None:
     """Class name, SQLSTATE, ids and traceback frames only (no exception text)."""
-    frames = " > ".join(
-        f"{Path(f.filename).name}:{f.lineno} in {f.name}"
-        for f in traceback.extract_tb(exc.__traceback__)
-    )
     logger.error(
         "%s: tenant=%s conversation=%s error=%s sqlstate=%s frames=%s",
         message,
         ctx.principal.tenant_id,
         ctx.conversation_id,
         type(exc).__name__,
-        sqlstate_of(exc),
-        frames,
+        sqlstate_of(exc) or "-",
+        traceback_frames(exc),
     )

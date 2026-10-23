@@ -1,10 +1,10 @@
 # Review context (read first; ground truth for reviewers)
 
-Multi-tenant support knowledge engine: FastAPI, async SQLAlchemy 2.0, Postgres + pgvector + RLS, Elasticsearch (derived index), Groq. Code is in `backend/`.
+Multi-tenant support knowledge engine: FastAPI, async SQLAlchemy 2.0, Postgres + pgvector + tsvector + RLS (Postgres-only, no external search engine), Groq. Code is in `backend/`.
 
 ## Layering
 - `api -> services -> db`. `api/` has no business logic and no SQL; `services/` has no FastAPI imports; `db/` imports neither. `core/` imports none of db, services, api.
-- No SQLAlchemy or asyncpg imports outside `db/` (and tests). Import-linter enforces this in the gate; do not re-check by hand.
+- No SQLAlchemy or asyncpg imports outside `db/` (and tests); annotate sessions with `app.db.session.DbSession`. Import-linter enforces this in the gate; do not re-check by hand.
 - Dependency types: `CurrentPrincipal` (short transaction, plain data), `TenantSession`/`CurrentUser` (request-long transaction).
 
 ## Tenant rules
@@ -12,11 +12,11 @@ Multi-tenant support knowledge engine: FastAPI, async SQLAlchemy 2.0, Postgres +
 - Tenant comes only from the verified JWT (`sub`, `tid`). Never from body, query or headers.
 - Runtime uses `DATABASE_URL` (limited role); only Alembic uses `MIGRATION_DATABASE_URL` (owner).
 - Tenant tables go through `get_tenant_session` / `tenant_transaction`. Untenanted `get_session` only in `repositories/tenants.py` and `services/auth.py`, for the `tenants` table.
-- Elasticsearch returns ids and scores only; every hit is re-read from Postgres with `tenant_id`. The tenant filter lives in `build_query`.
+- Search is one SQL query (vector and full-text candidates fused by rank). Each candidate set filters by `tenant_id` in the query itself, and RLS applies on top.
 
 ## Transaction and async rules
 - All DB and network calls are async. Type hints everywhere.
-- Routes that do slow work (embedding, LLM, streaming) use `CurrentPrincipal` and short `tenant_transaction`s, never `TenantSession`. No DB transaction across ES, LLM or embedding calls.
+- Routes that do slow work (embedding, LLM, streaming) use `CurrentPrincipal` and short `tenant_transaction`s, never `TenantSession`. No DB transaction across LLM or embedding calls.
 - List queries are bounded (LIMIT/pagination). No blocking calls (`time.sleep`, sync HTTP/file I/O) in `async def`.
 
 ## Logging

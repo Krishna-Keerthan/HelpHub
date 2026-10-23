@@ -7,6 +7,11 @@ REPORT=${GATE_REPORT:-/tmp/gate-report.txt}
 FULL=0
 [[ "${1:-}" == "--full" ]] && FULL=1
 cd "$ROOT/backend" || exit 2
+# Never touch a non-local database (ruff, alembic and pytest all may). No connection is made.
+if ! uv run python -m tests.helpers.db_guard; then
+  echo "FAIL  local-database guard (nothing was run)"
+  exit 2
+fi
 # First line of the report: which commit (and whether dirty) this run covered.
 python3 "$ROOT/scripts/gate_checks.py" stamp "$REPORT"
 
@@ -97,11 +102,11 @@ grep '^allow ' "$REPORT" | sed 's/^/      /'
 step "secret scan" python3 "$ROOT/scripts/gate_checks.py" secrets
 step "AR register" python3 "$ROOT/scripts/gate_checks.py" ar-register
 
-# get_session is allowed in its definition, the /health/db route (AR-12) and the
+# get_session is allowed in its definition, and the
 # two tenants-table users.
 out=$(mktemp)
 hits get-session 'get_session([^_a-zA-Z]|$)' app |
-  grep -vE '^app/(db/repositories/tenants|services/auth|db/session|main)\.py' > "$out"
+  grep -vE '^app/(db/repositories/tenants|services/auth|db/session)\.py' > "$out"
 { echo "=== get_session scan ==="; cat "$out"; } >> "$REPORT"
 [[ -s "$out" ]] && fail "get_session outside allowed files" "$out"
 echo "ok    get_session scan"

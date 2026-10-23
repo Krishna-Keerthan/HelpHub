@@ -18,7 +18,13 @@ ENDPOINTS = ["/auth/me", "/documents"]
 
 
 def _claims(t: SeededTenant, **extra: Any) -> dict[str, Any]:
-    return {"sub": str(t["user_id"]), "tid": str(t["id"]), "marker": MARKER, **extra}
+    return {
+        "sub": str(t["user_id"]),
+        "tid": str(t["id"]),
+        "typ": "access",
+        "marker": MARKER,
+        **extra,
+    }
 
 
 def _encode(payload: dict[str, Any], secret: str | None = None) -> str:

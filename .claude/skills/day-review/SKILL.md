@@ -14,7 +14,7 @@ Run `git diff --name-only <range>`. If empty, say "Empty range" and stop. Pick:
 - `tenant-reviewer` and `design-reviewer`: any path under `backend/app/` or `backend/alembic/`.
 - `security-auditor` and `design-reviewer` also run for any path under `.claude/`, `scripts/`, `.github/`, or named `pyproject.toml` or `docker-compose*.yaml` (tooling, hooks and infrastructure changes).
 - `test-quality-reviewer`: any path under `backend/tests/`.
-- `security-auditor`, ONLY if a changed path matches one of: `app/api/`, `app/core/`, `app/services/documents`, upload or extraction code (`uploads`, `extraction`, `pdf_worker`), chat or LLM code (`chat`, `llm`, `prompts`), search or ES code (`search`, `es_`, `reindex`), config (`config.py`, `.env.example`), Docker or compose files, dependencies (`pyproject.toml`, `uv.lock`), or `alembic/`.
+- `security-auditor`, ONLY if a changed path matches one of: `app/api/`, `app/core/`, `app/services/documents`, upload or extraction code (`uploads`, `extraction`, `pdf_worker`), chat or LLM code (`chat`, `llm`, `prompts`), search code (`search`), config (`config.py`, `.env.example`), Docker or compose files, dependencies (`pyproject.toml`, `uv.lock`), or `alembic/`.
 
 ## 3. Run
 Call the chosen agents one after another (never in parallel) with the Agent tool, `subagent_type` = the agent name, prompt = `Range: <range>`. If an agent's output exceeds 40 lines, or an agent reports editing a file, flag it in the report.

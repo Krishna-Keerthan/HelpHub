@@ -15,6 +15,15 @@ guard = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(guard)
 
 REPO = str(guard.REPO_ROOT)
+FAKE_HOME = "/home/testuser"
+
+
+@pytest.fixture(autouse=True)
+def _fixed_home(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The guard reads HOME once at import; pin it so results do not depend on the machine."""
+    monkeypatch.setenv("HOME", FAKE_HOME)
+    monkeypatch.setattr(guard, "HOME", Path(FAKE_HOME))
+
 
 BLOCKED = [
     "docker compose down -v",
@@ -64,7 +73,7 @@ BLOCKED = [
     "rm -rf ~/",
     "rm -rf $HOME",
     "rm -rf ${HOME}/",
-    "rm -fr /home/krish",
+    f"rm -fr {FAKE_HOME}",
     f"rm -rf {REPO}",
     f"rm -rf {REPO}/",
     "rm -rf .",

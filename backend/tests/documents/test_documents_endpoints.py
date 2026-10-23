@@ -11,7 +11,6 @@ from tests.conftest import MakeTenant, SeededTenant, auth_headers
 from tests.helpers.ingestion_helpers import CONTENT, owner_chunks, owner_document
 
 Tenants = dict[str, SeededTenant]
-CHUNK_FIELDS = {"id", "chunk_index", "content", "char_start", "char_end"}
 
 
 async def _create(client: AsyncClient, tenant: SeededTenant, content: str = CONTENT):
@@ -114,9 +113,7 @@ async def test_get_document_detail(
     ).status_code == 404
 
 
-@pytest.mark.parametrize(
-    "path", ["/documents/not-a-uuid", "/documents/not-a-uuid/chunks"]
-)
+@pytest.mark.parametrize("path", ["/documents/not-a-uuid"])
 async def test_non_uuid_path_is_422(
     client: AsyncClient, make_tenant: MakeTenant, path: str
 ) -> None:
@@ -132,51 +129,6 @@ async def test_delete_non_uuid_path_is_422(
         "/documents/not-a-uuid", headers=auth_headers(tenant)
     )
     assert response.status_code == 422
-
-
-# --- GET /documents/{id}/chunks ---------------------------------------------
-
-
-async def test_chunks_listing_fields_and_order(
-    client: AsyncClient, owner_conn: AsyncConnection, make_tenant: MakeTenant
-) -> None:
-    tenant = await make_tenant()
-    doc_id = await _create(client, tenant)
-    stored = await owner_chunks(owner_conn, doc_id)
-
-    response = await client.get(
-        f"/documents/{doc_id}/chunks", headers=auth_headers(tenant)
-    )
-
-    assert response.status_code == 200
-    chunks = response.json()
-    assert [c["chunk_index"] for c in chunks] == list(range(len(stored)))
-    for chunk in chunks:
-        assert set(chunk) == CHUNK_FIELDS
-        assert CONTENT[chunk["char_start"] : chunk["char_end"]] == chunk["content"]
-    assert "embedding" not in response.text
-
-
-async def test_chunks_limit_and_offset(
-    client: AsyncClient, make_tenant: MakeTenant
-) -> None:
-    tenant = await make_tenant()
-    doc_id = await _create(client, tenant)
-    headers = auth_headers(tenant)
-
-    page = await client.get(
-        f"/documents/{doc_id}/chunks?limit=2&offset=1", headers=headers
-    )
-    assert page.status_code == 200
-    assert [c["chunk_index"] for c in page.json()] == [1, 2]
-    for bad in ("limit=0", "limit=101", "offset=-1"):
-        response = await client.get(
-            f"/documents/{doc_id}/chunks?{bad}", headers=headers
-        )
-        assert response.status_code == 422, bad
-    assert (
-        await client.get(f"/documents/{doc_id}/chunks?limit=100", headers=headers)
-    ).status_code == 200
 
 
 # --- DELETE /documents/{id} --------------------------------------------------

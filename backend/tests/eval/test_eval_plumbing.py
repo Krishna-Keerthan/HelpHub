@@ -1,19 +1,11 @@
-"""Evaluation plumbing: metrics, schema checks, corpus sanity, and a 3-document
-end-to-end ingest (mechanics only: fake embeddings, real Postgres and Elasticsearch)."""
+"""Evaluation plumbing: metrics, schema checks and corpus sanity."""
 
 import re
 import uuid
 from pathlib import Path
 
 import pytest
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.pool import NullPool
 
-from app.core.config import settings
-from app.services import hybrid_search
-from app.services.embeddings import FakeEmbeddingProvider
-from app.services.es_client import get_es
 from eval import metrics, validate
 
 EVAL_DIR = Path(validate.__file__).resolve().parent
@@ -215,91 +207,3 @@ def test_overlapping_documents_really_overlap() -> None:
 def test_shipped_questions_file_is_valid() -> None:
     rows = validate.load_questions(EVAL_DIR / "questions.yaml")
     assert validate.validate_schema(rows) == []
-
-
-# --- end to end on a 3-document mini corpus (mechanics only) -----------------------
-
-MINI = {
-    "alpha": ("Alpha guide", "Zebra quasar procedure. Reset the zebra quasar widget by holding the button."),
-    "beta": ("Beta guide", "Lantern orbit notes. The lantern orbit error is ERR_LANTERN_77 and is harmless."),
-    "gamma": ("Gamma guide", "Nebula billing. Invoices for nebula accounts are issued on the first day."),
-}  # fmt: skip
-
-
-def _write_mini(directory: Path) -> Path:
-    directory.mkdir()
-    for slug, (title, body) in MINI.items():
-        (directory / f"{slug}.md").write_text(f"# {title}\n\n{body}\n")
-    return directory
-
-
-async def _tenant_exists(tenant_id: uuid.UUID) -> bool:
-    engine = create_async_engine(settings.migration_database_url, poolclass=NullPool)
-    try:
-        async with engine.connect() as conn:
-            return (
-                await conn.execute(
-                    text("SELECT count(*) FROM tenants WHERE id = :id"),
-                    {"id": tenant_id},
-                )
-            ).scalar_one() == 1
-    finally:
-        await engine.dispose()
-
-
-async def _indices_with_prefix(prefix: str) -> list[str]:
-    found = await get_es().indices.get(
-        index=f"{prefix}*", ignore_unavailable=True, allow_no_indices=True
-    )
-    return sorted(found)
-
-
-async def test_mini_corpus_end_to_end_and_cleanup(tmp_path: Path) -> None:
-    docs = validate.load_corpus(_write_mini(tmp_path / "corpus"))
-    assert [d.slug for d in docs] == ["alpha", "beta", "gamma"]
-    provider, es = FakeEmbeddingProvider(), get_es()
-    before_prefix = settings.es_index_prefix
-    questions = [
-        _row(id="q1", evidence=["zebra quasar widget"], question="reset the zebra quasar widget"),
-        _row(id="q2", evidence=["ERR_LANTERN_77"], category="code", question="ERR_LANTERN_77"),
-        _row(id="q3", answerable=False, evidence=[], category="off_topic", question="weather tomorrow"),
-    ]  # fmt: skip
-
-    async with validate.eval_environment(es) as env:
-        assert settings.es_index_prefix.startswith("eval-")
-        assert settings.es_index_prefix != before_prefix
-        chunks = await validate.ingest_corpus(env, docs, provider, es)
-        tenant_id, prefix = env.tenant_id, settings.es_index_prefix
-        assert {c.slug for c in chunks} == {"alpha", "beta", "gamma"}
-        assert validate.check_evidence(questions, chunks) == []
-        assert await _tenant_exists(tenant_id)
-        assert await _indices_with_prefix(prefix)
-
-        # Mechanics: the pipeline retrieves what the evidence says it should.
-        for row in questions[:2]:
-            relevant = validate.relevant_ids(row, chunks)
-            result = await hybrid_search.hybrid_search(
-                tenant_id, row["question"], 5, provider, es
-            )
-            ranked = [h.chunk_id for h in result.hits]
-            assert metrics.hit_at_k(ranked, relevant, 3) == 1.0
-            assert metrics.mrr_at_k(ranked, relevant, 5) == 1.0
-
-    assert settings.es_index_prefix == before_prefix
-    assert not await _tenant_exists(tenant_id)
-    assert await _indices_with_prefix(prefix) == []
-
-
-async def test_cleanup_runs_when_the_body_raises() -> None:
-    es = get_es()
-    before_prefix = settings.es_index_prefix
-    seen: dict[str, object] = {}
-
-    with pytest.raises(RuntimeError, match="boom"):
-        async with validate.eval_environment(es) as env:
-            seen["tenant"], seen["prefix"] = env.tenant_id, settings.es_index_prefix
-            raise RuntimeError("boom")
-
-    assert settings.es_index_prefix == before_prefix
-    assert not await _tenant_exists(seen["tenant"])  # type: ignore[arg-type]
-    assert await _indices_with_prefix(str(seen["prefix"])) == []

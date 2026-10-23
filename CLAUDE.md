@@ -1,5 +1,5 @@
 # HelpHub
-Multi-tenant support knowledge engine. Backend in backend/ (FastAPI, async SQLAlchemy 2.0, Alembic, PostgreSQL + pgvector). Later: Elasticsearch, Redis/SAQ, LangGraph, Groq, Next.js.
+Multi-tenant support knowledge engine. Backend in backend/ (FastAPI, async SQLAlchemy 2.0, Alembic, PostgreSQL + pgvector; Postgres-only, one search path: pgvector + tsvector). Later: Redis/SAQ, LangGraph, Next.js.
 
 ## Platform
 Project lives in WSL2 Ubuntu at ~/projects/helphub. Use bash and Linux paths only. Never use PowerShell or Windows paths.
@@ -33,8 +33,8 @@ New tests go in the matching domain directory under tests/; helpers live in test
 
 ## Review routine
 - Day end: `scripts/gate.sh --full` must be green, then `/day-review <range>` (default HEAD~1..HEAD).
-- `/day-review` runs the gate first (STOPs if red), then picks agents by changed paths: tenant-reviewer and design-reviewer for app/ or alembic/, test-quality-reviewer for tests/, security-auditor only for auth, upload, chat/LLM, search/ES, config, Docker, dependency or migration changes.
+- `/day-review` runs the gate first (STOPs if red), then picks agents by changed paths: tenant-reviewer and design-reviewer for app/ or alembic/, test-quality-reviewer for tests/, security-auditor only for auth, upload, chat/LLM, search, config, Docker, dependency or migration changes.
 - Agents are read-only and print at most 12 findings; the skill prints one report of at most 40 lines.
 - Context for reviewers: docs/review/context.md. Accepted risks (stable IDs AR-nn): docs/review/accepted-risks.md; add an entry instead of re-explaining a known risk.
 - `.claude/hooks/guard_bash.py` blocks destructive commands (best-effort); do not work around it.
-- Not built yet (Day 12): CI and production-readiness checks.
+- CI exists (.github/workflows/ci.yml: gate, audit and image jobs) but has never run on GitHub. Not done yet (Day 12): Render deploy and smoke checks, soak, other production-readiness checks.
