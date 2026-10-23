@@ -26,7 +26,7 @@ if str(BACKEND) not in sys.path:  # run as a script: make `eval` importable
     sys.path.insert(0, str(BACKEND))
 
 from eval import gate_tuning as gt
-from eval.validate import EVAL_DIR, load_corpus, load_questions
+from eval.validate import EVAL_DIR, load_questions
 
 DOCS_EVAL = BACKEND.parent / "docs" / "eval"
 DEV_TUNING = DOCS_EVAL / "dev_tuning.json"
@@ -205,6 +205,40 @@ def real_searcher() -> Searcher:
     return searcher
 
 
+async def corpus_texts() -> list[tuple[str, str]]:
+    """(title, text) per corpus file, as scripts/load_demo_corpus.py and the app see it.
+
+    Whole file through the app's own extraction (title = file stem); nothing is
+    stripped, so the ``# Title`` line stays.
+    """
+    from app.services import extraction
+
+    files = sorted(
+        p for p in (EVAL_DIR / "corpus").glob("*.md") if p.name != "INDEX.md"
+    )
+    return [
+        (p.stem, await extraction.extract_text(p.name, p.read_bytes())) for p in files
+    ]
+
+
+async def ingest_corpus(tenant_id: Any, provider: Any) -> int:
+    """Idempotent: ingest every corpus file through the app's service path and
+    delete documents in the tenant that are not a corpus file. Returns the stale count."""
+    from app.services import documents
+
+    corpus = await corpus_texts()
+    wanted = {documents.content_hash(documents.prepare_text(t)) for _, t in corpus}
+    stale = 0
+    for doc in await documents.list_documents(tenant_id, limit=200):
+        if doc.content_hash not in wanted:
+            await documents.delete_document(tenant_id, doc.id)
+            stale += 1
+    for title, content in corpus:
+        document, _ = await documents.create_or_get(tenant_id, None, title, content)  # type: ignore[arg-type]
+        await documents.ingest_document(tenant_id, document.id, provider)
+    return stale
+
+
 async def embed_corpus() -> dict[str, int]:
     from sqlalchemy import text
 
@@ -212,7 +246,7 @@ async def embed_corpus() -> dict[str, int]:
     from app.db.session import engine
     from app.db.tenant_context import tenant_transaction
     from app.schemas.auth import RegisterRequest
-    from app.services import auth, documents
+    from app.services import auth
     from app.services.embeddings import default_provider
 
     if settings.embedding_provider != "cloudflare":
@@ -231,14 +265,7 @@ async def embed_corpus() -> dict[str, int]:
             reserved_ok=True,
         )
         tenant_id = user.tenant_id
-    for doc in load_corpus(EVAL_DIR / "corpus"):
-        document, _ = await documents.create_or_get(
-            tenant_id,
-            None,
-            doc.title,
-            doc.content,  # type: ignore[arg-type]
-        )
-        await documents.ingest_document(tenant_id, document.id, provider)
+    stale = await ingest_corpus(tenant_id, provider)
     async with tenant_transaction(tenant_id) as session:
         rows = (
             await session.execute(
@@ -250,7 +277,7 @@ async def embed_corpus() -> dict[str, int]:
         ).all()
     await engine.dispose()
     return (
-        {"tenant_created": int(created)}
+        {"tenant_created": int(created), "stale_documents_deleted": stale}
         | {f"{m}: chunks": c for m, c, _ in rows}
         | {f"{m}: documents": d for m, _, d in rows}
     )

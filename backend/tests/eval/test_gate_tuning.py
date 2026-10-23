@@ -219,3 +219,46 @@ def test_write_test_result_never_overwrites(tmp_path: Path) -> None:
     with pytest.raises(FileExistsError):
         gt.write_test_result(result, {"a": 2})
     assert json.loads(result.read_text()) == {"a": 1}
+
+
+# --- embed uses the app's ingest path -------------------------------------------------
+
+
+async def test_embed_stores_the_chunk_texts_the_app_chunker_produces(
+    make_tenant,
+) -> None:
+    from sqlalchemy import text
+
+    from app.db.tenant_context import tenant_transaction
+    from app.services.chunker import chunk_text
+    from app.services.documents import prepare_text
+    from app.services.embeddings import FakeEmbeddingProvider
+
+    tenant = await make_tenant()
+    corpus = await eg.corpus_texts()
+    files = sorted(
+        p for p in (eg.EVAL_DIR / "corpus").glob("*.md") if p.name != "INDEX.md"
+    )
+    assert len(corpus) == len(files) > 0
+    assert await eg.ingest_corpus(tenant["id"], FakeEmbeddingProvider()) == 0
+    assert (
+        await eg.ingest_corpus(tenant["id"], FakeEmbeddingProvider()) == 0
+    )  # idempotent
+
+    async with tenant_transaction(tenant["id"]) as session:
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT d.title, c.chunk_index, c.text FROM chunks c "
+                    "JOIN documents d ON d.id = c.document_id"
+                )
+            )
+        ).all()
+    stored: dict[str, dict[int, str]] = {}
+    for title, index, content in rows:
+        stored.setdefault(title, {})[index] = content
+    for path in files:
+        raw = path.read_bytes().decode("utf-8-sig")
+        assert raw.startswith("# ")  # the title line is part of the ingested text
+        expected = {c["index"]: c["text"] for c in chunk_text(prepare_text(raw))}
+        assert stored[path.stem] == expected, path.name
