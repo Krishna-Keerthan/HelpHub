@@ -7,6 +7,7 @@ from tests.conftest import MakeTenant, auth_headers
 from tests.helpers.fakes import FakeLLMProvider
 from tests.helpers.ingestion_helpers import CONTENT
 
+FAKE_PASSWORD = "FAKE-password-value-123"  # gate-allow: secret fake test value
 JSON_DOC = {"title": "Doc", "content": CONTENT}
 
 
@@ -56,7 +57,7 @@ async def test_viewer_cannot_delete_or_create_users(
     deleted = await client.delete(f"/documents/{doc_id}", headers=headers)
     new_user = await client.post(
         "/users",
-        json={"email": "x@example.com", "password": "correct-horse-battery"},
+        json={"email": "x@example.com", "password": FAKE_PASSWORD},
         headers=headers,
     )
     assert deleted.status_code == 403

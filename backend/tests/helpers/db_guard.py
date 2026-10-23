@@ -20,6 +20,19 @@ def host_is_local(url: str | None) -> bool:
     return host in LOCAL_HOSTS
 
 
+def classify(url: str | None) -> str:
+    """local, hosted (supabase or pooler host), other, or unset. Never returns the URL."""
+    if not url:
+        return "unset"
+    if host_is_local(url):
+        return "local"
+    try:
+        host = (urlsplit(url).hostname or "").lower()
+    except ValueError:
+        host = ""
+    return "hosted" if "supabase" in host or "pooler" in host else "other"
+
+
 def non_local_variables(urls: dict[str, str | None]) -> list[str]:
     """Names of the variables whose host is not local (or that are unset)."""
     return [name for name, url in urls.items() if not host_is_local(url)]
