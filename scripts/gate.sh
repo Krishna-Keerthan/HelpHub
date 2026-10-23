@@ -7,6 +7,11 @@ REPORT=${GATE_REPORT:-/tmp/gate-report.txt}
 FULL=0
 [[ "${1:-}" == "--full" ]] && FULL=1
 cd "$ROOT/backend" || exit 2
+# Never touch a non-local database (ruff, alembic and pytest all may). No connection is made.
+if ! uv run python -m tests.helpers.db_guard; then
+  echo "FAIL  local-database guard (nothing was run)"
+  exit 2
+fi
 # First line of the report: which commit (and whether dirty) this run covered.
 python3 "$ROOT/scripts/gate_checks.py" stamp "$REPORT"
 

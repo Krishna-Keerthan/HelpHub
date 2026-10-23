@@ -22,6 +22,7 @@ from app.core.ratelimit import limiter
 from app.core.security import create_access_token, hash_password
 from app.main import app
 from app.services.embeddings import FakeEmbeddingProvider
+from tests.helpers.db_guard import current_refusal
 from tests.helpers.fakes import FakeLLMProvider
 
 # gate-allow: secret fake value used only by this test
@@ -206,6 +207,9 @@ def _reset_leftover_reloptions() -> None:
 
 def pytest_sessionstart(session: pytest.Session) -> None:
     global _slugs_before
+    refusal = current_refusal()
+    if refusal:
+        raise pytest.UsageError(refusal)
     _acquire_session_lock()
     _reset_leftover_reloptions()
     _slugs_before = _read_seed_slugs()

@@ -32,7 +32,7 @@ Passage 2 (`getting-started`):
 > 5. Install the desktop client. The client keeps a local copy of your folders and syncs changes in the background. See the installation guide for Windows, macOS and Linux.
 > 6. Turn on two-factor authentication. We recommend this for every member, and administrators can require it for the whole workspace.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [2] keep  [1] remove (a passage answers it)
 
 ## u-002: Can I pay my invoice through PayPal?
 
@@ -60,7 +60,7 @@ Passage 2 (`billing-faq`):
 > Q: Is tax included in the price?
 > A: No. Sales tax or VAT is added at checkout based on the billing address.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [1] keep  [2] remove (a passage answers it)
 
 ## u-003: What is the maximum number of webhooks I can create in one workspace?
 
@@ -85,7 +85,7 @@ Passage 2 (`storage-quotas`):
 >
 > Quota exceeded. When the pool is full the API and the apps return error E-5001 on upload. Existing files remain available and nothing is deleted. To continue you can delete files and empty the trash, shorten version history from 100 to 10 versions, upgrade the plan, or buy a storage add-on.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [2] keep  [1] remove (a passage answers it)
 
 ## u-004: How do I switch the desktop client to dark mode?
 
@@ -109,7 +109,7 @@ Passage 2 (`changelog-v2-4`):
 >
 > Compatibility. The API remains backwards compatible within the v2 line.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [ ] keep  [both] remove (a passage answers it)
 
 ## u-005: Does the desktop client run on ChromeOS?
 
@@ -133,7 +133,7 @@ Passage 2 (`desktop-client-install`):
 >
 > macOS. Open the disk image and drag Acme Cloud into Applications. The first time you start it, macOS asks for permission to access files and, on newer versions, to enable the file provider extension. Allow both in System Settings, Privacy and Security.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [Both] keep  [ ] remove (a passage answers it)
 
 ## u-006: How do I connect Acme Cloud to Jira so tasks link to tickets?
 
@@ -163,7 +163,7 @@ Passage 2 (`sso-saml-setup`):
 >
 > Always keep one owner account that can still log in with a password. If the identity provider is misconfigured and enforcement is on, that account is the only way back in. When login fails, see the SSO error reference.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [both] keep  [ ] remove (a passage answers it)
 
 ## u-007: Is there a Windows Phone version of the mobile app?
 
@@ -185,7 +185,7 @@ Passage 2 (`mobile-app-offline-mode`):
 >
 > Storage control. Open Profile, Offline storage to see how much space is used. You can set a limit between 1 and 50 GB and choose whether downloads are allowed on mobile data. When the limit is reached, the files you opened least recently are removed from the phone first, while your pinned items are always kept.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [2] keep  [1] remove (a passage answers it)
 
 ## u-008: Can I schedule a file to be deleted automatically on a chosen date?
 
@@ -209,7 +209,7 @@ Passage 2 (`storage-quotas`):
 >
 > Quota exceeded. When the pool is full the API and the apps return error E-5001 on upload. Existing files remain available and nothing is deleted. To continue you can delete files and empty the trash, shorten version history from 100 to 10 versions, upgrade the plan, or buy a storage add-on.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [ ] keep  [both] remove (a passage answers it)
 
 ## u-009: How do I set up SCIM user provisioning for my identity provider?
 
@@ -231,7 +231,7 @@ Passage 2 (`sso-saml-setup`):
 >
 > Before you start, have your identity provider's metadata URL or XML file ready. Supported providers include Okta, Microsoft Entra ID, Google Workspace and any provider that speaks SAML 2.0.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [1] keep  [2] remove (a passage answers it)
 
 ## u-010: Does Acme Cloud support Kerberos authentication for the desktop client?
 
@@ -255,7 +255,7 @@ Passage 2 (`sync-client-troubleshooting`):
 >
 > SYNC_ERR_409. The same file was changed in two places before they could sync. The client keeps both versions: yours is renamed with the suffix conflicted copy and the cloud version is downloaded. Compare them and delete the one you do not need.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [] keep  [both] remove (a passage answers it)
 
 ## u-011: What uptime percentage does the Enterprise service level agreement guarantee?
 
@@ -289,7 +289,7 @@ Passage 2 (`plans-and-pricing`):
 >
 > Security keys. The hardware security key for two-factor sign-in is SKU CD-7781-M and ships in a pack of two.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [1] keep  [2] remove (a passage answers it)
 
 ## u-012: How do I change the language of the web interface to German?
 
@@ -310,7 +310,7 @@ Passage 2 (`getting-started`):
 > 5. Install the desktop client. The client keeps a local copy of your folders and syncs changes in the background. See the installation guide for Windows, macOS and Linux.
 > 6. Turn on two-factor authentication. We recommend this for every member, and administrators can require it for the whole workspace.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [ ] keep  [both] remove (a passage answers it)
 
 ## u-013: How do I transfer ownership of a workspace to another member?
 
@@ -335,7 +335,7 @@ Passage 2 (`sharing-and-permissions`):
 >
 > Share links. Any file or folder can have a link. You choose whether anyone with the link can open it or only signed-in members, whether it can be downloaded, and when it expires. You can protect a link with a password. Links are revoked instantly when you press Remove link.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [2] keep  [1] remove (a passage answers it)
 
 ## u-014: Is there an official Python SDK for the Acme Cloud API?
 
@@ -359,7 +359,7 @@ Passage 2 (`desktop-client-install`):
 >
 > macOS. Open the disk image and drag Acme Cloud into Applications. The first time you start it, macOS asks for permission to access files and, on newer versions, to enable the file provider extension. Allow both in System Settings, Privacy and Security.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [1] keep  [2] remove (a passage answers it)
 
 ## u-015: How many personal access tokens can one user have at the same time?
 
@@ -388,7 +388,7 @@ Passage 2 (`api-rate-limits`):
 >
 > When you exceed a limit the API answers with HTTP 429 Too Many Requests. The response includes a Retry-After header with the number of seconds to wait. Every response carries X-RateLimit-Limit, X-RateLimit-Remaining and X-RateLimit-Reset headers so a client can slow down before it is blocked.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [both] keep  [ ] remove (a passage answers it)
 
 ## u-016: Does the Acme Cloud API offer a GraphQL endpoint?
 
@@ -419,7 +419,7 @@ Passage 2 (`api-error-reference`):
 > | 500 | Unexpected error on our side | Retry later and report the request ID |
 > | 503 | Service temporarily unavailable, usually during maintenance | Retry with backoff |
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [ ] keep  [both] remove (a passage answers it)
 
 ## u-017: Can I receive invoices in euros instead of US dollars?
 
@@ -446,7 +446,7 @@ Passage 2 (`refunds-and-cancellations`):
 >
 > Downgrading. If you move to a cheaper plan in the middle of a period, we credit the unused portion to your next invoice instead of paying it out.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [ ] keep  [both] remove (a passage answers it)
 
 ## u-018: How do I turn on end-to-end encryption for a single folder?
 
@@ -472,7 +472,7 @@ Passage 2 (`mobile-app-offline-mode`):
 >
 > Storage control. Open Profile, Offline storage to see how much space is used. You can set a limit between 1 and 50 GB and choose whether downloads are allowed on mobile data. When the limit is reached, the files you opened least recently are removed from the phone first, while your pinned items are always kept.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [1] keep  [2] remove (a passage answers it)
 
 ## u-019: What is the longest file name Acme Cloud accepts?
 
@@ -502,7 +502,7 @@ Passage 2 (`api-error-reference`):
 > | 500 | Unexpected error on our side | Retry later and report the request ID |
 > | 503 | Service temporarily unavailable, usually during maintenance | Retry with backoff |
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [ ] keep  [both] remove (a passage answers it)
 
 ## u-020: Can I embed a shared folder on my website with an iframe?
 
@@ -524,7 +524,7 @@ Passage 2 (`sharing-and-permissions`):
 >
 > Share links. Any file or folder can have a link. You choose whether anyone with the link can open it or only signed-in members, whether it can be downloaded, and when it expires. You can protect a link with a password. Links are revoked instantly when you press Remove link.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [1] keep  [2] remove (a passage answers it)
 
 ## u-021: Can the desktop sync client be limited to Wi-Fi networks only?
 
@@ -549,7 +549,7 @@ Passage 2 (`getting-started`):
 > 5. Install the desktop client. The client keeps a local copy of your folders and syncs changes in the background. See the installation guide for Windows, macOS and Linux.
 > 6. Turn on two-factor authentication. We recommend this for every member, and administrators can require it for the whole workspace.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [1] keep  [2] remove (a passage answers it)
 
 ## u-022: In which city is the Asia-Pacific data center located?
 
@@ -575,7 +575,7 @@ Passage 2 (`mobile-app-offline-mode`):
 >
 > Storage control. Open Profile, Offline storage to see how much space is used. You can set a limit between 1 and 50 GB and choose whether downloads are allowed on mobile data. When the limit is reached, the files you opened least recently are removed from the phone first, while your pinned items are always kept.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [ ] keep  [both] remove (a passage answers it)
 
 ## u-023: How do I export the audit log to Splunk?
 
@@ -599,7 +599,7 @@ Passage 2 (`data-export`):
 >
 > Personal data request. Any member can ask for the personal data we hold about them from Profile, Privacy, Request my data. We respond within 30 days, in line with data protection law. Members can also ask for their personal data to be deleted; owners are told if that would affect shared work.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [ ] keep  [both] remove (a passage answers it)
 
 ## u-024: Can I lock a single file so nobody else can edit it while I work on it?
 
@@ -621,7 +621,7 @@ Passage 2 (`mobile-app-offline-mode`):
 >
 > Storage control. Open Profile, Offline storage to see how much space is used. You can set a limit between 1 and 50 GB and choose whether downloads are allowed on mobile data. When the limit is reached, the files you opened least recently are removed from the phone first, while your pinned items are always kept.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [1] keep  [2] remove (a passage answers it)
 
 ## u-025: How long should I boil an egg for a soft yolk?
 
@@ -647,7 +647,7 @@ Passage 2 (`changelog-v2-4`):
 >
 > Deprecated: API tokens without an expiry will stop being created on Free and Team plans in version 2.5. Existing tokens continue to work. The old v1 file listing endpoint will be removed in December; use the v2 listing instead.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [ ] keep  [both] remove (a passage answers it)
 
 ## u-026: What is the capital city of Australia?
 
@@ -665,7 +665,7 @@ Passage 2 (`data-export`):
 >
 > After you cancel, the export option stays available for 90 days.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [ ] keep  [both] remove (a passage answers it)
 
 ## u-027: Who won the football World Cup in 2014?
 
@@ -687,7 +687,7 @@ Passage 2 (`webhooks`):
 >
 > If an endpoint fails continuously for three days it is disabled and the owner is emailed.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [ ] keep  [both] remove (a passage answers it)
 
 ## u-028: How do I knit a scarf for a beginner?
 
@@ -712,7 +712,7 @@ Passage 2 (`data-export`):
 >
 > Personal data request. Any member can ask for the personal data we hold about them from Profile, Privacy, Request my data. We respond within 30 days, in line with data protection law. Members can also ask for their personal data to be deleted; owners are told if that would affect shared work.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [ ] keep  [both] remove (a passage answers it)
 
 ## u-029: What are the symptoms of the common cold?
 
@@ -745,7 +745,7 @@ Passage 2 (`api-error-reference`):
 > | 500 | Unexpected error on our side | Retry later and report the request ID |
 > | 503 | Service temporarily unavailable, usually during maintenance | Retry with backoff |
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [ ] keep  [both] remove (a passage answers it)
 
 ## u-030: How do I convert Celsius to Fahrenheit?
 
@@ -768,7 +768,7 @@ Passage 2 (`getting-started`):
 > 5. Install the desktop client. The client keeps a local copy of your folders and syncs changes in the background. See the installation guide for Windows, macOS and Linux.
 > 6. Turn on two-factor authentication. We recommend this for every member, and administrators can require it for the whole workspace.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [ ] keep  [both] remove (a passage answers it)
 
 ## u-031: What is a good name for a golden retriever puppy?
 
@@ -792,7 +792,7 @@ Passage 2 (`sso-saml-setup`):
 >
 > Always keep one owner account that can still log in with a password. If the identity provider is misconfigured and enforcement is on, that account is the only way back in. When login fails, see the SSO error reference.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [ ] keep  [both] remove (a passage answers it)
 
 ## u-032: How many calories are in a banana?
 
@@ -819,7 +819,7 @@ Passage 2 (`changelog-v2-3`):
 > Version 2.3.1 (April)
 > Fixed: files with accents or emoji in their names failed to sync on Windows. Fixed: the sync client sometimes reported ERR_CONN_RESET after waking from sleep; it now reconnects quietly. Fixed: single sign-on users were shown E-4013 when their clock was slightly ahead; we now accept a skew of five minutes. Fixed: invoice PDFs showed the wrong tax number for some European customers. Security: updated a third-party library used for image previews.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [ ] keep  [both] remove (a passage answers it)
 
 ## u-033: Explain how photosynthesis works in plants.
 
@@ -844,7 +844,7 @@ Passage 2 (`data-export`):
 >
 > Personal data request. Any member can ask for the personal data we hold about them from Profile, Privacy, Request my data. We respond within 30 days, in line with data protection law. Members can also ask for their personal data to be deleted; owners are told if that would affect shared work.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [ ] keep  [both] remove (a passage answers it)
 
 ## u-034: What time does the sun set in Reykjavik in June?
 
@@ -866,7 +866,7 @@ Passage 2 (`changelog-v2-3`):
 > Version 2.3.1 (April)
 > Fixed: files with accents or emoji in their names failed to sync on Windows. Fixed: the sync client sometimes reported ERR_CONN_RESET after waking from sleep; it now reconnects quietly. Fixed: single sign-on users were shown E-4013 when their clock was slightly ahead; we now accept a skew of five minutes. Fixed: invoice PDFs showed the wrong tax number for some European customers. Security: updated a third-party library used for image previews.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [ ] keep  [both] remove (a passage answers it)
 
 ## u-035: How do I change the oil in a 2012 Honda Civic?
 
@@ -892,7 +892,7 @@ Passage 2 (`billing-faq`):
 > Q: Where can I find my invoices?
 > A: Invoices are listed under Billing, Invoice history. Each one is a PDF with your company name, address and tax number. To change those details, edit Billing contacts first; invoices already issued cannot be altered, but we can issue a corrected copy on request.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [ ] keep  [both] remove (a passage answers it)
 
 ## u-036: Recommend a good science fiction novel from the 1980s.
 
@@ -918,7 +918,7 @@ Passage 2 (`getting-started`):
 > 5. Install the desktop client. The client keeps a local copy of your folders and syncs changes in the background. See the installation guide for Windows, macOS and Linux.
 > 6. Turn on two-factor authentication. We recommend this for every member, and administrators can require it for the whole workspace.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [ ] keep  [both] remove (a passage answers it)
 
 ## u-037: What is the difference between a violin and a viola?
 
@@ -941,7 +941,7 @@ Passage 2 (`sso-error-reference`):
 > | E-4013 | Assertion expired or not yet valid: the clocks of the identity provider and Acme Cloud differ by more than five minutes | Synchronise the identity provider's server time (NTP), then retry |
 > | E-4014 | The NameID is missing or is not an email address | Map NameID to the user's email |
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [ ] keep  [both] remove (a passage answers it)
 
 ## u-038: How do I grow tomatoes on a balcony?
 
@@ -964,7 +964,7 @@ Passage 2 (`getting-started`):
 > 5. Install the desktop client. The client keeps a local copy of your folders and syncs changes in the background. See the installation guide for Windows, macOS and Linux.
 > 6. Turn on two-factor authentication. We recommend this for every member, and administrators can require it for the whole workspace.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [ ] keep  [both] remove (a passage answers it)
 
 ## u-039: Translate 'good morning' into Japanese.
 
@@ -988,7 +988,7 @@ Passage 2 (`changelog-v2-3`):
 > Version 2.3.1 (April)
 > Fixed: files with accents or emoji in their names failed to sync on Windows. Fixed: the sync client sometimes reported ERR_CONN_RESET after waking from sleep; it now reconnects quietly. Fixed: single sign-on users were shown E-4013 when their clock was slightly ahead; we now accept a skew of five minutes. Fixed: invoice PDFs showed the wrong tax number for some European customers. Security: updated a third-party library used for image previews.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [ ] keep  [both] remove (a passage answers it)
 
 ## u-040: How do I train for a half marathon in twelve weeks?
 
@@ -1013,4 +1013,4 @@ Passage 2 (`billing-faq`):
 > Q: Where can I find my invoices?
 > A: Invoices are listed under Billing, Invoice history. Each one is a PDF with your company name, address and tax number. To change those details, edit Billing contacts first; invoices already issued cannot be altered, but we can issue a corrected copy on request.
 
-Decision: [ ] keep  [ ] remove (a passage answers it)
+Decision: [ ] keep  [both] remove (a passage answers it)

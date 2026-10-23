@@ -10,6 +10,7 @@ from app.services.prompts import (
     BuiltPrompt,
     PromptSource,
     build_messages,
+    neutralize,
     parse_citations,
 )
 
@@ -195,6 +196,27 @@ def test_fullwidth_marker_in_a_document_cannot_spoof_a_citation(marker: str) -> 
     block = built.messages[-2]["content"]
     assert marker not in block
     assert parse_citations(block, 3) == [1]  # only the real "[1]" label survives
+
+
+@pytest.mark.parametrize(
+    ("answer", "expected"),
+    [
+        ("see \u30102\u3011", [2]),
+        ("see \u30101, 3\u3011", [1, 3]),
+        ("see \u3010 2 \u3011", [2]),
+        ("see \u30102]", [2]),  # mixed lenticular open, ASCII close
+        ("see \u301099\u3011", []),  # out of range
+        ("see \u3010a\u3011", []),  # not a number
+    ],
+)
+def test_lenticular_brackets_are_parsed_as_citations(
+    answer: str, expected: list[int]
+) -> None:
+    assert parse_citations(answer, 3) == expected
+
+
+def test_lenticular_citation_in_a_document_is_neutralized() -> None:
+    assert neutralize("fact \u30101, 2\u3011 here") == "fact (1, 2) here"
 
 
 def test_prompt_asks_for_ascii_square_brackets_only() -> None:

@@ -83,3 +83,23 @@ async def test_uppercase_email_rejected(db_session: AsyncSession) -> None:
     with pytest.raises(IntegrityError) as exc_info:
         await add_user(db_session, acme, "Sam@Example.com")
     assert constraint_name(exc_info.value) == "ck_users_email_lowercase"
+
+
+async def test_viewer_role_is_allowed(db_session: AsyncSession) -> None:
+    tenant = await add_tenant(db_session)
+    await set_tenant(db_session, tenant.id)
+    user = make_user(tenant, "viewer@acme.example.com")
+    user.role = "viewer"
+    db_session.add(user)
+    await db_session.flush()
+
+
+async def test_unknown_role_is_rejected(db_session: AsyncSession) -> None:
+    tenant = await add_tenant(db_session)
+    await set_tenant(db_session, tenant.id)
+    user = make_user(tenant, "ghost@acme.example.com")
+    user.role = "superuser"
+    db_session.add(user)
+    with pytest.raises(IntegrityError) as caught:
+        await db_session.flush()
+    assert constraint_name(caught.value) == "ck_users_role"

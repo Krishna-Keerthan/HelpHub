@@ -21,5 +21,6 @@ Sources: docs/plans/day-05.md, docs/plans/day-06.md (items copied as recorded th
 | BL-14 | `create_user` (admin `POST /users`) waits for the hash slot while the request's DB session is open, so a slow or queued hash holds a pooled connection; fine at admin volume, not for bulk creation | C9 | LOW | Open |
 | BL-15 | Hashes made with the old parameters (64 MiB, t=3, p=4) cost more to verify than `DUMMY_HASH` (new parameters), so login time can reveal that an account with an old hash exists. No rehash-on-login exists. Only dev/seed accounts can have old hashes (nothing is deployed). Needs an AR entry if any old-hash account ever reaches a deployed database; otherwise recreate those accounts | C9 | LOW | Open |
 | BL-16 | `helphub_app` has SELECT, INSERT, UPDATE, DELETE on `alembic_version` through the default privileges, so a compromised runtime role could rewrite the migration version; revoke it in a migration (the owner needs no grant) | 0011 | LOW | Open |
+| BL-17 | Tests share the dev database (seeded `t-%` tenants and data are created in it); use a separate test database so a test run never touches dev data. The local-host guard (a5ae943) only stops hosted runs | gate | LOW | Open |
 
 Note: login latency at 0.1 CPU is measured in BL-13 (before and after the Argon2 change).

@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.schemas.types import NewPassword, NormalizedEmail
 
-Role = Literal["admin", "agent"]
+Role = Literal["admin", "agent", "viewer"]
 
 
 class UserCreate(BaseModel):
