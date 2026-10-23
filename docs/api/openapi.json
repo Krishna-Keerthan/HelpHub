@@ -478,7 +478,8 @@
             "default": "agent",
             "enum": [
               "admin",
-              "agent"
+              "agent",
+              "viewer"
             ],
             "title": "Role",
             "type": "string"
@@ -514,7 +515,8 @@
           "role": {
             "enum": [
               "admin",
-              "agent"
+              "agent",
+              "viewer"
             ],
             "title": "Role",
             "type": "string"

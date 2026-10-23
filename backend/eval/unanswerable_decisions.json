@@ -1,0 +1,285 @@
+{
+  "rule": "n = no passage states the answer, so the question STAYS in the unanswerable set. y = a passage states the answer, so the question is REMOVED. u = unsure, so the question is REMOVED (conservative). A passage that is only on the same topic is 'n'.",
+  "decisions": [
+    {
+      "id": "u-001",
+      "answer": "n",
+      "decision": "stays",
+      "split": "dev",
+      "category": "near_miss"
+    },
+    {
+      "id": "u-002",
+      "answer": "n",
+      "decision": "stays",
+      "split": "test",
+      "category": "near_miss"
+    },
+    {
+      "id": "u-003",
+      "answer": "n",
+      "decision": "stays",
+      "split": "dev",
+      "category": "near_miss"
+    },
+    {
+      "id": "u-004",
+      "answer": "n",
+      "decision": "stays",
+      "split": "test",
+      "category": "near_miss"
+    },
+    {
+      "id": "u-005",
+      "answer": "n",
+      "decision": "stays",
+      "split": "dev",
+      "category": "near_miss"
+    },
+    {
+      "id": "u-006",
+      "answer": "n",
+      "decision": "stays",
+      "split": "test",
+      "category": "near_miss"
+    },
+    {
+      "id": "u-007",
+      "answer": "n",
+      "decision": "stays",
+      "split": "dev",
+      "category": "near_miss"
+    },
+    {
+      "id": "u-008",
+      "answer": "n",
+      "decision": "stays",
+      "split": "test",
+      "category": "near_miss"
+    },
+    {
+      "id": "u-009",
+      "answer": "u",
+      "decision": "removed",
+      "split": "dev",
+      "category": "near_miss"
+    },
+    {
+      "id": "u-010",
+      "answer": "n",
+      "decision": "stays",
+      "split": "test",
+      "category": "near_miss"
+    },
+    {
+      "id": "u-011",
+      "answer": "y",
+      "decision": "removed",
+      "split": "dev",
+      "category": "near_miss"
+    },
+    {
+      "id": "u-012",
+      "answer": "n",
+      "decision": "stays",
+      "split": "test",
+      "category": "near_miss"
+    },
+    {
+      "id": "u-013",
+      "answer": "u",
+      "decision": "removed",
+      "split": "dev",
+      "category": "near_miss"
+    },
+    {
+      "id": "u-014",
+      "answer": "n",
+      "decision": "stays",
+      "split": "test",
+      "category": "near_miss"
+    },
+    {
+      "id": "u-015",
+      "answer": "y",
+      "decision": "removed",
+      "split": "dev",
+      "category": "near_miss"
+    },
+    {
+      "id": "u-016",
+      "answer": "n",
+      "decision": "stays",
+      "split": "test",
+      "category": "near_miss"
+    },
+    {
+      "id": "u-017",
+      "answer": "u",
+      "decision": "removed",
+      "split": "dev",
+      "category": "near_miss"
+    },
+    {
+      "id": "u-018",
+      "answer": "n",
+      "decision": "stays",
+      "split": "test",
+      "category": "near_miss"
+    },
+    {
+      "id": "u-019",
+      "answer": "n",
+      "decision": "stays",
+      "split": "dev",
+      "category": "near_miss"
+    },
+    {
+      "id": "u-020",
+      "answer": "y",
+      "decision": "removed",
+      "split": "test",
+      "category": "near_miss"
+    },
+    {
+      "id": "u-021",
+      "answer": "u",
+      "decision": "removed",
+      "split": "dev",
+      "category": "near_miss"
+    },
+    {
+      "id": "u-022",
+      "answer": "n",
+      "decision": "stays",
+      "split": "test",
+      "category": "near_miss"
+    },
+    {
+      "id": "u-023",
+      "answer": "y",
+      "decision": "removed",
+      "split": "dev",
+      "category": "near_miss"
+    },
+    {
+      "id": "u-024",
+      "answer": "u",
+      "decision": "removed",
+      "split": "test",
+      "category": "near_miss"
+    },
+    {
+      "id": "u-025",
+      "answer": "n",
+      "decision": "stays",
+      "split": "dev",
+      "category": "off_topic"
+    },
+    {
+      "id": "u-026",
+      "answer": "n",
+      "decision": "stays",
+      "split": "test",
+      "category": "off_topic"
+    },
+    {
+      "id": "u-027",
+      "answer": "n",
+      "decision": "stays",
+      "split": "dev",
+      "category": "off_topic"
+    },
+    {
+      "id": "u-028",
+      "answer": "n",
+      "decision": "stays",
+      "split": "test",
+      "category": "off_topic"
+    },
+    {
+      "id": "u-029",
+      "answer": "n",
+      "decision": "stays",
+      "split": "dev",
+      "category": "off_topic"
+    },
+    {
+      "id": "u-030",
+      "answer": "n",
+      "decision": "stays",
+      "split": "test",
+      "category": "off_topic"
+    },
+    {
+      "id": "u-031",
+      "answer": "n",
+      "decision": "stays",
+      "split": "dev",
+      "category": "off_topic"
+    },
+    {
+      "id": "u-032",
+      "answer": "n",
+      "decision": "stays",
+      "split": "test",
+      "category": "off_topic"
+    },
+    {
+      "id": "u-033",
+      "answer": "n",
+      "decision": "stays",
+      "split": "dev",
+      "category": "off_topic"
+    },
+    {
+      "id": "u-034",
+      "answer": "n",
+      "decision": "stays",
+      "split": "test",
+      "category": "off_topic"
+    },
+    {
+      "id": "u-035",
+      "answer": "n",
+      "decision": "stays",
+      "split": "dev",
+      "category": "off_topic"
+    },
+    {
+      "id": "u-036",
+      "answer": "n",
+      "decision": "stays",
+      "split": "test",
+      "category": "off_topic"
+    },
+    {
+      "id": "u-037",
+      "answer": "n",
+      "decision": "stays",
+      "split": "dev",
+      "category": "off_topic"
+    },
+    {
+      "id": "u-038",
+      "answer": "n",
+      "decision": "stays",
+      "split": "test",
+      "category": "off_topic"
+    },
+    {
+      "id": "u-039",
+      "answer": "n",
+      "decision": "stays",
+      "split": "dev",
+      "category": "off_topic"
+    },
+    {
+      "id": "u-040",
+      "answer": "n",
+      "decision": "stays",
+      "split": "test",
+      "category": "off_topic"
+    }
+  ]
+}

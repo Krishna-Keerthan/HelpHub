@@ -21,7 +21,7 @@ from app.db.base import Base
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (
-        CheckConstraint("role IN ('admin', 'agent')", name="role"),
+        CheckConstraint("role IN ('admin', 'agent', 'viewer')", name="role"),
         CheckConstraint("email = lower(email)", name="email_lowercase"),
         UniqueConstraint("tenant_id", "email"),
         UniqueConstraint("tenant_id", "id"),
