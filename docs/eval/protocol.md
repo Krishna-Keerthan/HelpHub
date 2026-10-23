@@ -30,13 +30,13 @@ Written before any score has been computed for the kept unanswerable questions. 
 - s grid: 0.00 to 0.50 in steps of 0.05 (11 values).
 - Selection: minimise max(A_dev, U_dev). Ties go to the higher threshold t.
 - R1 is chosen only if it is **strictly better** than the best R0 on that measure; otherwise R0 is chosen.
-- Tie-break among R1 candidates with equal max and equal t: the higher s. (Added to make the selection deterministic; owner to confirm.)
+- Tie-break among R1 candidates with equal max and equal t: the higher s. (Added to make the selection deterministic; confirmed by the owner, see Amendment 1.)
 - TEST is not looked at while tuning.
 
 ## 6. TEST (once)
 
 - TEST is evaluated exactly once with the chosen rule. The result is recorded as it comes out, with no re-tuning afterwards.
-- The TEST runner refuses a second run through a lock file (built in a later step).
+- The TEST runner refuses a second run through a lock file: `docs/eval/test_result.json` (see Amendment 1).
 
 ## 7. Pass criterion
 
@@ -47,3 +47,12 @@ If neither rule passes, the gate stays as it is today and AR-10 and AR-18 record
 ## 8. Reporting
 
 Report counts with their denominators (for example 1/12 and 2/18), for DEV and TEST, for the chosen rule and for R0 and R1 separately. Note that with n = 18 unanswerable TEST questions even zero errors only bounds the true wrong-answer rate near 17% (rule of three: 3/18).
+
+## 9. Amendments (recorded before any scoring)
+
+**Amendment 1.** Written before any DEV or TEST score exists.
+
+1. The tie-break "higher s" (among R1 candidates with equal max and equal t) is confirmed.
+2. The 8 older unanswerable questions in `backend/eval/questions.yaml` (`answerable: false`) are excluded. The unanswerable set is exactly the 31 kept questions of section 1.
+3. The TEST runner refuses to run if `docs/eval/test_result.json` exists. That file is the lock. A re-run needs the file deleted and a written amendment here first.
+4. The measurement uses the production embedding model: `EMBEDDING_PROVIDER=cloudflare` (`@cf/baai/bge-small-en-v1.5`, cls pooling), in a dedicated eval tenant. Vectors from any other provider are not used.
