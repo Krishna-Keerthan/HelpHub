@@ -19,6 +19,9 @@
 |---|---|---|---|
 | `BACKEND_URL` | server only (`lib/server/upstream.ts`) | **No** (no `NEXT_PUBLIC_` prefix) | Base URL of the FastAPI backend, e.g. the Render URL. No trailing path. |
 | `ALLOWED_ORIGINS` | server only (`lib/server/origin.ts`) | **No** | Comma-separated extra origins accepted by the Origin check on POST/DELETE. The app's own origin is always accepted; set this only for a custom domain or alias that differs from the origin the browser sees, e.g. `https://help.example.com`. Empty is valid. |
+| `DEMO_EMAIL` | server only (`lib/server/auth-handlers.ts`, `handleDemoLogin`) | **No** | Email of the shared demo viewer used by "Try the demo". Optional: if any of the three demo variables is unset or empty, the button is disabled. |
+| `DEMO_PASSWORD` | server only (same) | **No** | Password of the demo viewer. A secret: use the **Secret** type. Never prefix with `NEXT_PUBLIC_`. |
+| `DEMO_TENANT_SLUG` | server only (same) | **No** | Workspace slug of the demo viewer. |
 
 - The app defines **no** `NEXT_PUBLIC_*` variable. Per the Next.js docs, only `NEXT_PUBLIC_`-prefixed variables are inlined into the browser bundle; others stay in the Node.js environment. Never put a secret in a `NEXT_PUBLIC_*` variable. (Next.js docs shipped in `node_modules/next/dist/docs/01-app/02-guides/environment-variables.md`.)
 - Vercel scopes each variable to Production, Preview and/or Development, and "Any change you make to environment variables are not applied to previous deployments, they only apply to new deployments", so redeploy after changing one. https://vercel.com/docs/environment-variables

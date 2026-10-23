@@ -3,6 +3,8 @@
 Not run yet. Every "Expected" below is a prediction from the code and tests, **unverified** until you run it. Record the observed result next to each step.
 
 ## 0. Setup
+**Local dev must use `http://localhost:3100` (not `127.0.0.1`).** The Origin check on POST/DELETE compares against the host the browser sees, and `127.0.0.1` is rejected with 403 `bad_origin`. Use `localhost` for both the browser and curl `Origin` headers.
+
 1. Start the backend yourself (docker services + `uv run fastapi dev app/main.py` from `backend/`); note its URL, e.g. `http://localhost:8000`.
 2. `cd frontend && cp .env.example .env.local` and set `BACKEND_URL=<backend url>` (do not paste secrets anywhere else). `npm run dev` -> app at `http://localhost:3000`. Use this as `$APP` below.
 3. Create a workspace and user directly on the backend (the UI has no register screen):
@@ -110,3 +112,7 @@ Setup: slug from `TEST_TENANT_SLUG`, credentials from the shell (never printed).
 | 5.2-5.6 | refusal, `conversation_id`, rate limit, embedding failure, expired token mid-chat | Not run: not attempted to avoid extra provider calls and the 10 per 60 s limit. |
 | 6 | cold start | Not run: needs the backend stopped or a sleeping Render instance. |
 | 7 | logout with only `hh_rt`, then replay | `POST /api/auth/logout` with only `hh_rt` (no `hh_at`): 200 `{"sent":true}`, both cookies cleared. Replaying that never-rotated RT on `/api/auth/refresh`: **401 `session_expired`**, so the backend revoked it. Note the old `hh_at` still returned 200 on `GET /api/documents` afterwards (access JWTs are stateless until they expire). |
+
+## Observed run 4: demo viewer (terminal only, localhost:3100)
+
+`DEMO_*` taken from the shell (never printed). `POST /api/auth/demo` 200 `{"ok":true}` with both cookies set; `/api/auth/me` role `viewer`; hybrid search 5 results; chat 200 with `done.status complete`; upload as the viewer: backend 403 `Forbidden` (the UI shows "This account is read-only..."). Login page shows the shared-account notice. No password in the dev server log. Browser behaviour (button click, hidden upload control) is covered by unit tests only.
