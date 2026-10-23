@@ -33,6 +33,19 @@ AUTH_DEPENDENCIES = {
     deps.require_admin,
 }
 
+# A viewer is read-only. Every write route must pass through one of these gates
+# (admin or non-viewer) unless it is listed here as open to every role on purpose.
+WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+WRITE_GATES = {deps.require_admin, deps.require_writer}
+WRITE_OPEN_TO_VIEWERS: set[tuple[str, str]] = {
+    ("POST", "/search"),  # a read, sent as POST for the body
+    ("POST", "/chat/stream"),  # creates the viewer's own conversations and messages
+    ("POST", "/auth/register"),
+    ("POST", "/auth/login"),
+    ("POST", "/auth/refresh"),
+    ("POST", "/auth/logout"),
+}
+
 
 def _calls(dependant: Dependant) -> Iterator[object]:
     for dep in dependant.dependencies:
@@ -114,3 +127,19 @@ def test_route_count_has_a_floor() -> None:
 def test_required_routes_are_present() -> None:
     paths = {path for path, _, _ in _api_routes()}
     assert [p for p in REQUIRED_ROUTES if p not in paths] == []
+
+
+def test_every_write_route_is_gated_against_viewers_or_explicitly_open() -> None:
+    ungated = []
+    for path, methods, dependant in _api_routes():
+        for method in methods & WRITE_METHODS:
+            if (method, path) in WRITE_OPEN_TO_VIEWERS:
+                continue
+            if not set(_calls(dependant)) & WRITE_GATES:
+                ungated.append(f"{method} {path}")
+    assert ungated == []
+
+
+def test_write_open_allowlist_has_no_stale_entries() -> None:
+    existing = {(m, path) for path, methods, _ in _api_routes() for m in methods}
+    assert WRITE_OPEN_TO_VIEWERS <= existing

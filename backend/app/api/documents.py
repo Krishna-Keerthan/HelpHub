@@ -5,7 +5,13 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 
-from app.api.deps import AdminUser, CurrentPrincipal, Embedder, Principal
+from app.api.deps import (
+    AdminUser,
+    CurrentPrincipal,
+    Embedder,
+    Principal,
+    WriterPrincipal,
+)
 from app.api.uploads import (
     MULTIPART_OVERHEAD,
     media_type,
@@ -112,7 +118,7 @@ async def _create_and_ingest(
 )
 async def create_document(
     request: Request,
-    principal: CurrentPrincipal,
+    principal: WriterPrincipal,
     provider: Embedder,
     response: Response,
 ) -> DocumentRead:
@@ -144,7 +150,7 @@ async def create_document(
 )
 async def upload_document(
     request: Request,
-    principal: CurrentPrincipal,
+    principal: WriterPrincipal,
     provider: Embedder,
     response: Response,
 ) -> DocumentRead:

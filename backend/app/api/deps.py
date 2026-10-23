@@ -95,6 +95,20 @@ async def get_current_principal(subject: Subject) -> Principal:
 CurrentPrincipal = Annotated[Principal, Depends(get_current_principal)]
 
 
+async def require_writer(principal: CurrentPrincipal) -> Principal:
+    """The one gate for writes: a read-only 'viewer' is refused.
+
+    Applies to every write route except chat, search and auth. AdminUser already
+    excludes viewers. Built on CurrentPrincipal so it holds no connection.
+    """
+    if principal.role == "viewer":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    return principal
+
+
+WriterPrincipal = Annotated[Principal, Depends(require_writer)]
+
+
 def get_embedding_provider() -> EmbeddingProvider:
     return default_provider()
 
