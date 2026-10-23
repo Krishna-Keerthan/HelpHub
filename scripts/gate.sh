@@ -86,6 +86,7 @@ format_check() {
   uv run ruff format --check $files
 }
 
+step "script modes" python3 "$ROOT/scripts/gate_checks.py" exec-modes
 step "untracked files" python3 "$ROOT/scripts/gate_checks.py" untracked
 step "ruff check" uv run ruff check .
 step "ruff format (changed files)" format_check
@@ -116,11 +117,11 @@ step "security tests" uv run pytest -q tests/security
 
 # Production dependencies: blocking, same script as CI. Fails closed, so it also
 # fails when the advisory database cannot be reached (no network).
-step "pip-audit (production, blocking)" timeout 120 "$ROOT/scripts/audit_deps.sh" prod
+step "pip-audit (production, blocking)" timeout 120 bash "$ROOT/scripts/audit_deps.sh" prod
 
 # Full environment including dev: warnings only, never fails the gate.
 echo "=== pip-audit (full, warn-only) ===" >> "$REPORT"
-timeout 120 "$ROOT/scripts/audit_deps.sh" full > /tmp/gate-audit.txt 2>&1
+timeout 120 bash "$ROOT/scripts/audit_deps.sh" full > /tmp/gate-audit.txt 2>&1
 cat /tmp/gate-audit.txt >> "$REPORT"
 if grep -q "^WARNING" /tmp/gate-audit.txt; then
   echo "warn  pip-audit (full environment, non-blocking; see report)"

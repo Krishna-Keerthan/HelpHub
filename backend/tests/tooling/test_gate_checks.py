@@ -237,3 +237,61 @@ def test_untracked_cli_exit_code(tmp_path: Path) -> None:
     assert subprocess.run([sys.executable, *cmd], check=False).returncode == 0
     (root / "scripts" / "b.sh").write_text("echo\n")
     assert subprocess.run([sys.executable, *cmd], check=False).returncode == 1
+
+
+# --- exec-modes: directly executed scripts must be 100755 in git ------------------------
+
+
+def _chmod(root: Path, name: str, mode: str) -> None:
+    subprocess.run(
+        ["git", "update-index", f"--chmod={mode}", name], cwd=root, check=True
+    )
+
+
+def test_exec_modes_flags_a_directly_run_script_recorded_as_644(tmp_path: Path) -> None:
+    root = _repo(
+        tmp_path,
+        {
+            "scripts/audit_deps.sh": "echo\n",
+            ".github/workflows/ci.yml": "      - run: ../scripts/audit_deps.sh prod\n",
+        },
+    )
+    problems = gc.exec_modes(root)
+    assert len(problems) == 1
+    assert "scripts/audit_deps.sh" in problems[0] and "100644" in problems[0]
+    _chmod(root, "scripts/audit_deps.sh", "+x")
+    assert gc.exec_modes(root) == []
+
+
+def test_exec_modes_accepts_interpreter_invocations(tmp_path: Path) -> None:
+    root = _repo(
+        tmp_path,
+        {
+            "scripts/a.sh": "echo\n",
+            "backend/scripts/b.py": "x = 1\n",
+            ".github/workflows/ci.yml": "run: bash ../scripts/a.sh prod\n",
+            "scripts/gate.sh": (
+                'timeout 120 bash "$ROOT/scripts/a.sh" full\n'
+                'python3 "$ROOT/scripts/b.py"\n'
+                "# ../scripts/a.sh in a comment is ignored\n"
+            ),
+        },
+    )
+    assert gc.exec_modes(root) == []
+
+
+def test_exec_modes_checks_the_dockerfile_and_backend_scripts(tmp_path: Path) -> None:
+    root = _repo(
+        tmp_path,
+        {
+            "backend/scripts/seed.sh": "echo\n",
+            "backend/Dockerfile": "COPY scripts/seed.sh /x\nRUN scripts/seed.sh\n",
+        },
+    )
+    problems = gc.exec_modes(root)
+    assert len(problems) == 1 and "backend/scripts/seed.sh" in problems[0]
+    assert "Dockerfile:2" in problems[0]  # the COPY line is not an execution
+
+
+def test_exec_modes_passes_on_this_repository() -> None:
+    assert gc.exec_modes(ROOT) == []
