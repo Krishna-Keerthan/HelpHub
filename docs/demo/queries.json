@@ -1,5 +1,5 @@
 {
-  "note": "Rank = position of the expected document among distinct documents in the top 10 (k=10), measured on the local tenant after loading eval/corpus. Hybrid is never strictly best on these five; it sits between the modes. Re-measure before relying on it.",
+  "note": "Rank = position of the expected document among distinct documents in the top 10 (k=10), measured after loading eval/corpus. Ties are broken by document title then chunk position, so the ranks are deterministic and identical on the local tenant and the Cloudflare-embedded eval tenant. Hybrid is never strictly best on these five; it sits between the modes (or ties the best).",
   "queries": [
     {
       "id": "q-014",
@@ -41,20 +41,20 @@
       "rank": {
         "hybrid": 2,
         "vector": 1,
-        "keyword": 4
+        "keyword": 3
       },
-      "why": "Pure paraphrase of a lost-device scenario: vector 1st, keyword 4th."
+      "why": "Pure paraphrase of a lost-device scenario: vector 1st, keyword 3rd."
     },
     {
       "id": "q-022",
       "query": "What should I do if uploads fail with error E-5001?",
       "expected_document": "storage-quotas",
       "rank": {
-        "hybrid": 2,
+        "hybrid": 4,
         "vector": 5,
-        "keyword": 1
+        "keyword": 3
       },
-      "why": "Error code inside a sentence: keyword first, vector 5th, hybrid in between at 2."
+      "why": "Error code inside a sentence: keyword 3rd, hybrid 4th, vector 5th; the modes differ but none is clearly good."
     }
   ]
 }
