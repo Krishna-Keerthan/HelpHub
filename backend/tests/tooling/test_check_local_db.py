@@ -1,7 +1,14 @@
 """scripts/check_local_db.py output format, on constructed values (no .env, no connection)."""
 
 import importlib.util
+import os
+import sys
+import types
 from pathlib import Path
+
+import pytest
+
+from tests.helpers import db_guard
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "check_local_db.py"
 SECRET = "s3cr3t-pw"
@@ -16,6 +23,18 @@ def load():
 
 
 mod = load()
+
+
+@pytest.fixture(autouse=True)
+def keep_session_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """main() pops the two URLs from os.environ (dotenv_urls). Without this, they stay
+    gone for the rest of the session, and the nested pytest children of
+    test_session_guards.py cannot load settings when there is no .env (CI)."""
+    for name in mod.VARIABLES:
+        if name in os.environ:
+            monkeypatch.setenv(name, os.environ[name])
+        else:
+            monkeypatch.delenv(name, raising=False)
 
 
 def url(host: str) -> str:
@@ -59,13 +78,6 @@ def test_ok_only_when_every_line_is_local_or_unset() -> None:
 
 
 # --- settings that fail to load, and the loader behind both guards ------------------------
-
-import sys
-import types
-
-import pytest
-
-from tests.helpers import db_guard
 
 
 class _Secret:
