@@ -1,0 +1,4 @@
+# JWT_SECRET passed to a container in CI; checked against local credential files, no match (not a real secret)
+537b75e4c7bc36dcb49857a9932b6361707e5a36:.github/workflows/ci.yml:generic-api-key:102
+# OWNER_PASSWORD test value; checked against local credential files, no match (not a real secret)
+69b46ca1bb089a74ea7ccc17cc7e7a574f9523a1:backend/tests/test_settings_secrets.py:generic-api-key:13

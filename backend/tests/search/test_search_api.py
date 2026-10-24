@@ -23,6 +23,10 @@ FIELDS = {
     "char_start",
     "char_end",
     "score",
+    "rrf_score",
+    "found_by",
+    "vector_rank",
+    "keyword_rank",
 }
 
 

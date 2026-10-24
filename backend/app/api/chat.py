@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 
 from app.api.deps import LLM, CurrentPrincipal, Embedder
+from app.api.rate_limit import ChatLimit
 from app.schemas.chat import ChatRequest
 from app.services import chat as chat_service
 from app.services.chat import (
@@ -79,7 +80,7 @@ def _to_sse(event: ChatEvent, ctx: ChatContext) -> ServerSentEvent:
 
 # CurrentPrincipal (via get_chat_context), never CurrentUser/TenantSession:
 # no connection is held while the model streams.
-@router.post("/stream", response_class=EventSourceResponse)
+@router.post("/stream", response_class=EventSourceResponse, dependencies=[ChatLimit])
 async def chat_stream(
     ctx: PreparedChat, embedder: Embedder, llm: LLM
 ) -> AsyncIterator[ServerSentEvent]:

@@ -102,20 +102,24 @@ async def close_groq_client() -> None:
         await client.close()
 
 
+# First match wins, so a subclass is listed before its base (APITimeoutError is
+# an APIConnectionError). Value: (our error, retryable before the first token).
+_ERROR_MAP: dict[type[Exception], tuple[type[LLMError], bool]] = {
+    groq.APITimeoutError: (LLMTimeoutError, True),
+    groq.APIConnectionError: (LLMUnavailableError, True),
+    groq.RateLimitError: (LLMRateLimitError, True),
+    groq.InternalServerError: (LLMUnavailableError, True),
+    groq.NotFoundError: (LLMModelUnavailableError, False),
+    groq.BadRequestError: (LLMBadRequestError, False),
+    groq.UnprocessableEntityError: (LLMBadRequestError, False),
+}
+
+
 def _classify(exc: Exception) -> tuple[LLMError, bool]:
     """(our error, retryable) for a groq exception."""
-    if isinstance(exc, groq.APITimeoutError):
-        return LLMTimeoutError(), True
-    if isinstance(exc, groq.APIConnectionError):
-        return LLMUnavailableError(), True
-    if isinstance(exc, groq.RateLimitError):
-        return LLMRateLimitError(), True
-    if isinstance(exc, groq.InternalServerError):
-        return LLMUnavailableError(), True
-    if isinstance(exc, groq.NotFoundError):
-        return LLMModelUnavailableError(), False
-    if isinstance(exc, groq.BadRequestError | groq.UnprocessableEntityError):
-        return LLMBadRequestError(), False
+    for groq_type, (error, retryable) in _ERROR_MAP.items():
+        if isinstance(exc, groq_type):
+            return error(), retryable
     return LLMUnavailableError(), False  # auth, permission, anything else
 
 

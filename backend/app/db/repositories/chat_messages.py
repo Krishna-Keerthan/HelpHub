@@ -1,11 +1,22 @@
 import uuid
+from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import ChatMessage, Conversation
+from app.db.pagination import Page
 from app.db.repositories.conversations import ConversationNotOwned, get_owned
+
+
+@dataclass(frozen=True)
+class NewMessage:
+    role: str
+    content: str
+    status: str
+    sources: list[dict[str, Any]] | None = None
+    model: str | None = None
 
 
 async def add(
@@ -13,12 +24,7 @@ async def add(
     tenant_id: uuid.UUID,
     user_id: uuid.UUID,
     conversation_id: uuid.UUID,
-    *,
-    role: str,
-    content: str,
-    status: str,
-    sources: list[dict[str, Any]] | None = None,
-    model: str | None = None,
+    new: NewMessage,
 ) -> ChatMessage:
     """Append to the user's own conversation; ConversationNotOwned otherwise."""
     if await get_owned(session, tenant_id, user_id, conversation_id) is None:
@@ -26,11 +32,11 @@ async def add(
     message = ChatMessage(
         tenant_id=tenant_id,
         conversation_id=conversation_id,
-        role=role,
-        content=content,
-        status=status,
-        sources=sources or [],
-        model=model,
+        role=new.role,
+        content=new.content,
+        status=new.status,
+        sources=new.sources or [],
+        model=new.model,
     )
     session.add(message)
     await session.flush()
@@ -70,9 +76,7 @@ async def list_for_conversation(
     tenant_id: uuid.UUID,
     user_id: uuid.UUID,
     conversation_id: uuid.UUID,
-    *,
-    limit: int,
-    offset: int,
+    page: Page,
 ) -> list[ChatMessage]:
     result = await session.execute(
         select(ChatMessage)
@@ -84,7 +88,7 @@ async def list_for_conversation(
             ChatMessage.conversation_id == conversation_id,
         )
         .order_by(ChatMessage.seq)
-        .limit(limit)
-        .offset(offset)
+        .limit(page.limit)
+        .offset(page.offset)
     )
     return list(result.scalars())

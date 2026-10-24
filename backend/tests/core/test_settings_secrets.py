@@ -10,9 +10,11 @@ from pydantic import SecretStr, ValidationError
 from app.core.config import Settings
 
 DB_PASSWORD = "db-pass-4f1c9a"
-OWNER_PASSWORD = "owner-pass-82be0d"
+OWNER_PASSWORD = "fake-owner-password"
 JWT = "jwt-secret-" + "k" * 32
-SECRETS = (DB_PASSWORD, OWNER_PASSWORD, JWT)
+CF_ACCOUNT = "cf-account-5d2e"
+CF_TOKEN = "cf-token-91ac3b"
+SECRETS = (DB_PASSWORD, OWNER_PASSWORD, JWT, CF_ACCOUNT, CF_TOKEN)
 
 
 def make_settings(**overrides: str) -> Settings:
@@ -20,6 +22,8 @@ def make_settings(**overrides: str) -> Settings:
         "database_url": f"postgresql+asyncpg://app:{DB_PASSWORD}@localhost/db",
         "migration_database_url": f"postgresql+asyncpg://own:{OWNER_PASSWORD}@localhost/db",
         "jwt_secret": JWT,
+        "cloudflare_account_id": CF_ACCOUNT,
+        "cloudflare_api_token": CF_TOKEN,
         **overrides,
     }
     return Settings(_env_file=None, **values)  # type: ignore[arg-type]
@@ -44,7 +48,8 @@ def test_model_dump_hides_secrets() -> None:
     secret_values = [
         v for v in settings.model_dump().values() if isinstance(v, SecretStr)
     ]
-    assert len(secret_values) == 4
+    # database, migration, jwt, groq key, cloudflare account id and token
+    assert len(secret_values) == 6
 
 
 def test_attribute_error_message_hides_secrets(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -115,6 +120,6 @@ def test_every_secret_looking_field_is_a_secretstr() -> None:
         name
         for name, field in Settings.model_fields.items()
         if any(part in name for part in SECRET_NAME_PARTS)
-        and field.annotation is not SecretStr
+        and field.annotation not in (SecretStr, SecretStr | None)
     ]
     assert plain == []

@@ -9,16 +9,24 @@ from typing import Any, TypedDict
 import pytest
 from httpx import ASGITransport, AsyncClient
 from pgvector.sqlalchemy import Vector
+from pydantic import SecretStr
 from sqlalchemy import bindparam, text
 from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from tests.helpers.db_guard import current_refusal  # isort: skip  (before any app import)
+
+_EARLY_REFUSAL = current_refusal()
+if _EARLY_REFUSAL:  # settings failed or not local: refuse before app code loads
+    raise pytest.UsageError(_EARLY_REFUSAL)
+
 from app.api.deps import get_embedding_provider, get_llm_provider
 from app.core.config import settings
+from app.core.errors import sqlstate_of
+from app.core.ratelimit import limiter
 from app.core.security import create_access_token, hash_password
 from app.main import app
-from app.services import es_client
 from app.services.embeddings import FakeEmbeddingProvider
 from tests.helpers.fakes import FakeLLMProvider
 
@@ -53,32 +61,28 @@ def no_embedding_warm_up() -> Iterator[None]:
     settings.warm_up_embeddings = previous
 
 
-@pytest.fixture(scope="session", autouse=True)
-async def isolated_es_indices() -> AsyncIterator[None]:
-    """Every test index lives under a per-session ``test-<uuid>-`` prefix.
+@pytest.fixture
+def registration_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Public registration is off by default; tests of that route opt in."""
+    monkeypatch.setattr(settings, "allow_public_registration", True)
 
-    Nothing contacts ES here; tests that use it fail clearly (short timeout)
-    when it is unreachable. Indices of the session are deleted in ``finally``.
+
+@pytest.fixture(autouse=True)
+def dummy_groq_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test depends on a developer's real key being in the environment.
+
+    The network is never reached: tests use fakes, or inject a fake client
+    into GroqProvider, which refuses an empty key before using any client.
     """
-    previous = (settings.es_index_prefix, settings.es_timeout_seconds)
-    prefix = f"test-{uuid.uuid4().hex[:12]}-"
-    settings.es_index_prefix = prefix
-    settings.es_timeout_seconds = 3.0
-    try:
-        yield
-    finally:
-        try:
-            # Wildcard deletes are refused by ES (destructive_requires_name).
-            es = es_client.get_es()
-            found = await es.indices.get(
-                index=f"{prefix}*", ignore_unavailable=True, allow_no_indices=True
-            )
-            if found:
-                await es.indices.delete(index=list(found), ignore_unavailable=True)
-        except Exception:  # noqa: BLE001, S110 - cleanup only; ES tests fail loudly
-            pass
-        await es_client.close_es()
-        settings.es_index_prefix, settings.es_timeout_seconds = previous
+    monkeypatch.setattr(settings, "groq_api_key", SecretStr("gsk-test-not-a-real-key"))
+
+
+@pytest.fixture(autouse=True)
+def fresh_rate_limiter() -> Iterator[None]:
+    """Limiter state is process-wide; no test inherits another test's attempts."""
+    limiter.reset()
+    yield
+    limiter.reset()
 
 
 @pytest.fixture(autouse=True)
@@ -208,6 +212,9 @@ def _reset_leftover_reloptions() -> None:
 
 def pytest_sessionstart(session: pytest.Session) -> None:
     global _slugs_before
+    refusal = current_refusal()
+    if refusal:
+        raise pytest.UsageError(refusal)
     _acquire_session_lock()
     _reset_leftover_reloptions()
     _slugs_before = _read_seed_slugs()
@@ -390,10 +397,7 @@ def auth_headers(tenant: SeededTenant) -> dict[str, str]:
 
 
 def sqlstate(exc: DBAPIError) -> str | None:
-    orig = exc.orig
-    return getattr(orig, "sqlstate", None) or getattr(
-        getattr(orig, "__cause__", None), "sqlstate", None
-    )
+    return sqlstate_of(exc)
 
 
 def constraint_name(exc: DBAPIError) -> str | None:

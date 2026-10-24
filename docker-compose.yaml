@@ -17,28 +17,5 @@ services:
       timeout: 3s
       retries: 10
 
-  elasticsearch:
-    # Tag from the docker.elastic.co tag listing (latest 9.x when pinned).
-    image: docker.elastic.co/elasticsearch/elasticsearch:9.5.5
-    environment:
-      - discovery.type=single-node
-      # DEV ONLY: security off, reachable on 127.0.0.1 only.
-      - xpack.security.enabled=false
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
-    mem_limit: 1g
-    ports:
-      - "127.0.0.1:9200:9200"
-    volumes:
-      - esdata:/usr/share/elasticsearch/data
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - curl -fs 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' >/dev/null
-      interval: 10s
-      timeout: 10s
-      retries: 12
-      start_period: 30s
-
 volumes:
   pgdata:
-  esdata:

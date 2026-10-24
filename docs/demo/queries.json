@@ -1,0 +1,60 @@
+{
+  "note": "Rank = position of the expected document among distinct documents in the top 10 (k=10), measured after loading eval/corpus. Ties are broken by document title then chunk position, so the ranks are deterministic and identical on the local tenant and the Cloudflare-embedded eval tenant. Hybrid is never strictly best on these five; it sits between the modes (or ties the best).",
+  "queries": [
+    {
+      "id": "q-014",
+      "query": "E-5001",
+      "expected_document": "storage-quotas",
+      "rank": {
+        "hybrid": 1,
+        "vector": 5,
+        "keyword": 1
+      },
+      "why": "Exact error code: keyword and hybrid put it first, vector buries it at 5."
+    },
+    {
+      "id": "q-005",
+      "query": "How do I create a personal credential for my automated scripts?",
+      "expected_document": "api-authentication",
+      "rank": {
+        "hybrid": 2,
+        "vector": 5,
+        "keyword": 1
+      },
+      "why": "Paraphrase with no shared wording: keyword still finds it first, vector only 5th."
+    },
+    {
+      "id": "q-023",
+      "query": "How much extra pooled capacity does SKU AB-1234-XL provide?",
+      "expected_document": "storage-quotas",
+      "rank": {
+        "hybrid": 2,
+        "vector": 1,
+        "keyword": 4
+      },
+      "why": "Mixed SKU question: vector finds it first, keyword drops it to 4th."
+    },
+    {
+      "id": "q-001",
+      "query": "I switched my mobile device and now I am completely locked out of my workspace",
+      "expected_document": "account-recovery",
+      "rank": {
+        "hybrid": 2,
+        "vector": 1,
+        "keyword": 3
+      },
+      "why": "Pure paraphrase of a lost-device scenario: vector 1st, keyword 3rd."
+    },
+    {
+      "id": "q-022",
+      "query": "What should I do if uploads fail with error E-5001?",
+      "expected_document": "storage-quotas",
+      "rank": {
+        "hybrid": 4,
+        "vector": 5,
+        "keyword": 3
+      },
+      "why": "Error code inside a sentence: keyword 3rd, hybrid 4th, vector 5th; the modes differ but none is clearly good."
+    }
+  ]
+}

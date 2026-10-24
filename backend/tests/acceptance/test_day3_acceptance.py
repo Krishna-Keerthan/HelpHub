@@ -92,6 +92,7 @@ async def _search(
 
 
 @pytest.mark.slow
+@pytest.mark.usefixtures("registration_open")
 async def test_day3_acceptance(
     client: AsyncClient, owner_conn: AsyncConnection
 ) -> None:

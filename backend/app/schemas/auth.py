@@ -16,6 +16,12 @@ class LoginRequest(BaseModel):
     password: LoginPassword
 
 
+class RefreshRequest(BaseModel):
+    # Verified as a signed token before anything else; the cap only bounds input.
+    refresh_token: str = Field(min_length=1, max_length=2048)
+
+
 class TokenResponse(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"  # noqa: S105 (OAuth token type, not a secret)

@@ -7,6 +7,11 @@ REPORT=${GATE_REPORT:-/tmp/gate-report.txt}
 FULL=0
 [[ "${1:-}" == "--full" ]] && FULL=1
 cd "$ROOT/backend" || exit 2
+# Never touch a non-local database (ruff, alembic and pytest all may). No connection is made.
+if ! uv run python -m tests.helpers.db_guard; then
+  echo "FAIL  local-database guard (nothing was run)"
+  exit 2
+fi
 # First line of the report: which commit (and whether dirty) this run covered.
 python3 "$ROOT/scripts/gate_checks.py" stamp "$REPORT"
 
@@ -81,6 +86,7 @@ format_check() {
   uv run ruff format --check $files
 }
 
+step "script modes" python3 "$ROOT/scripts/gate_checks.py" exec-modes
 step "untracked files" python3 "$ROOT/scripts/gate_checks.py" untracked
 step "ruff check" uv run ruff check .
 step "ruff format (changed files)" format_check
@@ -97,11 +103,11 @@ grep '^allow ' "$REPORT" | sed 's/^/      /'
 step "secret scan" python3 "$ROOT/scripts/gate_checks.py" secrets
 step "AR register" python3 "$ROOT/scripts/gate_checks.py" ar-register
 
-# get_session is allowed in its definition, the /health/db route (AR-12) and the
+# get_session is allowed in its definition, and the
 # two tenants-table users.
 out=$(mktemp)
 hits get-session 'get_session([^_a-zA-Z]|$)' app |
-  grep -vE '^app/(db/repositories/tenants|services/auth|db/session|main)\.py' > "$out"
+  grep -vE '^app/(db/repositories/tenants|services/auth|db/session)\.py' > "$out"
 { echo "=== get_session scan ==="; cat "$out"; } >> "$REPORT"
 [[ -s "$out" ]] && fail "get_session outside allowed files" "$out"
 echo "ok    get_session scan"
@@ -109,14 +115,18 @@ rm -f "$out"
 
 step "security tests" uv run pytest -q tests/security
 
-# pip-audit is warn-only and tolerates no network.
-echo "=== pip-audit (warn-only) ===" >> "$REPORT"
-if timeout 90 uv run pip-audit > /tmp/gate-audit.txt 2>&1; then
-  cat /tmp/gate-audit.txt >> "$REPORT"
-  echo "ok    pip-audit"
+# Production dependencies: blocking, same script as CI. Fails closed, so it also
+# fails when the advisory database cannot be reached (no network).
+step "pip-audit (production, blocking)" timeout 120 bash "$ROOT/scripts/audit_deps.sh" prod
+
+# Full environment including dev: warnings only, never fails the gate.
+echo "=== pip-audit (full, warn-only) ===" >> "$REPORT"
+timeout 120 bash "$ROOT/scripts/audit_deps.sh" full > /tmp/gate-audit.txt 2>&1
+cat /tmp/gate-audit.txt >> "$REPORT"
+if grep -q "^WARNING" /tmp/gate-audit.txt; then
+  echo "warn  pip-audit (full environment, non-blocking; see report)"
 else
-  cat /tmp/gate-audit.txt >> "$REPORT"
-  echo "warn  pip-audit (findings or no network; see report)"
+  echo "ok    pip-audit (full environment)"
 fi
 
 if [[ $FULL -eq 1 ]]; then

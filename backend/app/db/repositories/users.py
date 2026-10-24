@@ -1,9 +1,14 @@
 import uuid
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import User
+
+
+class DuplicateEmail(Exception):
+    """The tenant already has a user with this email."""
 
 
 async def get_by_email(
@@ -36,7 +41,13 @@ async def create(
         tenant_id=tenant_id, email=email, password_hash=password_hash, role=role
     )
     session.add(user)
-    await session.flush()
+    try:
+        await session.flush()
+    except IntegrityError as exc:
+        cause = exc.orig.__cause__ if exc.orig is not None else None
+        if getattr(cause, "constraint_name", None) == "uq_users_tenant_id_email":
+            raise DuplicateEmail from exc
+        raise
     await session.refresh(user)
     return user
 
