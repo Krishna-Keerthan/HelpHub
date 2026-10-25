@@ -47,20 +47,36 @@ def refusal_message(names: list[str]) -> str | None:
     )
 
 
-def current_refusal() -> str | None:
-    from app.core.config import settings
+def load_urls() -> tuple[dict[str, str | None] | None, str | None]:
+    """(resolved database URLs, None), or (None, exception class name) if settings fail.
 
-    migration = settings.migration_database_dsn
-    return refusal_message(
-        non_local_variables(
+    Only the class name is kept: the exception text may contain a URL.
+    """
+    try:
+        from app.core.config import settings
+
+        migration = settings.migration_database_dsn
+        return (
             {
                 "DATABASE_URL": settings.database_dsn.get_secret_value(),
                 "MIGRATION_DATABASE_URL": (
                     migration.get_secret_value() if migration else None
                 ),
-            }
+            },
+            None,
         )
-    )
+    except Exception as exc:  # noqa: BLE001 (class name only)
+        return None, type(exc).__name__
+
+
+def current_refusal() -> str | None:
+    urls, error = load_urls()
+    if urls is None:
+        return (
+            f"refusing to run: settings failed to load ({error}); "
+            "DATABASE_URL and MIGRATION_DATABASE_URL could not be checked"
+        )
+    return refusal_message(non_local_variables(urls))
 
 
 if __name__ == "__main__":

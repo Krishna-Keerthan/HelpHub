@@ -138,6 +138,13 @@ async def create_tenant_with_admin(
     return user
 
 
+async def tenant_id_for_slug(slug: str) -> uuid.UUID | None:
+    """The tenant's id, or None. For the owner's scripts (the eval gate)."""
+    async with AsyncSessionLocal() as session:
+        tenant = await tenants_repo.get_by_slug(session, slug)
+    return tenant.id if tenant else None
+
+
 async def authenticate(data: LoginRequest) -> TokenPair:
     async with AsyncSessionLocal() as session:
         user: User | None = None

@@ -58,10 +58,12 @@ def test_search_statement_binds_tenant_in_every_branch(exact: bool) -> None:
     statement = search_statement(
         tid, SearchQuery(unit_vector(1.0), "reset", ("E-4012",), 3), exact=exact
     )
-    # Vector branch, full-text branch and the final join each carry the filter,
-    # and nothing else compares tenant_id.
-    assert statement.text.count(TENANT_FILTER) == 3
-    assert statement.text.count("tenant_id") == 3
+    # Vector branch, full-text branch and the final join each carry the filter on
+    # chunks, and the three joins to documents (tie-break keys) carry it on documents;
+    # nothing else compares tenant_id.
+    assert statement.text.count(TENANT_FILTER) == 6
+    assert statement.text.count("d.tenant_id = :tid") == 3
+    assert statement.text.count("tenant_id") == 6
     assert "AS MATERIALIZED" in statement.text
     params = statement.compile().params
     assert params["tid"] == tid

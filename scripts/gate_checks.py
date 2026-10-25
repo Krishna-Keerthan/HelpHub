@@ -184,6 +184,53 @@ def untracked(root: Path) -> list[str]:
     ]
 
 
+EXEC_SOURCES = (".github/workflows/ci.yml", "scripts/gate.sh", "backend/Dockerfile")
+SCRIPT_REF = re.compile(r"(?P<path>[\w$./{}-]*scripts/[\w.-]+\.(?:sh|py))")
+INTERPRETERS = {"bash", "sh", "python", "python3"}
+
+
+def exec_modes(root: Path) -> list[str]:
+    """Scripts that CI, the gate or the Dockerfile run directly must be 100755 in git.
+
+    A script run through an interpreter (``bash x.sh``, ``python3 x.py``) is exempt:
+    its mode does not matter. Modes are read from the index (``git ls-files -s``),
+    which is what a fresh clone gets.
+    """
+    out = subprocess.run(
+        ["git", "ls-files", "-s", "-z"], cwd=root, capture_output=True, check=True
+    ).stdout
+    modes = {}
+    for entry in out.split(b"\0"):
+        if entry:
+            meta, _, name = entry.decode().partition("\t")
+            modes[name] = meta.split()[0]
+    problems: list[str] = []
+    for source in EXEC_SOURCES:
+        path = root / source
+        if not path.exists():
+            continue
+        for number, line in enumerate(path.read_text().splitlines(), start=1):
+            if line.lstrip().startswith(("#", "COPY", "ADD")):
+                continue
+            for match in SCRIPT_REF.finditer(line):
+                words = line[: match.start()].replace('"', " ").split()
+                if words and words[-1] in INTERPRETERS:
+                    continue
+                name = match.group("path").replace("$ROOT/", "").replace("../", "")
+                name = name.removeprefix("./")
+                found = next(
+                    (c for c in (name, f"backend/{name}") if c in modes), None
+                )
+                if found is None:
+                    continue
+                if modes[found] != "100755":
+                    problems.append(
+                        f"{source}:{number}: {found} is run directly but recorded as "
+                        f"{modes[found]} (git update-index --chmod=+x, or run it through an interpreter)"
+                    )
+    return problems
+
+
 def stamp(root: Path, report: Path) -> None:
     head = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True
@@ -202,7 +249,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument(
         "--root", type=Path, default=Path(__file__).resolve().parents[1]
     )
-    parser.add_argument("check", choices=["allows", "secrets", "ar-register", "untracked", "stamp"])
+    parser.add_argument("check", choices=["allows", "secrets", "ar-register", "untracked", "exec-modes", "stamp"])
     parser.add_argument("report", nargs="?", type=Path)
     args = parser.parse_args(argv)
     if args.check == "stamp":
@@ -212,7 +259,7 @@ def main(argv: list[str]) -> int:
         listing, problems = collect_allows(args.root)
         print("\n".join([*problems, *listing]))
         return 1 if problems else 0
-    problems = {"secrets": secrets, "ar-register": ar_register, "untracked": untracked}[
+    problems = {"secrets": secrets, "ar-register": ar_register, "untracked": untracked, "exec-modes": exec_modes}[
         args.check
     ](args.root)
     for problem in problems:

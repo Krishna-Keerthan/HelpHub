@@ -25,6 +25,7 @@ SearchMode = Literal["hybrid", "vector", "keyword"]
 MIN_EF_SEARCH = 40
 MAX_EF_SEARCH = 1000
 
+# Ties are broken by document title, then chunk position (never by random ids).
 # One statement, two candidate sets, fused by reciprocal rank in SQL. Both
 # branches filter by the same TENANT_FILTER (RLS also applies), and so does the
 # final join. The vector branch is a MATERIALIZED CTE: with
@@ -39,43 +40,49 @@ RRF_K = 60
 _SEARCH_SQL = """
 WITH q AS MATERIALIZED (SELECT {tsquery} AS tsq),
 vec AS MATERIALIZED (
-    SELECT id, embedding <=> :vec AS distance
+    SELECT id, document_id, chunk_index, embedding <=> :vec AS distance
     FROM chunks
     WHERE {tenant}
     ORDER BY {order_by}
     LIMIT :vec_cand
 ),
 kw AS MATERIALIZED (
-    SELECT c.id, ts_rank_cd(c.search_tsv, q.tsq) AS rank_value
-    FROM chunks c, q
+    SELECT c.id, c.document_id, c.chunk_index, ts_rank_cd(c.search_tsv, q.tsq) AS rank_value,
+           ts_rank_cd(c.search_tsv, q.tsq, 32) AS text_score
+    FROM chunks c
+    JOIN documents d ON d.id = c.document_id AND d.tenant_id = :tid, q
     WHERE c.{tenant} AND c.search_tsv @@ q.tsq
-    ORDER BY rank_value DESC, c.id
+    ORDER BY rank_value DESC, d.title, c.chunk_index, c.id
     LIMIT :kw_cand
 ),
 ranked AS (
-    SELECT id, 'vector' AS source, row_number() OVER (ORDER BY distance + 0, id) AS pos
-    FROM vec
+    SELECT v.id, d.title, v.chunk_index, 'vector' AS source,
+           row_number() OVER (ORDER BY v.distance + 0, d.title, v.chunk_index, v.id) AS pos
+    FROM vec v JOIN documents d ON d.id = v.document_id AND d.tenant_id = :tid
     UNION ALL
-    SELECT id, 'keyword' AS source, row_number() OVER (ORDER BY rank_value DESC, id) AS pos
-    FROM kw
+    SELECT k.id, d.title, k.chunk_index, 'keyword' AS source,
+           row_number() OVER (ORDER BY k.rank_value DESC, d.title, k.chunk_index, k.id) AS pos
+    FROM kw k JOIN documents d ON d.id = k.document_id AND d.tenant_id = :tid
 ),
 fused AS (
-    SELECT id, sum(1.0 / (:rrf_k + pos))::float8 AS rrf_score, min(pos) AS best_pos,
+    SELECT id, min(title) AS title, min(chunk_index) AS chunk_index,
+           sum(1.0 / (:rrf_k + pos))::float8 AS rrf_score, min(pos) AS best_pos,
            array_agg(source ORDER BY source DESC) AS found_by,
            max(pos) FILTER (WHERE source = 'vector') AS vector_rank,
            max(pos) FILTER (WHERE source = 'keyword') AS keyword_rank
     FROM ranked
     GROUP BY id
-    ORDER BY rrf_score DESC, best_pos, id
+    ORDER BY rrf_score DESC, best_pos, min(title), min(chunk_index), id
     LIMIT :k
 )
 SELECT c.id AS chunk_id, c.document_id, c.chunk_index, c.text AS content,
        c.char_start, c.char_end, 1 - (c.embedding <=> :vec) AS score,
        f.rrf_score, f.found_by, (SELECT count(*) FROM vec) AS vector_candidates,
-       f.vector_rank, f.keyword_rank
+       f.vector_rank, f.keyword_rank, kw.text_score
 FROM fused f
 JOIN chunks c ON c.id = f.id AND c.{tenant}
-ORDER BY f.rrf_score DESC, f.best_pos, c.id
+LEFT JOIN kw ON kw.id = f.id
+ORDER BY f.rrf_score DESC, f.best_pos, f.title, f.chunk_index, c.id
 """
 # ANN: the HNSW index can supply this order.
 _ANN_ORDER = "embedding <=> :vec"
@@ -100,6 +107,9 @@ class SearchHit:
     found_by: tuple[str, ...]  # "vector", "keyword" or both
     vector_rank: int | None = None  # 1-based position in the vector candidates
     keyword_rank: int | None = None  # 1-based position in the keyword candidates
+    # ts_rank_cd normalised by rank/(rank+1) (flag 32), in [0, 1); None when the
+    # chunk was not in the keyword branch. Internal: never ordered by, never in the API.
+    text_score: float | None = None
 
 
 @dataclass(frozen=True)
@@ -188,7 +198,7 @@ async def search(
             {"ef": str(min(max(MIN_EF_SEARCH, CANDIDATES), MAX_EF_SEARCH))},
         )
     rows = list(await session.execute(search_statement(tenant_id, query, exact=exact)))
-    hits = [SearchHit(*row[:8], tuple(row[8]), *row[10:12]) for row in rows]
+    hits = [SearchHit(*row[:8], tuple(row[8]), *row[10:13]) for row in rows]
     return SearchRows(hits, rows[0][9] if rows else 0)
 
 

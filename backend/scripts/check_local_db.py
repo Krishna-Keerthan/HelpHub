@@ -1,9 +1,10 @@
 """Print where DATABASE_URL and MIGRATION_DATABASE_URL point, never the URLs.
 
-Four lines, "<VAR> (<source>): <local|hosted|other|unset>", first as seen in the
+Four lines, "<VAR> (<source>): <local|hosted|other|unset|error>", first as seen in the
 process environment, then as resolved from .env alone (the two variables are
-removed from the environment before settings load). Exits 1 if any line is
-hosted or other. No database connection is made.
+removed from the environment before settings load). "error" means Settings() failed
+to load (the exception class goes to stderr, never its text). Exits 1 if any line is
+hosted, other or error. No database connection is made.
 
 Run from backend/:  uv run python scripts/check_local_db.py
 """
@@ -11,47 +12,44 @@ Run from backend/:  uv run python scripts/check_local_db.py
 import os
 import sys
 
-from tests.helpers.db_guard import classify
+from tests.helpers.db_guard import classify, load_urls
 
 VARIABLES = ("DATABASE_URL", "MIGRATION_DATABASE_URL")
 
 
 def render(
-    environment: dict[str, str | None], dotenv: dict[str, str | None]
+    environment: dict[str, str | None],
+    dotenv: dict[str, str | None] | None,
 ) -> list[str]:
-    lines = []
-    for source, urls in (("environment", environment), (".env only", dotenv)):
-        lines += [
-            f"{name} ({source}): {classify(urls.get(name))}" for name in VARIABLES
-        ]
+    """``dotenv`` is None when settings failed to load: both .env lines say error."""
+    lines = [
+        f"{name} (environment): {classify(environment.get(name))}" for name in VARIABLES
+    ]
+    lines += [
+        f"{name} (.env only): "
+        f"{'error' if dotenv is None else classify(dotenv.get(name))}"
+        for name in VARIABLES
+    ]
     return lines
 
 
 def ok(lines: list[str]) -> bool:
-    return not any(line.endswith((": hosted", ": other")) for line in lines)
+    return not any(line.endswith((": hosted", ": other", ": error")) for line in lines)
 
 
-def dotenv_urls() -> dict[str, str | None]:
+def dotenv_urls() -> tuple[dict[str, str | None] | None, str | None]:
     for name in VARIABLES:
         os.environ.pop(name, None)
-    try:
-        from app.core.config import settings
-
-        migration = settings.migration_database_dsn
-        return {
-            "DATABASE_URL": settings.database_dsn.get_secret_value(),
-            "MIGRATION_DATABASE_URL": migration.get_secret_value()
-            if migration
-            else None,
-        }
-    except Exception:  # noqa: BLE001 (class name only: the message could carry a URL)
-        return {}
+    return load_urls()
 
 
 def main() -> int:
     environment = {name: os.environ.get(name) for name in VARIABLES}
-    lines = render(environment, dotenv_urls())
+    dotenv, error = dotenv_urls()
+    lines = render(environment, dotenv)
     print("\n".join(lines))
+    if error:
+        print(f"settings failed to load: {error}", file=sys.stderr)
     return 0 if ok(lines) else 1
 
 

@@ -51,7 +51,10 @@ jobs:
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
       - name: Generate a throwaway JWT secret
-        run: echo "JWT_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+        run: |
+          secret=$(openssl rand -hex 32)
+          echo "::add-mask::$secret"
+          echo "JWT_SECRET=$secret" >> "$GITHUB_ENV"
       - name: Create the app role (same script as docker compose)
         run: bash docker/postgres/init/01-roles.sh
       - name: Install
@@ -74,11 +77,14 @@ jobs:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
-      - name: pip-audit (fails on any known vulnerability)
+      - name: pip-audit, production dependencies (fails on any known vulnerability)
         working-directory: backend
         run: |
           uv sync --frozen
-          uv run pip-audit
+          bash ../scripts/audit_deps.sh prod
+      - name: pip-audit, full environment incl. dev (warnings only, never fails)
+        working-directory: backend
+        run: bash ../scripts/audit_deps.sh full
 
   image:
     name: image build
