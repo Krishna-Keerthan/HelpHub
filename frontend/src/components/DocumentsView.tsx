@@ -28,7 +28,10 @@ export function DocumentsView() {
   const [message, setMessage] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [readOnly, setReadOnly] = useState(false);
+  // Write controls need a positive answer: until /auth/me confirms admin or agent, the view is read-only.
+  const [access, setAccess] = useState<"checking" | "writer" | "readonly">("checking");
+  const canWrite = access === "writer";
+  const readOnly = access === "readonly";
   const fileInput = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -55,13 +58,15 @@ export function DocumentsView() {
   }, [load]);
 
   useEffect(() => {
-    // Viewers cannot upload; hide the control. A failed lookup leaves it shown (the backend still enforces).
+    // Fail closed: a failed or unparseable lookup, or any role other than admin/agent, stays read-only.
+    // The backend still enforces; this only decides what is shown.
     void (async () => {
       try {
         const { data } = await api.GET("/auth/me");
-        if (data?.role === "viewer") setReadOnly(true);
+        const role = (data as { role?: unknown } | undefined)?.role;
+        setAccess(role === "admin" || role === "agent" ? "writer" : "readonly");
       } catch {
-        /* keep the control */
+        setAccess("readonly");
       }
     })();
   }, []);
@@ -117,9 +122,8 @@ export function DocumentsView() {
     <section>
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-semibold">Documents</h1>
-        {readOnly ? (
-          <span className="ml-auto text-sm text-muted">Read-only account: uploads are disabled.</span>
-        ) : (
+        {readOnly && <span className="ml-auto text-sm text-muted">Read-only account: uploads are disabled.</span>}
+        {canWrite && (
         <label className="ml-auto inline-flex min-h-10 cursor-pointer items-center rounded bg-accent px-3 text-sm text-accent-fg focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent">
           {uploading ? "Uploading…" : "Upload"}
           <input
@@ -136,11 +140,11 @@ export function DocumentsView() {
           />
         </label>
         )}
-        <button type="button" className={`min-h-10 px-1 text-sm underline${readOnly ? " ml-3" : ""}`} onClick={() => void load()}>
+        <button type="button" className={`min-h-10 px-1 text-sm underline${canWrite ? "" : " ml-3"}`} onClick={() => void load()}>
           Refresh
         </button>
       </div>
-      {!readOnly && (
+      {canWrite && (
         <p id="upload-hint" className="mb-3 text-xs text-muted">Files up to 4 MB. Plain-text documents are also capped at about 500,000 extracted characters.</p>
       )}
       {message && (
@@ -166,14 +170,16 @@ export function DocumentsView() {
             <li key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
               <span className="min-w-0 flex-1 basis-40 truncate">{d.title}</span>
               <span className="text-xs text-muted">{d.status}</span>
-              <button
-                type="button"
-                aria-label={`Delete ${d.title}`}
-                className="min-h-10 px-1 text-sm text-danger underline"
-                onClick={() => void onDelete(d)}
-              >
-                Delete
-              </button>
+              {canWrite && (
+                <button
+                  type="button"
+                  aria-label={`Delete ${d.title}`}
+                  className="min-h-10 px-1 text-sm text-danger underline"
+                  onClick={() => void onDelete(d)}
+                >
+                  Delete
+                </button>
+              )}
             </li>
           ))}
         </ul>
