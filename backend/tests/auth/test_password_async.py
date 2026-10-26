@@ -4,7 +4,7 @@ import asyncio
 import threading
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import pytest
@@ -38,25 +38,62 @@ async def test_async_wrappers_round_trip() -> None:
     assert await verify_password_async("wrong", hashed) is False
 
 
-async def test_event_loop_stays_responsive_while_hashing() -> None:
+BLOCK_SECONDS = 0.2
+TICK_SECONDS = 0.005
+
+
+def _blocking_hash(password: str) -> str:
+    """Stand-in for Argon2 with a fixed cost, so the result does not depend on the CPU."""
+    time.sleep(BLOCK_SECONDS)
+    return "h"
+
+
+async def _max_loop_gap(work: Callable[[], Awaitable[object]]) -> float:
+    """Longest time between two ticks of a 5 ms ticker while `work` runs."""
     gaps: list[float] = []
     stop = False
 
     async def ticker() -> None:
         last = time.monotonic()
         while not stop:
-            await asyncio.sleep(0.005)
+            await asyncio.sleep(TICK_SECONDS)
             now = time.monotonic()
             gaps.append(now - last)
             last = now
 
     task = asyncio.create_task(ticker())
-    await hash_password_async(PASSWORD)
+    await asyncio.sleep(10 * TICK_SECONDS)  # let the ticker start before the work
+    started = time.monotonic()
+    await work()
+    assert time.monotonic() - started >= BLOCK_SECONDS * 0.9
+    await asyncio.sleep(
+        10 * TICK_SECONDS
+    )  # let the ticker record the gap after the work
     stop = True
     await task
-    # A synchronous hash would show as one gap as long as the hash itself.
-    assert len(gaps) > 3
-    assert max(gaps) < 0.25
+    return max(gaps)
+
+
+async def test_event_loop_stays_responsive_while_hashing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The stand-in is called by hash_password_async (semaphore + thread) as in production.
+    monkeypatch.setattr(security, "hash_password", _blocking_hash)
+    worst = await _max_loop_gap(lambda: hash_password_async(PASSWORD))
+    assert worst < BLOCK_SECONDS / 2
+
+
+async def test_the_gap_measurement_detects_a_hash_that_blocks_the_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Negative control: the same stand-in called on the loop must trip the assertion above.
+    monkeypatch.setattr(security, "hash_password", _blocking_hash)
+
+    async def hash_on_the_loop() -> str:
+        return security.hash_password(PASSWORD)
+
+    worst = await _max_loop_gap(hash_on_the_loop)
+    assert worst >= BLOCK_SECONDS * 0.9
 
 
 async def test_only_one_hash_runs_at_a_time(monkeypatch: pytest.MonkeyPatch) -> None:
