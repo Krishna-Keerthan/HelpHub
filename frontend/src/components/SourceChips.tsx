@@ -2,45 +2,22 @@
 
 import Link from "next/link";
 import { useId, useState } from "react";
-import { api } from "@/lib/api/client";
+import { useDocuments } from "@/lib/query/hooks";
 import type { ChatSource } from "@/lib/api/sse";
 
-/** document id -> title, or "failed" when the list could not be loaded. */
-type Titles = Map<string, string> | "failed" | null;
-
-/** Resolves document titles from the documents list, fetched once on first use. */
-export function useDocumentTitles(): { titles: Titles; ensure: () => void } {
-  const [titles, setTitles] = useState<Titles>(null);
-  const [started, setStarted] = useState(false);
-  function ensure() {
-    if (started) return;
-    setStarted(true);
-    void (async () => {
-      try {
-        const { data } = await api.GET("/documents");
-        setTitles(data ? new Map(data.map((d) => [d.id, d.title])) : "failed");
-      } catch {
-        setTitles("failed");
-      }
-    })();
-  }
-  return { titles, ensure };
-}
-
-export function SourceChips({
-  sources,
-  titles,
-  onOpen,
-}: {
-  sources: ChatSource[];
-  titles: Titles;
-  onOpen: () => void;
-}) {
+/**
+ * Titles come from the shared documents query. It is not requested until a chip is used, but a list
+ * already cached (for example from the Documents page) is used straight away.
+ */
+export function SourceChips({ sources }: { sources: ChatSource[] }) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const [used, setUsed] = useState(false);
+  const documents = useDocuments({ enabled: used });
+  const titles = documents.data ? new Map(documents.data.map((d) => [d.id, d.title])) : null;
   const panelId = useId();
   const open = sources.find((s) => s.index === openIndex);
-  const titleOf = (s: ChatSource) => (titles instanceof Map ? titles.get(s.document_id) : undefined) ?? s.document_title;
-  const gone = (s: ChatSource) => titles instanceof Map && !titles.has(s.document_id);
+  const titleOf = (s: ChatSource) => (titles?.get(s.document_id)) ?? s.document_title;
+  const gone = (s: ChatSource) => titles !== null && !titles.has(s.document_id);
 
   return (
     <div className="mt-2">
@@ -52,7 +29,7 @@ export function SourceChips({
               aria-expanded={openIndex === s.index}
               aria-controls={openIndex === s.index ? panelId : undefined}
               onClick={() => {
-                onOpen();
+                setUsed(true);
                 setOpenIndex((cur) => (cur === s.index ? null : s.index));
               }}
               className="min-h-8 rounded-full bg-chip px-3 py-0.5 text-left text-xs"

@@ -1,5 +1,7 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
+import { resetSessionCache } from "@/lib/query/client";
+import { render } from "@/test/render";
 import { routeFetch } from "@/test/fetch-mock";
 import { DocumentsView } from "./DocumentsView";
 
@@ -84,10 +86,14 @@ test("server 415 on upload is explained", async () => {
 });
 
 test("delete asks for confirmation; cancel sends nothing, confirm deletes", async () => {
+  let remaining = [doc("1", "Refund policy")];
   const f = routeFetch({
     ...asAdmin,
-    "GET /api/documents": () => Response.json([doc("1", "Refund policy")]),
-    "DELETE /api/documents/1": () => new Response(null, { status: 204 }),
+    "GET /api/documents": () => Response.json(remaining),
+    "DELETE /api/documents/1": () => {
+      remaining = [];
+      return new Response(null, { status: 204 });
+    },
   });
   render(<DocumentsView />);
   const del = await screen.findByRole("button", { name: "Delete Refund policy" });
@@ -100,6 +106,8 @@ test("delete asks for confirmation; cancel sends nothing, confirm deletes", asyn
   fireEvent.click(del);
   await waitFor(() => expect(screen.queryByText("Refund policy")).not.toBeInTheDocument());
   expect(f.keys()).toContain("DELETE /api/documents/1");
+  // the list is invalidated after a delete, so it is refetched from the server
+  await waitFor(() => expect(f.keys().filter((k) => k === "GET /api/documents")).toHaveLength(2));
 });
 
 test("cold start (503) on load shows the waking message", async () => {
@@ -211,6 +219,7 @@ test("if /auth/me fails, returns an error status or cannot be parsed, the view i
     await screen.findByText("Read-only account: uploads are disabled.");
     noWriteControls();
     unmount();
+    resetSessionCache();
   }
 });
 
@@ -222,5 +231,6 @@ test("an agent sees Upload but not Delete; an admin sees both", async () => {
     await screen.findByText("A");
     expect(screen.queryByRole("button", { name: "Delete A" }) !== null, role).toBe(canDelete);
     unmount();
+    resetSessionCache();
   }
 });

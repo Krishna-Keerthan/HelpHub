@@ -14,7 +14,7 @@ import {
 } from "@/lib/ui/chat-state";
 import { displayCitations } from "@/lib/ui/citation-display";
 import { Notice } from "./Notice";
-import { SourceChips, useDocumentTitles } from "./SourceChips";
+import { SourceChips } from "./SourceChips";
 import { DEMO_QUERIES } from "@/lib/demo-queries";
 
 const MAX_MESSAGE_CHARS = 2000;
@@ -35,13 +35,13 @@ function Searching() {
   );
 }
 
-function Citations({ turn, docs }: { turn: Turn; docs: ReturnType<typeof useDocumentTitles> }) {
+function Citations({ turn }: { turn: Turn }) {
   const cited = turn.sources.filter((s) => turn.cited.includes(s.index));
   if (cited.length === 0) return null;
-  return <SourceChips sources={cited} titles={docs.titles} onOpen={docs.ensure} />;
+  return <SourceChips sources={cited} />;
 }
 
-function Answer({ turn, docs }: { turn: Turn; docs: ReturnType<typeof useDocumentTitles> }) {
+function Answer({ turn }: { turn: Turn }) {
   if (turn.errorText) {
     return (
       <p role="alert" className="text-sm text-danger">
@@ -68,7 +68,7 @@ function Answer({ turn, docs }: { turn: Turn; docs: ReturnType<typeof useDocumen
       {turn.status === "streaming" && turn.answer && (
         <span aria-hidden="true" data-testid="streaming-indicator" className="inline-block motion-safe:animate-pulse">▍</span>
       )}
-      <Citations turn={turn} docs={docs} />
+      <Citations turn={turn} />
     </>
   );
 }
@@ -80,7 +80,6 @@ export function ChatView() {
   const abort = useRef<AbortController | null>(null);
   const nextId = useRef(1);
   const input = useRef<HTMLInputElement>(null);
-  const docs = useDocumentTitles();
 
   useEffect(() => () => abort.current?.abort(), []);
 
@@ -162,7 +161,7 @@ export function ChatView() {
           <li key={t.id}>
             <p className="break-words font-medium">{t.question}</p>
             <div className="mt-1 text-fg" aria-live="polite" aria-busy={t.status === "streaming"}>
-              <Answer turn={t} docs={docs} />
+              <Answer turn={t} />
             </div>
           </li>
         ))}
