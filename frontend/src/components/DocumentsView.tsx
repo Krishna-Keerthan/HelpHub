@@ -28,9 +28,11 @@ export function DocumentsView() {
   const [message, setMessage] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
-  // Write controls need a positive answer: until /auth/me confirms admin or agent, the view is read-only.
-  const [access, setAccess] = useState<"checking" | "writer" | "readonly">("checking");
-  const canWrite = access === "writer";
+  // Write controls need a positive answer: until /auth/me confirms a role that may use them, the view is read-only.
+  // Upload: admin and agent. Delete: admin only (the backend uses require_admin).
+  const [access, setAccess] = useState<"checking" | "admin" | "agent" | "readonly">("checking");
+  const canWrite = access === "admin" || access === "agent";
+  const canDelete = access === "admin";
   const readOnly = access === "readonly";
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -64,7 +66,7 @@ export function DocumentsView() {
       try {
         const { data } = await api.GET("/auth/me");
         const role = (data as { role?: unknown } | undefined)?.role;
-        setAccess(role === "admin" || role === "agent" ? "writer" : "readonly");
+        setAccess(role === "admin" || role === "agent" ? role : "readonly");
       } catch {
         setAccess("readonly");
       }
@@ -170,7 +172,7 @@ export function DocumentsView() {
             <li key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
               <span className="min-w-0 flex-1 basis-40 truncate">{d.title}</span>
               <span className="text-xs text-muted">{d.status}</span>
-              {canWrite && (
+              {canDelete && (
                 <button
                   type="button"
                   aria-label={`Delete ${d.title}`}

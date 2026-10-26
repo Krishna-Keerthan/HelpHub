@@ -214,9 +214,13 @@ test("if /auth/me fails, returns an error status or cannot be parsed, the view i
   }
 });
 
-test("an agent can upload and delete", async () => {
-  routeFetch({ ...me("agent"), "GET /api/documents": () => Response.json([doc("1", "A")]) });
-  render(<DocumentsView />);
-  expect(await screen.findByLabelText("Upload a document")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Delete A" })).toBeInTheDocument();
+test("an agent sees Upload but not Delete; an admin sees both", async () => {
+  for (const [role, canDelete] of [["agent", false], ["admin", true]] as const) {
+    routeFetch({ ...me(role), "GET /api/documents": () => Response.json([doc("1", "A")]) });
+    const { unmount } = render(<DocumentsView />);
+    expect(await screen.findByLabelText("Upload a document")).toBeInTheDocument();
+    await screen.findByText("A");
+    expect(screen.queryByRole("button", { name: "Delete A" }) !== null, role).toBe(canDelete);
+    unmount();
+  }
 });
