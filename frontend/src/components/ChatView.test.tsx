@@ -226,3 +226,62 @@ test("first visit lists the five demo questions; clicking one asks it and the li
   expect(screen.queryByRole("list", { name: "Suggested questions" })).toBeNull();
   expect(screen.getByRole("list", { name: "Conversation" })).toHaveTextContent(DEMO_QUERIES[1]!);
 });
+
+const docRow = (id: string, title: string) => ({
+  id, title, status: "READY", error: null, created_by: null,
+  created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
+});
+
+const answerWithSource = () =>
+  sse(
+    ["sources", { conversation_id: "c1", sources: [source(1, "Stale title")] }],
+    ["token", { text: "Five days [1]." }],
+    ["done", { conversation_id: "c1", status: "complete", cited: [1] }],
+  );
+
+test("a citation chip is a button; opening it resolves the title from the documents list and says the passage is not available", async () => {
+  const f = routeFetch({
+    "POST /api/chat/stream": answerWithSource,
+    "GET /api/documents": () => Response.json([docRow("d1", "Refund policy v2")]),
+  });
+  render(<ChatView />);
+  ask("refunds?");
+  const chip = await screen.findByRole("button", { name: /\[1\] Stale title/ });
+  expect(chip).toHaveAttribute("aria-expanded", "false");
+  expect(f.keys()).not.toContain("GET /api/documents"); // nothing is fetched until a chip is used
+
+  fireEvent.click(chip);
+  expect(await screen.findByRole("button", { name: /\[1\] Refund policy v2/ })).toHaveAttribute("aria-expanded", "true");
+  const panel = screen.getByRole("region", { name: "Source 1" });
+  expect(panel).toHaveTextContent("Refund policy v2");
+  expect(panel).toHaveTextContent("Section 1");
+  expect(panel).toHaveTextContent("does not include the cited passage");
+  expect(within(panel).getByRole("link", { name: "Open the documents list" })).toHaveAttribute("href", "/documents");
+
+  fireEvent.click(screen.getByRole("button", { name: /\[1\]/ }));
+  expect(screen.queryByRole("region", { name: "Source 1" })).toBeNull();
+  expect(f.keys().filter((k) => k === "GET /api/documents")).toHaveLength(1);
+});
+
+test("a cited document that is no longer listed keeps its title and says so; a failed list falls back to the cited title", async () => {
+  routeFetch({
+    "POST /api/chat/stream": answerWithSource,
+    "GET /api/documents": () => Response.json([docRow("other", "Something else")]),
+  });
+  const first = render(<ChatView />);
+  ask("q");
+  fireEvent.click(await screen.findByRole("button", { name: /\[1\] Stale title/ }));
+  expect(await screen.findByText(/no longer in your library/)).toBeInTheDocument();
+  first.unmount();
+
+  routeFetch({
+    "POST /api/chat/stream": answerWithSource,
+    "GET /api/documents": () => Response.json({ detail: "x" }, { status: 500 }),
+  });
+  render(<ChatView />);
+  ask("q");
+  fireEvent.click(await screen.findByRole("button", { name: /\[1\] Stale title/ }));
+  const panel = await screen.findByRole("region", { name: "Source 1" });
+  expect(panel).toHaveTextContent("Stale title");
+  expect(panel).not.toHaveTextContent("no longer in your library");
+});

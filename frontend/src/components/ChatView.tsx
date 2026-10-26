@@ -5,30 +5,19 @@ import { ChatHttpError, streamChat } from "@/lib/api/client";
 import { applyEvent, newTurn, REFUSAL_MESSAGE, streamErrorMessage, type Turn } from "@/lib/ui/chat-state";
 import { displayCitations } from "@/lib/ui/citation-display";
 import { Notice } from "./Notice";
+import { SourceChips, useDocumentTitles } from "./SourceChips";
 import { failureMessage } from "@/lib/ui/failure";
 import { DEMO_QUERIES } from "@/lib/demo-queries";
 
 const MAX_MESSAGE_CHARS = 2000;
 
-function Citations({ turn }: { turn: Turn }) {
+function Citations({ turn, docs }: { turn: Turn; docs: ReturnType<typeof useDocumentTitles> }) {
   const cited = turn.sources.filter((s) => turn.cited.includes(s.index));
   if (cited.length === 0) return null;
-  return (
-    <ul aria-label="Sources" className="mt-2 flex flex-wrap gap-2">
-      {cited.map((s) => (
-        <li
-          key={s.chunk_id}
-          title={`Document ${s.document_id}, section ${s.chunk_index}`}
-          className="rounded-full bg-chip px-2 py-0.5 text-xs"
-        >
-          [{s.index}] {s.document_title}
-        </li>
-      ))}
-    </ul>
-  );
+  return <SourceChips sources={cited} titles={docs.titles} onOpen={docs.ensure} />;
 }
 
-function Answer({ turn }: { turn: Turn }) {
+function Answer({ turn, docs }: { turn: Turn; docs: ReturnType<typeof useDocumentTitles> }) {
   if (turn.errorText) {
     return (
       <p role="alert" className="text-sm text-danger">
@@ -49,7 +38,7 @@ function Answer({ turn }: { turn: Turn }) {
         </p>
       )}
       {turn.status === "streaming" && !turn.answer && <Notice className="mt-1 rounded">Searching…</Notice>}
-      <Citations turn={turn} />
+      <Citations turn={turn} docs={docs} />
     </>
   );
 }
@@ -61,6 +50,7 @@ export function ChatView() {
   const abort = useRef<AbortController | null>(null);
   const nextId = useRef(1);
   const input = useRef<HTMLInputElement>(null);
+  const docs = useDocumentTitles();
 
   useEffect(() => () => abort.current?.abort(), []);
 
@@ -144,7 +134,7 @@ export function ChatView() {
           <li key={t.id}>
             <p className="break-words font-medium">{t.question}</p>
             <div className="mt-1 text-fg" aria-live="polite" aria-busy={t.status === "streaming"}>
-              <Answer turn={t} />
+              <Answer turn={t} docs={docs} />
             </div>
           </li>
         ))}
