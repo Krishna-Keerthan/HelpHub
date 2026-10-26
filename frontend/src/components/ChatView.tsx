@@ -6,6 +6,7 @@ import { applyEvent, newTurn, REFUSAL_MESSAGE, streamErrorMessage, type Turn } f
 import { displayCitations } from "@/lib/ui/citation-display";
 import { Notice } from "./Notice";
 import { failureMessage } from "@/lib/ui/failure";
+import { DEMO_QUERIES } from "@/lib/demo-queries";
 
 const MAX_MESSAGE_CHARS = 2000;
 
@@ -66,7 +67,7 @@ export function ChatView() {
   const update = (id: number, fn: (t: Turn) => Turn) =>
     setTurns((cur) => cur.map((t) => (t.id === id ? fn(t) : t)));
 
-  async function onSubmit(e: FormEvent<HTMLFormElement>) {
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
     const message = String(new FormData(form).get("message") ?? "").trim();
@@ -74,6 +75,10 @@ export function ChatView() {
     // Keep focus only if it was already in the form; never pull it from elsewhere.
     const focusWasInForm = form.contains(document.activeElement);
     form.reset();
+    void send(message, focusWasInForm);
+  }
+
+  async function send(message: string, focusWasInForm: boolean) {
     const id = nextId.current++;
     setTurns((cur) => [...cur, newTurn(id, message)]);
     setBusy(true);
@@ -113,9 +118,26 @@ export function ChatView() {
     <section className="flex flex-col gap-4">
       <h1 className="text-xl font-semibold">Chat</h1>
       {turns.length === 0 && (
-        <p className="rounded border border-dashed border-line p-6 text-center text-muted">
-          Ask a question about your documents. Answers cite the documents they come from.
-        </p>
+        <div className="rounded border border-dashed border-line p-6">
+          <p className="text-center text-muted">
+            Ask a question about your documents. HelpHub searches them and answers with citations to the documents it used.
+          </p>
+          <p className="mt-4 text-sm font-medium">Try one of these:</p>
+          <ul aria-label="Suggested questions" className="mt-2 flex flex-col gap-2">
+            {DEMO_QUERIES.map((q) => (
+              <li key={q}>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void send(q, false)}
+                  className="min-h-10 w-full rounded border border-control-border px-3 py-2 text-left text-sm disabled:opacity-50"
+                >
+                  {q}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       <ol aria-label="Conversation" className="space-y-6">
         {turns.map((t) => (

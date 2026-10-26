@@ -1,5 +1,6 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
+import { DEMO_QUERIES } from "@/lib/demo-queries";
 import { routeFetch, sse } from "@/test/fetch-mock";
 import { ChatView } from "./ChatView";
 
@@ -203,4 +204,25 @@ test("a marker for a source that is not in done.cited adds no chip", async () =>
   ask("q");
   expect(await screen.findByText("Five days[1].")).toBeInTheDocument();
   expect(screen.queryByRole("list", { name: "Sources" })).toBeNull();
+});
+
+test("first visit lists the five demo questions; clicking one asks it and the list goes away", async () => {
+  const bodies: unknown[] = [];
+  routeFetch({
+    "POST /api/chat/stream": async (req) => {
+      bodies.push(await req.json());
+      return sse(["token", { text: "ok" }], ["done", { conversation_id: "c1", status: "complete", cited: [] }]);
+    },
+  });
+  render(<ChatView />);
+  expect(screen.getByText(/searches them and answers with citations/)).toBeInTheDocument();
+  const list = screen.getByRole("list", { name: "Suggested questions" });
+  expect(DEMO_QUERIES).toHaveLength(5);
+  expect(within(list).getAllByRole("button").map((b) => b.textContent)).toEqual([...DEMO_QUERIES]);
+
+  fireEvent.click(within(list).getByRole("button", { name: DEMO_QUERIES[1]! }));
+  expect(await screen.findByText("ok")).toBeInTheDocument();
+  expect(bodies).toEqual([{ message: DEMO_QUERIES[1], conversation_id: null }]);
+  expect(screen.queryByRole("list", { name: "Suggested questions" })).toBeNull();
+  expect(screen.getByRole("list", { name: "Conversation" })).toHaveTextContent(DEMO_QUERIES[1]!);
 });
