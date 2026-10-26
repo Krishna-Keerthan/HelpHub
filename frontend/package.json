@@ -16,6 +16,7 @@
     "contrast": "node scripts/contrast.mjs"
   },
   "dependencies": {
+    "@tanstack/react-query": "5.104.2",
     "next": "16.4.2",
     "openapi-fetch": "0.17.0",
     "react": "19.3.1",

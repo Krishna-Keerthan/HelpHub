@@ -1,20 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { api } from "@/lib/api/client";
-import type { components } from "@/lib/api/schema";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRef, useState } from "react";
+import { api, retryAfterSeconds } from "@/lib/api/client";
+import { ApiError, queryKeys, useDocuments, useMe, type Doc } from "@/lib/query/hooks";
 import { Notice } from "./Notice";
 import { failureMessage, MAX_UPLOAD_BYTES, uploadTooLargeMessage } from "@/lib/ui/failure";
 
-type Doc = components["schemas"]["DocumentRead"];
-const POLL_MS = 4000;
 
 const READ_ONLY_MESSAGE = "This account is read-only, so it cannot upload documents.";
-
-function retryAfter(res: Response): number | null {
-  const n = Number(res.headers.get("Retry-After"));
-  return n > 0 ? n : null;
-}
 
 // The backend's 413 detail says which limit was hit (file, request body or extracted text); show it.
 function tooLargeMessage(error: unknown): string {
@@ -24,69 +18,45 @@ function tooLargeMessage(error: unknown): string {
 }
 
 export function DocumentsView() {
-  const [docs, setDocs] = useState<Doc[] | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const documents = useDocuments();
+  const me = useMe();
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [loadFailed, setLoadFailed] = useState(false);
-  // Write controls need a positive answer: until /auth/me confirms a role that may use them, the view is read-only.
-  // Upload: admin and agent. Delete: admin only (the backend uses require_admin).
-  const [access, setAccess] = useState<"checking" | "admin" | "agent" | "readonly">("checking");
-  const canWrite = access === "admin" || access === "agent";
-  const canDelete = access === "admin";
-  const readOnly = access === "readonly";
   const fileInput = useRef<HTMLInputElement>(null);
 
-  const load = useCallback(async () => {
-    try {
-      const { data, response } = await api.GET("/documents");
-      if (data) {
-        setDocs(data);
-        setMessage(null);
-        setLoadFailed(false);
-      } else {
-        setLoadFailed(true);
-        setMessage(failureMessage(response.status, null, retryAfter(response)));
-      }
-    } catch {
-      setLoadFailed(true);
-      setMessage("Could not reach the service. Check your connection and try again.");
-    }
-  }, []);
+  // Fail closed: write controls need a successful, parseable /auth/me answering a role that may use
+  // them. Pending, failed (including a failed revalidation of an earlier answer) or unknown means read-only.
+  // The backend still enforces roles; this only decides what is shown.
+  const role = me.status === "success" ? me.data.role : null;
+  const settled = me.status !== "pending";
+  const canWrite = role === "admin" || role === "agent"; // Upload: admin and agent
+  const canDelete = role === "admin"; // Delete: admin only (the backend uses require_admin)
+  const readOnly = settled && !canWrite;
 
-  useEffect(() => {
-    // Initial fetch on mount; setState happens after the awaited request, not synchronously.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load();
-  }, [load]);
+  const docs = documents.data ?? null;
+  const loadFailed = documents.isError;
+  // A failed revalidation keeps the last list on screen, and says so.
+  const loadMessage = !loadFailed
+    ? null
+    : (documents.error instanceof ApiError
+        ? failureMessage(documents.error.status, null, documents.error.retryAfter)
+        : "Could not reach the service. Check your connection and try again.") +
+      (docs ? " Showing the last list that loaded." : "");
+  const message = actionMessage ?? loadMessage;
 
-  useEffect(() => {
-    // Fail closed: a failed or unparseable lookup, or any role other than admin/agent, stays read-only.
-    // The backend still enforces; this only decides what is shown.
-    void (async () => {
-      try {
-        const { data } = await api.GET("/auth/me");
-        const role = (data as { role?: unknown } | undefined)?.role;
-        setAccess(role === "admin" || role === "agent" ? role : "readonly");
-      } catch {
-        setAccess("readonly");
-      }
-    })();
-  }, []);
-
-  const hasPending = docs?.some((d) => d.status === "PENDING") ?? false;
-  useEffect(() => {
-    if (!hasPending) return;
-    const t = setTimeout(() => void load(), POLL_MS);
-    return () => clearTimeout(t);
-  }, [hasPending, docs, load]);
+  const reload = () => {
+    setActionMessage(null);
+    void documents.refetch();
+  };
 
   async function onUpload(file: File) {
     if (file.size > MAX_UPLOAD_BYTES) {
-      setMessage(uploadTooLargeMessage(file.size));
+      setActionMessage(uploadTooLargeMessage(file.size));
       return;
     }
     setUploading(true);
-    setMessage(null);
+    setActionMessage(null);
     try {
       const form = new FormData();
       form.append("file", file);
@@ -94,13 +64,16 @@ export function DocumentsView() {
         body: { file: "" },
         bodySerializer: () => form,
       });
-      if (response.ok) await load();
-      else if (response.status === 403) setMessage(READ_ONLY_MESSAGE);
-      else if (response.status === 413) setMessage(tooLargeMessage(error));
-      else if (response.status === 415) setMessage("This file type is not supported.");
-      else setMessage(failureMessage(response.status, null, retryAfter(response)));
+      if (response.ok) {
+        setActionMessage(null);
+        await queryClient.invalidateQueries({ queryKey: queryKeys.documents });
+      }
+      else if (response.status === 403) setActionMessage(READ_ONLY_MESSAGE);
+      else if (response.status === 413) setActionMessage(tooLargeMessage(error));
+      else if (response.status === 415) setActionMessage("This file type is not supported.");
+      else setActionMessage(failureMessage(response.status, null, retryAfterSeconds(response)));
     } catch {
-      setMessage("Upload failed. Check your connection and try again.");
+      setActionMessage("Upload failed. Check your connection and try again.");
     } finally {
       setUploading(false);
       if (fileInput.current) fileInput.current.value = "";
@@ -113,10 +86,12 @@ export function DocumentsView() {
       const { response } = await api.DELETE("/documents/{document_id}", {
         params: { path: { document_id: doc.id } },
       });
-      if (response.ok) setDocs((cur) => cur?.filter((d) => d.id !== doc.id) ?? null);
-      else setMessage(failureMessage(response.status, null, retryAfter(response)));
+      if (response.ok) {
+        queryClient.setQueryData<Doc[]>(queryKeys.documents, (cur) => cur?.filter((d) => d.id !== doc.id));
+        await queryClient.invalidateQueries({ queryKey: queryKeys.documents });
+      } else setActionMessage(failureMessage(response.status, null, retryAfterSeconds(response)));
     } catch {
-      setMessage("Delete failed. Check your connection and try again.");
+      setActionMessage("Delete failed. Check your connection and try again.");
     }
   }
 
@@ -142,7 +117,7 @@ export function DocumentsView() {
           />
         </label>
         )}
-        <button type="button" className={`min-h-10 px-1 text-sm underline${canWrite ? "" : " ml-3"}`} onClick={() => void load()}>
+        <button type="button" className={`min-h-10 px-1 text-sm underline${canWrite ? "" : " ml-3"}`} onClick={reload}>
           Refresh
         </button>
       </div>
@@ -155,7 +130,7 @@ export function DocumentsView() {
         </p>
       )}
       {loadFailed && (
-        <button type="button" className="mb-3 min-h-10 rounded border border-control-border px-3 text-sm" onClick={() => void load()}>
+        <button type="button" className="mb-3 min-h-10 rounded border border-control-border px-3 text-sm" onClick={reload}>
           Try again
         </button>
       )}

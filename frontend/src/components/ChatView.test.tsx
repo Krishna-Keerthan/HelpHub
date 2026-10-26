@@ -1,9 +1,12 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import { DEMO_QUERIES } from "@/lib/demo-queries";
 import { STREAM_CUT_OFF_MESSAGE, streamErrorMessage } from "@/lib/ui/chat-state";
+import { resetSessionCache } from "@/lib/query/client";
+import { render } from "@/test/render";
 import { routeFetch, sse } from "@/test/fetch-mock";
 import { ChatView } from "./ChatView";
+import { DocumentsView } from "./DocumentsView";
 
 const source = (index: number, title: string) => ({
   index,
@@ -286,6 +289,7 @@ test("a cited document that is no longer listed keeps its title and says so; a f
   fireEvent.click(await screen.findByRole("button", { name: /\[1\] Stale title/ }));
   expect(await screen.findByText(/no longer in your library/)).toBeInTheDocument();
   first.unmount();
+  resetSessionCache(); // the first render cached its documents list
 
   routeFetch({
     "POST /api/chat/stream": answerWithSource,
@@ -414,4 +418,23 @@ test("a stream that ends without done or error shows the cut-off message, not th
   expect(alert).toHaveTextContent(STREAM_CUT_OFF_MESSAGE);
   expect(alert.textContent).not.toBe(streamErrorMessage("internal_error"));
   expect(screen.getByText("half an ans")).toBeInTheDocument();
+});
+
+test("a documents list already cached (e.g. from the Documents page) is reused by the chips without a new request", async () => {
+  const f = routeFetch({
+    "POST /api/chat/stream": answerWithSource,
+    "GET /api/documents": () => Response.json([docRow("d1", "Refund policy v2")]),
+    "GET /api/auth/me": () => Response.json({ id: "u", email: "u@x.co", role: "viewer" }),
+  });
+  const docs = render(<DocumentsView />);
+  await screen.findByText("Refund policy v2");
+  docs.unmount();
+
+  render(<ChatView />);
+  ask("refunds?");
+  // the cached title is used even before the chip is clicked
+  const chip = await screen.findByRole("button", { name: /\[1\] Refund policy v2/ });
+  fireEvent.click(chip);
+  expect(await screen.findByRole("region", { name: "Source 1" })).toHaveTextContent("Refund policy v2");
+  expect(f.keys().filter((k) => k === "GET /api/documents")).toHaveLength(1);
 });
