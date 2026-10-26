@@ -59,7 +59,7 @@ test("embedding_unavailable error event is explained", async () => {
   });
   render(<ChatView />);
   ask("hello");
-  expect(await screen.findByRole("alert")).toHaveTextContent("Search is temporarily unavailable");
+  expect(await screen.findByRole("alert")).toHaveTextContent("The search service is unavailable. Please try again later.");
 });
 
 test("keeps partial text and shows the error when the stream fails mid-answer", async () => {
@@ -266,7 +266,7 @@ test("a citation chip is a button; opening it resolves the title from the docume
   expect(await screen.findByRole("button", { name: /\[1\] Refund policy v2/ })).toHaveAttribute("aria-expanded", "true");
   const panel = screen.getByRole("region", { name: "Source 1" });
   expect(panel).toHaveTextContent("Refund policy v2");
-  expect(panel).toHaveTextContent("Section 1");
+  expect(panel).not.toHaveTextContent(/section/i);
   expect(panel).toHaveTextContent("does not include the cited passage");
   expect(within(panel).getByRole("link", { name: "Open the documents list" })).toHaveAttribute("href", "/documents");
 

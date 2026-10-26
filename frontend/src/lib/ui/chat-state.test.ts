@@ -19,14 +19,29 @@ test("HTTP failures get a plain-language message and never expose backend text o
   }
 });
 
-test("every documented in-stream error code has its own message; unknown codes fall back", () => {
-  const codes = [
-    "llm_unavailable", "llm_timeout", "llm_rate_limited", "llm_bad_request",
-    "llm_model_unavailable", "llm_empty_response", "embedding_unavailable", "interrupted",
-  ];
-  const generic = streamErrorMessage("internal_error");
-  expect(generic).toMatch(/Something went wrong/);
-  for (const c of codes) expect(streamErrorMessage(c), c).not.toBe(generic);
-  expect(streamErrorMessage(undefined)).toBe(generic);
-  expect(streamErrorMessage("totally_new")).toBe(generic);
+// error.code values documented in docs/api/chat-stream.md.
+const DOCUMENTED_CODES = [
+  "llm_unavailable",
+  "llm_timeout",
+  "llm_rate_limited",
+  "llm_bad_request",
+  "llm_model_unavailable",
+  "llm_empty_response",
+  "embedding_unavailable",
+  "internal_error",
+];
+const GENERIC = "Something went wrong while answering. Please try again.";
+
+test.each(DOCUMENTED_CODES)("documented error code %s has a non-empty plain-language message", (code) => {
+  const m = streamErrorMessage(code);
+  expect(m.length).toBeGreaterThan(0);
+  expect(m).not.toMatch(/llm_|embedding_|_/); // never the raw code
+  if (code !== "internal_error") expect(m, code).not.toBe(GENERIC);
+});
+
+test("embedding_unavailable says the search service is down; unknown or missing codes are generic", () => {
+  expect(streamErrorMessage("embedding_unavailable")).toBe("The search service is unavailable. Please try again later.");
+  expect(streamErrorMessage("internal_error")).toBe(GENERIC);
+  expect(streamErrorMessage("totally_new")).toBe(GENERIC);
+  expect(streamErrorMessage(undefined)).toBe(GENERIC);
 });

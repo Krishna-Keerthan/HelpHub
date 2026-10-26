@@ -32,14 +32,13 @@ export function applyEvent(t: Turn, e: ChatEvent): Turn {
 }
 
 const IN_STREAM_ERRORS: Record<string, string> = {
-  embedding_unavailable: "Search is temporarily unavailable. Please try again in a moment.",
+  embedding_unavailable: "The search service is unavailable. Please try again later.",
   llm_rate_limited: "The assistant is busy right now. Please try again shortly.",
   llm_timeout: "The assistant took too long to answer. Please try again.",
   llm_unavailable: "The assistant is unavailable right now. Please try again later.",
   llm_model_unavailable: "The assistant is unavailable right now. Please try again later.",
   llm_bad_request: "The assistant could not handle that question. Try rephrasing it.",
   llm_empty_response: "The assistant did not produce an answer. Try rephrasing your question.",
-  interrupted: "Something went wrong while answering: the connection dropped before the answer finished. Please ask again.",
 };
 
 export function streamErrorMessage(code: string | undefined): string {

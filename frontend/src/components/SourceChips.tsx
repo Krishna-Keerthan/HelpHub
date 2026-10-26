@@ -65,7 +65,6 @@ export function SourceChips({
       {open && (
         <div id={panelId} role="region" aria-label={`Source ${open.index}`} className="mt-2 rounded border border-line p-3 text-sm">
           <p className="font-medium">{titleOf(open)}</p>
-          <p className="text-xs text-muted">Section {open.chunk_index + 1} of this document</p>
           {gone(open) && (
             <p className="mt-1 text-xs text-muted">This document is no longer in your library.</p>
           )}
