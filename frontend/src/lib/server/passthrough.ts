@@ -7,7 +7,9 @@ import { backendUrl, fetchWithHeaderTimeout, realDeps, wakeBackend, type Deps } 
 /** Backend path prefixes the browser may reach through the BFF. Auth routes have their own handlers. */
 const ALLOWED = ["documents", "conversations", "chat", "search", "users", "auth/me"];
 const HEADER_TIMEOUT_MS = 90_000;
-const COPY_RESPONSE_HEADERS = ["content-type", "retry-after", "content-length", "content-disposition"];
+// Allow-list. Never copy content-length, content-encoding or transfer-encoding: fetch() has already
+// decoded the body, so they describe bytes we no longer have. The runtime computes them.
+const COPY_RESPONSE_HEADERS = ["content-type", "retry-after", "content-disposition"];
 
 export const tokenExpired = () => NextResponse.json({ code: "token_expired" }, { status: 401 });
 

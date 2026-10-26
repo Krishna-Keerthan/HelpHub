@@ -22,7 +22,8 @@ async function runSearch(mode: SearchMode, query: string): Promise<Column> {
     if (data) return { state: "done", hits: data };
     const retry = Number(response.headers.get("Retry-After"));
     return { state: "error", message: failureMessage(response.status, null, retry > 0 ? retry : null) };
-  } catch {
+  } catch (e) {
+    console.error("search failed:", e instanceof Error ? e.constructor.name : typeof e);
     return { state: "error", message: "Could not reach the service. Check your connection and try again." };
   }
 }
