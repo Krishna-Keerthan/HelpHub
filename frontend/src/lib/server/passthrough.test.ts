@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { gzipSync } from "node:zlib";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { ACCESS_COOKIE } from "./cookies";
 import { passthrough } from "./passthrough";
@@ -74,6 +75,34 @@ describe("passthrough", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
     const good = await passthrough(req("/api/documents/1", { method: "DELETE", cookies: valid() }), ["documents", "1"], deps);
     expect(good.status).toBe(204);
+  });
+
+  test("does not forward encoding-specific or hop-by-hop upstream headers (fetch already decoded the body)", async () => {
+    const json = JSON.stringify(Array.from({ length: 50 }, (_, i) => ({ id: i, title: "x".repeat(40) })));
+    const compressedLength = gzipSync(json).length;
+    expect(compressedLength).toBeLessThan(json.length);
+    // fetch() hands the proxy the DECODED body, but the headers still describe the compressed one.
+    const fetchImpl = spy(
+      () =>
+        new Response(json, {
+          headers: {
+            "content-type": "application/json",
+            "content-encoding": "gzip",
+            "content-length": String(compressedLength),
+            "transfer-encoding": "chunked",
+            connection: "keep-alive",
+          },
+        }),
+    );
+    const res = await passthrough(req("/api/documents", { method: "GET", cookies: valid() }), ["documents"], {
+      fetch: fetchImpl as unknown as typeof fetch,
+      sleep: noSleep,
+    });
+    for (const h of ["content-encoding", "content-length", "transfer-encoding", "connection"]) {
+      expect(res.headers.get(h), h).toBeNull();
+    }
+    expect(res.headers.get("content-type")).toBe("application/json");
+    expect(await res.json()).toHaveLength(50);
   });
 
   test("streams the upstream body through (SSE) with no-store headers", async () => {
