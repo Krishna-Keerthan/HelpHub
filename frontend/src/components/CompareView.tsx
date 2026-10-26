@@ -5,7 +5,9 @@ import { api, retryAfterSeconds } from "@/lib/api/client";
 import { DEMO_QUERIES } from "@/lib/demo-queries";
 import { failureMessage } from "@/lib/ui/failure";
 import {
+  canRevealNext,
   columnCaption,
+  compareIntro,
   HYBRID_NOTE,
   MODES,
   RANK_HELP,
@@ -16,6 +18,7 @@ import {
   snippet,
   uniqueDocumentIds,
   whyListed,
+  type ColumnStatus,
   type SearchHit,
   type SearchMode,
 } from "@/lib/ui/compare";
@@ -51,14 +54,26 @@ export function CompareView() {
   const [submitted, setSubmitted] = useState<string | null>(null);
   const [columns, setColumns] = useState<Columns>({});
   const latest = useRef(0);
-  // Columns are fetched in parallel; this only paces when finished ones appear (presentation).
-  const [stage, setStage] = useState(0);
-  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const clearTimers = () => {
-    timers.current.forEach(clearTimeout);
-    timers.current = [];
-  };
-  useEffect(() => clearTimers, []);
+  // Columns are fetched in parallel; this only paces when finished ones appear (presentation). `cooledFor`
+  // is the number of shown columns whose step has elapsed; `floor` keeps columns shown while one is retried.
+  const [reduced, setReduced] = useState(false);
+  const [cooledFor, setCooledFor] = useState(0);
+  const [floor, setFloor] = useState(0);
+  const [retried, setRetried] = useState<ReadonlySet<SearchMode>>(new Set());
+
+  const statuses: ColumnStatus[] = MODES.map(({ mode }) => {
+    const state = columns[mode]?.state;
+    return state === "done" || state === "error" ? state : "pending";
+  });
+  let revealed = 0;
+  while (canRevealNext(revealed, statuses, cooledFor >= revealed)) revealed++;
+  revealed = Math.max(revealed, floor);
+
+  useEffect(() => {
+    if (reduced || revealed === 0 || revealed >= MODES.length) return;
+    const timer = setTimeout(() => setCooledFor(revealed), REVEAL_STEP_MS);
+    return () => clearTimeout(timer);
+  }, [reduced, revealed]);
 
   function runModes(q: string, modes: readonly SearchMode[]) {
     const run = ++latest.current;
@@ -76,15 +91,10 @@ export function CompareView() {
     setQuery(q);
     setSubmitted(q);
     setColumns({});
-    clearTimers();
-    if (prefersReducedMotion()) {
-      setStage(MODES.length);
-    } else {
-      setStage(1);
-      for (let n = 2; n <= MODES.length; n++) {
-        timers.current.push(setTimeout(() => setStage(n), (n - 1) * REVEAL_STEP_MS));
-      }
-    }
+    setReduced(prefersReducedMotion());
+    setCooledFor(0);
+    setFloor(0);
+    setRetried(new Set());
     runModes(q, MODES.map((m) => m.mode));
   }
 
@@ -98,14 +108,12 @@ export function CompareView() {
   const allLoaded = MODES.every(({ mode }) => loadedHits[mode] !== undefined);
   const unique = allLoaded ? uniqueDocumentIds(loadedHits) : new Map<SearchMode, Set<string>>();
 
-  // Errors show at once. A finished column appears when its turn has come and the column before it is
-  // showing, so the order is always Vector, Keyword, Hybrid.
-  const visible: boolean[] = [];
-  MODES.forEach(({ mode }, i) => {
-    const col = columns[mode];
-    visible[i] =
-      col?.state === "error" || (col?.state === "done" && stage > i && (i === 0 || visible[i - 1] === true));
-  });
+  // Errors show at once. A finished column appears once the ones before it have, so the order is always
+  // Vector, Keyword, Hybrid; with reduced motion each appears as soon as it is done. A retried column
+  // shows as soon as it is done.
+  const visible = MODES.map(
+    ({ mode }, i) => statuses[i] === "error" || (statuses[i] === "done" && (reduced || i < revealed || retried.has(mode))),
+  );
 
   return (
     <section data-wide>
@@ -148,6 +156,8 @@ export function CompareView() {
       {submitted === null ? (
         <p className="text-sm text-muted">Enter a question to see what each retrieval mode returns.</p>
       ) : (
+        <>
+        <p className="mb-3 text-sm">{compareIntro(submitted)}</p>
         <div className="grid gap-6 sm:grid-cols-3">
           {MODES.map(({ mode, label }, i) => {
             const col = visible[i] ? columns[mode] : undefined;
@@ -168,7 +178,11 @@ export function CompareView() {
                       type="button"
                       aria-label={`Retry ${label}`}
                       className="min-h-10 rounded border border-control-border px-3 text-sm"
-                      onClick={() => runModes(submitted, [mode])}
+                      onClick={() => {
+                        setFloor(revealed);
+                        setRetried((cur) => new Set(cur).add(mode));
+                        runModes(submitted, [mode]);
+                      }}
                     >
                       Try again
                     </button>
@@ -211,6 +225,7 @@ export function CompareView() {
             );
           })}
         </div>
+        </>
       )}
     </section>
   );

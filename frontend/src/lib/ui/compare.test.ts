@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { snippet, uniqueDocumentIds, type SearchHit } from "./compare";
+import { canRevealNext, compareIntro, snippet, uniqueDocumentIds, type SearchHit } from "./compare";
 
 const hit = (document_id: string): SearchHit => ({
   char_end: 1, char_start: 0, chunk_id: `c-${document_id}`, chunk_index: 0, content: "x",
@@ -33,4 +33,19 @@ test("whyListed reads the ranks, names a single branch only in the hybrid column
   expect(whyListed(h(4, null), "vector")).toBe("Vector rank 4");
   expect(whyListed(h(null, 2), "keyword")).toBe("Keyword rank 2");
   expect(whyListed(h(null, null), "hybrid")).toBe("No rank was reported for this passage");
+});
+
+test("canRevealNext: first column and errors go at once; a finished column waits for the step", () => {
+  expect(canRevealNext(0, ["done", "pending", "pending"], false)).toBe(true);
+  expect(canRevealNext(0, ["pending", "done", "done"], false)).toBe(false);
+  expect(canRevealNext(1, ["done", "done", "done"], false)).toBe(false);
+  expect(canRevealNext(1, ["done", "done", "done"], true)).toBe(true);
+  expect(canRevealNext(1, ["done", "error", "done"], false)).toBe(true);
+  expect(canRevealNext(2, ["done", "error", "done"], false)).toBe(true); // an error adds no step
+  expect(canRevealNext(2, ["done", "done", "pending"], true)).toBe(false);
+  expect(canRevealNext(3, ["done", "done", "done"], true)).toBe(false);
+});
+
+test("compareIntro quotes the query verbatim", () => {
+  expect(compareIntro("<b>x</b>")).toBe("Comparing Vector, Keyword and Hybrid for \u201c<b>x</b>\u201d.");
 });

@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { routeFetch } from "@/test/fetch-mock";
 import { DEMO_QUERIES } from "@/lib/demo-queries";
+import { REVEAL_STEP_MS } from "@/lib/ui/compare";
 import { CompareView } from "./CompareView";
 
 const hit = (doc: string, over: Record<string, unknown> = {}) => ({
@@ -286,7 +287,7 @@ test("staged reveal: Vector, then Keyword, then Hybrid about 700 ms apart, each 
   expect(screen.getByRole("region", { name: "Hybrid" })).toHaveTextContent("merged into one list");
 });
 
-test("staged reveal keeps the order when a later column answers first, and a slow first column holds the rest", async () => {
+test("a slow first column holds the rest; once it arrives the others follow one step apart", async () => {
   motion(false);
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   let releaseVector!: () => void;
@@ -302,9 +303,186 @@ test("staged reveal keeps the order when a later column answers first, and a slo
   await search();
   await tick(5000);
   expect(shown()).toEqual([]); // keyword and hybrid are ready but Vector goes first
+  expect(screen.getByRole("region", { name: "Keyword" })).toHaveTextContent("Searching…");
   releaseVector();
   await tick(50);
-  expect(shown()).toEqual(["Vector", "Keyword", "Hybrid"]); // their turns have already passed
+  expect(shown()).toEqual(["Vector"]);
+  await tick(700);
+  expect(shown()).toEqual(["Vector", "Keyword"]);
+  await tick(700);
+  expect(shown()).toEqual(["Vector", "Keyword", "Hybrid"]);
+});
+
+test("the step is measured from when the previous column appeared, so slow responses add no extra delay", async () => {
+  motion(false);
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  let releaseKeyword!: () => void;
+  const gate = new Promise<void>((r) => (releaseKeyword = r));
+  routeFetch({
+    "POST /api/search": byMode({
+      vector: ok("a"),
+      keyword: (async () => { await gate; return Response.json([hit("b")]); }) as unknown as () => Response,
+      hybrid: ok("c"),
+    }),
+  });
+  render(<CompareView />);
+  await search();
+  await tick(50);
+  await tick(3000);
+  expect(shown()).toEqual(["Vector"]);
+  releaseKeyword();
+  await tick(50);
+  expect(shown()).toEqual(["Vector", "Keyword"]); // its step has long passed
+  await tick(700);
+  expect(shown()).toEqual(["Vector", "Keyword", "Hybrid"]);
+});
+
+test("a line above the columns names the submitted query as plain text and follows each new submit", async () => {
+  routeFetch({ "POST /api/search": () => new Promise<Response>(() => {}) });
+  render(<CompareView />);
+  expect(screen.queryByText(/Comparing Vector/)).toBeNull();
+  await search("<b>refunds</b>");
+  const line = screen.getByText(/Comparing Vector, Keyword and Hybrid for/);
+  expect(line).toHaveTextContent("Comparing Vector, Keyword and Hybrid for \u201c<b>refunds</b>\u201d.");
+  expect(line.querySelector("b")).toBeNull();
+  await search("invoices");
+  expect(screen.getAllByText(/Comparing Vector/)).toHaveLength(1);
+  expect(screen.getByText(/Comparing Vector/)).toHaveTextContent("\u201cinvoices\u201d");
+});
+
+test("a new submit mid-reveal drops the previous query's columns and timers", async () => {
+  motion(false);
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  let first = true;
+  routeFetch({
+    "POST /api/search": async (req) => {
+      const { query } = (await req.json()) as { query: string };
+      first = query === "refunds";
+      return Response.json([hit(first ? "old" : "new")]);
+    },
+  });
+  render(<CompareView />);
+  await search("refunds");
+  await tick(50);
+  expect(shown()).toEqual(["Vector"]);
+  await search("invoices");
+  expect(shown()).toEqual([]);
+  expect(screen.queryByText("Title old")).toBeNull();
+  await tick(50);
+  expect(shown()).toEqual(["Vector"]);
+  await tick(700);
+  expect(shown()).toEqual(["Vector", "Keyword"]);
+  await tick(700);
+  expect(shown()).toEqual(["Vector", "Keyword", "Hybrid"]);
+  expect(screen.queryByText("Title old")).toBeNull();
+});
+
+test("retrying one column shows its result at once without re-staging the others", async () => {
+  motion(false);
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  let keywordCalls = 0;
+  routeFetch({
+    "POST /api/search": byMode({
+      vector: ok("a"),
+      keyword: () => (++keywordCalls === 1 ? new Response("{}", { status: 500 }) : Response.json([hit("k")])),
+      hybrid: ok("c"),
+    }),
+  });
+  render(<CompareView />);
+  await search();
+  await tick(1500);
+  expect(shown()).toEqual(["Vector", "Hybrid"]);
+  fireEvent.click(screen.getByRole("button", { name: "Retry Keyword" }));
+  await tick(50);
+  expect(shown()).toEqual(["Vector", "Keyword", "Hybrid"]);
+});
+
+// Each mode answers only when its gate is opened, so a test controls the order of the responses.
+function gated(overrides: Record<string, () => Response> = {}) {
+  const open: Record<string, () => void> = {};
+  const handlers: Record<string, () => Response> = {};
+  for (const [mode, doc] of [["vector", "a"], ["keyword", "b"], ["hybrid", "c"]] as const) {
+    const gate = new Promise<void>((r) => (open[mode] = r));
+    handlers[mode] = overrides[mode] ?? ((async () => { await gate; return Response.json([hit(doc)]); }) as unknown as () => Response);
+  }
+  routeFetch({ "POST /api/search": byMode(handlers) });
+  return open as Record<"vector" | "keyword" | "hybrid", () => void>;
+}
+
+test("responses in reverse order: nothing shows until Vector is done, then one step apart in order", async () => {
+  motion(false);
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const open = gated();
+  render(<CompareView />);
+  await search();
+  open.hybrid();
+  await tick(50);
+  open.keyword();
+  await tick(50);
+  await tick(5000);
+  expect(shown()).toEqual([]);
+  open.vector();
+  await tick(50);
+  expect(shown()).toEqual(["Vector"]);
+  await tick(REVEAL_STEP_MS - 100); // 50 ms after Vector appeared plus this is still short of one step
+  expect(shown()).toEqual(["Vector"]);
+  await tick(100);
+  expect(shown()).toEqual(["Vector", "Keyword"]);
+  await tick(REVEAL_STEP_MS - 100);
+  expect(shown()).toEqual(["Vector", "Keyword"]);
+  await tick(100);
+  expect(shown()).toEqual(["Vector", "Keyword", "Hybrid"]);
+});
+
+test("a Keyword error shows with its Try again at once, and Hybrid follows it without an extra step", async () => {
+  motion(false);
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  routeFetch({
+    "POST /api/search": byMode({ vector: ok("a"), keyword: () => new Response("{}", { status: 500 }), hybrid: ok("c") }),
+  });
+  render(<CompareView />);
+  await search();
+  await tick(50);
+  const keyword = screen.getByRole("region", { name: "Keyword" });
+  expect(within(keyword).getByRole("alert")).toBeInTheDocument();
+  expect(within(keyword).getByRole("button", { name: "Retry Keyword" })).toBeInTheDocument();
+  expect(shown()).toEqual(["Vector", "Hybrid"]);
+});
+
+// Responses arrive Hybrid, then Keyword, then Vector; returns what was visible after each.
+async function reverseArrival() {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const open = gated();
+  render(<CompareView />);
+  await search();
+  const seen: string[][] = [];
+  for (const mode of ["hybrid", "keyword", "vector"] as const) {
+    open[mode]();
+    await tick(50);
+    seen.push(shown());
+  }
+  return seen;
+}
+
+test("reduced motion: each column shows as soon as its own response arrives, no step delay", async () => {
+  motion(true);
+  expect(await reverseArrival()).toEqual([["Hybrid"], ["Keyword", "Hybrid"], ["Vector", "Keyword", "Hybrid"]]);
+});
+
+test("without the reduced-motion preference the same arrivals are staged (the mock is what changes it)", async () => {
+  motion(false);
+  expect(await reverseArrival()).toEqual([[], [], ["Vector"]]);
+});
+
+test("unmounting mid-reveal leaves no pending timers", async () => {
+  motion(false);
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  routeFetch({ "POST /api/search": byMode({ vector: ok("a"), keyword: ok("b"), hybrid: ok("c") }) });
+  const { unmount } = render(<CompareView />);
+  await search();
+  await tick(50);
+  unmount();
+  expect(vi.getTimerCount()).toBe(0);
 });
 
 test("errors show at once, before their turn", async () => {
@@ -342,6 +520,7 @@ test("the 'Only in this list' badge waits for all three columns to load, not jus
   });
   render(<CompareView />);
   await search();
+  await tick(50);
   await tick(3000);
   expect(shown()).toEqual(["Vector", "Keyword"]);
   expect(markerCount()).toBe(0);

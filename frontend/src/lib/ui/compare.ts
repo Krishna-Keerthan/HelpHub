@@ -25,8 +25,26 @@ export const HYBRID_NOTE = "The order combines the two ranks, which is why the s
 export const SIMILARITY_HELP = "Cosine similarity between the question and this passage. Only comparable within one column.";
 export const RANK_HELP = "Position among the passages this search found, 1 being first.";
 
-/** Milliseconds between one column appearing and the next. */
+/** Minimum milliseconds between one column appearing and the next. */
 export const REVEAL_STEP_MS = 700;
+
+export type ColumnStatus = "pending" | "done" | "error";
+
+/**
+ * Whether the column at index `revealed` may be shown now, given that the columns before it are shown.
+ * The first column and any error show as soon as they settle; a finished column also waits for the step
+ * after the previous one (`cooled`), unless that previous one was an error.
+ */
+export function canRevealNext(revealed: number, statuses: readonly ColumnStatus[], cooled: boolean): boolean {
+  const status = statuses[revealed];
+  if (status === undefined || status === "pending") return false;
+  if (status === "error" || revealed === 0) return true;
+  return cooled || statuses[revealed - 1] === "error";
+}
+
+/** The one line shown above the columns once a query has been submitted. */
+export const compareIntro = (query: string): string =>
+  `Comparing Vector, Keyword and Hybrid for \u201c${query}\u201d.`;
 
 /** Whether the similarity value is shown in a column: vector and hybrid only. */
 export const showsSimilarity = (mode: SearchMode): boolean => mode !== "keyword";
