@@ -9,6 +9,36 @@ export const MODES: readonly { mode: SearchMode; label: string }[] = [
   { mode: "hybrid", label: "Hybrid" },
 ];
 
+/** One-line captions shown when a column is revealed. */
+export const COLUMN_CAPTIONS: Record<SearchMode, string> = {
+  vector: "Passages whose meaning is closest to the question.",
+  keyword: "Passages that contain the question's words or codes.",
+  hybrid: "The vector and keyword rankings merged into one list.",
+};
+export const KEYWORD_NOTE = "The API returns no keyword score, only the rank.";
+export const HYBRID_NOTE = "The order combines the two ranks, which is why the similarity values are not descending.";
+export const SIMILARITY_HELP = "Cosine similarity between the question and this passage. Only comparable within one column.";
+export const RANK_HELP = "Position among the passages this search found, 1 being first.";
+
+/** Milliseconds between one column appearing and the next. */
+export const REVEAL_STEP_MS = 700;
+
+/** Whether the similarity value is shown in a column: vector and hybrid only. */
+export const showsSimilarity = (mode: SearchMode): boolean => mode !== "keyword";
+
+/**
+ * Why a passage is in this list, from its ranks (not from `found_by`). In the hybrid column a passage
+ * found by one branch says so; in a single-mode column the mode is already the column heading.
+ */
+export function whyListed(hit: SearchHit, mode: SearchMode): string {
+  const v = hit.vector_rank;
+  const k = hit.keyword_rank;
+  if (v !== null && k !== null) return `Vector rank ${v} · Keyword rank ${k}`;
+  if (v !== null) return mode === "hybrid" ? `Found by vector only (rank ${v})` : `Vector rank ${v}`;
+  if (k !== null) return mode === "hybrid" ? `Found by keyword only (rank ${k})` : `Keyword rank ${k}`;
+  return "No rank was reported for this passage";
+}
+
 const SNIPPET_CHARS = 160;
 
 export function snippet(content: string): string {

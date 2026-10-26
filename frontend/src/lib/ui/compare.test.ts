@@ -23,3 +23,14 @@ test("snippet collapses whitespace and truncates", () => {
   expect(snippet("a\n\n  b")).toBe("a b");
   expect(snippet("x".repeat(500))).toHaveLength(161);
 });
+
+test("whyListed reads the ranks, names a single branch only in the hybrid column, and admits a missing rank", async () => {
+  const { whyListed } = await import("./compare");
+  const h = (v: number | null, k: number | null): SearchHit => ({ ...hit("a"), vector_rank: v, keyword_rank: k });
+  expect(whyListed(h(3, 1), "hybrid")).toBe("Vector rank 3 · Keyword rank 1");
+  expect(whyListed(h(4, null), "hybrid")).toBe("Found by vector only (rank 4)");
+  expect(whyListed(h(null, 2), "hybrid")).toBe("Found by keyword only (rank 2)");
+  expect(whyListed(h(4, null), "vector")).toBe("Vector rank 4");
+  expect(whyListed(h(null, 2), "keyword")).toBe("Keyword rank 2");
+  expect(whyListed(h(null, null), "hybrid")).toBe("No rank was reported for this passage");
+});
