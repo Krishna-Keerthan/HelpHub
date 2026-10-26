@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { expect, test } from "vitest";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { expect, test, vi } from "vitest";
 import { DEMO_QUERIES } from "@/lib/demo-queries";
 import { routeFetch, sse } from "@/test/fetch-mock";
 import { ChatView } from "./ChatView";
@@ -158,7 +158,7 @@ test("the searching state is an informational polite status, errors stay alerts"
   });
   render(<ChatView />);
   ask("hello");
-  expect(await screen.findByRole("status")).toHaveTextContent("Searching");
+  expect(await screen.findByRole("status")).toHaveTextContent("Searching your documents…");
   release();
   expect(await screen.findByRole("alert")).toHaveTextContent("took too long");
 });
@@ -227,6 +227,18 @@ test("first visit lists the five demo questions; clicking one asks it and the li
   expect(screen.getByRole("list", { name: "Conversation" })).toHaveTextContent(DEMO_QUERIES[1]!);
 });
 
+/** An SSE response that stays open after `first` until `rest()` is called. */
+function heldStream(first: [string, object][]) {
+  const enc = new TextEncoder();
+  const msg = ([e, d]: [string, object]) => enc.encode(`event: ${e}\ndata: ${JSON.stringify(d)}\n\n`);
+  let ctl!: ReadableStreamDefaultController<Uint8Array>;
+  const res = () =>
+    new Response(new ReadableStream<Uint8Array>({ start: (c) => { ctl = c; first.forEach((e) => c.enqueue(msg(e))); } }), {
+      headers: { "Content-Type": "text/event-stream" },
+    });
+  return { res, rest: (events: [string, object][]) => { events.forEach((e) => ctl.enqueue(msg(e))); ctl.close(); } };
+}
+
 const docRow = (id: string, title: string) => ({
   id, title, status: "READY", error: null, created_by: null,
   created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
@@ -284,4 +296,69 @@ test("a cited document that is no longer listed keeps its title and says so; a f
   const panel = await screen.findByRole("region", { name: "Source 1" });
   expect(panel).toHaveTextContent("Stale title");
   expect(panel).not.toHaveTextContent("no longer in your library");
+});
+
+test("waiting states: searching, then cold-start message when the first event is slow, then writing, then a streaming indicator until done", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    let release!: (r: Response) => void;
+    const gate = new Promise<Response>((r) => (release = r));
+    routeFetch({ "POST /api/chat/stream": () => gate });
+    render(<ChatView />);
+    ask("hello");
+    expect(screen.getByRole("status")).toHaveTextContent("Searching your documents…");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(7000);
+    });
+    expect(screen.getByRole("status")).toHaveTextContent("Searching your documents…");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    expect(screen.getByRole("status")).toHaveTextContent("Waking the server, this can take about a minute");
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    const held = heldStream([
+      ["sources", { conversation_id: "c1", sources: [source(1, "A"), source(2, "B")] }],
+      ["token", { text: "Hi" }],
+    ]);
+    release(held.res());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(50);
+    });
+    expect(screen.getByTestId("streaming-indicator")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).toBeNull();
+    held.rest([["done", { conversation_id: "c1", status: "complete", cited: [] }]]);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(50);
+    });
+    expect(screen.queryByTestId("streaming-indicator")).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("between sources and the first token the status says the answer is being written", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  routeFetch({
+    "POST /api/chat/stream": () => {
+      const enc = new TextEncoder();
+      return new Response(
+        new ReadableStream({
+          async start(c) {
+            c.enqueue(enc.encode(`event: sources\ndata: ${JSON.stringify({ conversation_id: "c1", sources: [source(1, "A")] })}\n\n`));
+            await gate;
+            c.enqueue(enc.encode(`event: done\ndata: ${JSON.stringify({ conversation_id: "c1", status: "complete", cited: [] })}\n\n`));
+            c.close();
+          },
+        }),
+        { headers: { "Content-Type": "text/event-stream" } },
+      );
+    },
+  });
+  render(<ChatView />);
+  ask("hello");
+  expect(await screen.findByText(/Found 1 matching passage\. Writing the answer…/)).toBeInTheDocument();
+  release();
+  await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
 });

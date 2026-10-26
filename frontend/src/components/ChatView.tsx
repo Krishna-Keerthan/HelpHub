@@ -10,6 +10,22 @@ import { failureMessage } from "@/lib/ui/failure";
 import { DEMO_QUERIES } from "@/lib/demo-queries";
 
 const MAX_MESSAGE_CHARS = 2000;
+/** No first event after this long: the backend is probably cold-starting. */
+export const SLOW_FIRST_EVENT_MS = 8000;
+
+/** Shown from sending until the first event; switches to the cold-start message when that takes long. */
+function Searching() {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setSlow(true), SLOW_FIRST_EVENT_MS);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <Notice className="mt-1 rounded">
+      {slow ? "Waking the server, this can take about a minute…" : "Searching your documents…"}
+    </Notice>
+  );
+}
 
 function Citations({ turn, docs }: { turn: Turn; docs: ReturnType<typeof useDocumentTitles> }) {
   const cited = turn.sources.filter((s) => turn.cited.includes(s.index));
@@ -37,7 +53,13 @@ function Answer({ turn, docs }: { turn: Turn; docs: ReturnType<typeof useDocumen
           {streamErrorMessage(turn.errorCode)}
         </p>
       )}
-      {turn.status === "streaming" && !turn.answer && <Notice className="mt-1 rounded">Searching…</Notice>}
+      {turn.status === "streaming" && !turn.answer && turn.sources.length === 0 && <Searching />}
+      {turn.status === "streaming" && !turn.answer && turn.sources.length > 0 && (
+        <Notice className="mt-1 rounded">Found {turn.sources.length} matching {turn.sources.length === 1 ? "passage" : "passages"}. Writing the answer…</Notice>
+      )}
+      {turn.status === "streaming" && turn.answer && (
+        <span aria-hidden="true" data-testid="streaming-indicator" className="inline-block motion-safe:animate-pulse">▍</span>
+      )}
       <Citations turn={turn} docs={docs} />
     </>
   );
