@@ -14,6 +14,20 @@ async def test_health(client: AsyncClient) -> None:
     assert response.json() == {"status": "ok"}
 
 
+async def test_health_answers_head_without_a_body(client: AsyncClient) -> None:
+    response = await client.head("/health")
+
+    assert response.status_code == 200
+    assert response.content == b""
+
+
+async def test_ready_answers_head_without_a_body(client: AsyncClient) -> None:
+    response = await client.head("/health/ready")
+
+    assert response.status_code == 200
+    assert response.content == b""
+
+
 async def test_ready_runs_select_1_through_the_app_role(client: AsyncClient) -> None:
     await ping()  # raises if the runtime engine cannot reach the database
 
