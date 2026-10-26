@@ -5,6 +5,7 @@ import { DOCUMENTS_STALE_MS, getQueryClient, ME_STALE_MS } from "@/lib/query/cli
 import { queryKeys } from "@/lib/query/hooks";
 import { routeFetch } from "@/test/fetch-mock";
 import { render } from "@/test/render";
+import { CompareView } from "./CompareView";
 import { DocumentsView } from "./DocumentsView";
 
 const doc = (id: string, title: string) => ({
@@ -205,4 +206,69 @@ test("nothing is written to localStorage or sessionStorage", async () => {
   expect(localStorage.length).toBe(0);
   expect(sessionStorage.length).toBe(0);
   writes.mockRestore();
+});
+
+// Compare results are cached for 5 minutes per query; a document upload or delete makes them stale.
+const compareHit = (mode: string) => ({
+  char_end: 10, char_start: 0, chunk_id: `chunk-${mode}`, chunk_index: 0, content: `Snippet ${mode}`,
+  document_id: mode, document_title: `Title ${mode}`, found_by: ["vector"], keyword_rank: null,
+  rrf_score: 0.1, score: 0.5, vector_rank: 1,
+});
+
+async function compareThenChangeDocuments(change: (docs: { keys: () => string[] }) => Promise<void>) {
+  vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("reduce"), media: q }));
+  let listed = [doc("1", "Refund policy")];
+  const f = routeFetch({
+    "GET /api/documents": () => Response.json(listed),
+    "GET /api/auth/me": () => me("admin"),
+    "POST /api/search": async (req) => Response.json([compareHit(((await req.json()) as { mode: string }).mode)]),
+    "POST /api/documents/upload": () => {
+      listed = [...listed, doc("2", "new.pdf")];
+      return Response.json(doc("2", "new.pdf"), { status: 201 });
+    },
+    "DELETE /api/documents/1": () => {
+      listed = [];
+      return new Response(null, { status: 204 });
+    },
+  });
+  const compare = render(<CompareView />);
+  fireEvent.change(screen.getByLabelText("Search query"), { target: { value: "refunds" } });
+  fireEvent.click(screen.getByRole("button", { name: "Compare" }));
+  await screen.findByRole("list", { name: "Hybrid results" });
+  compare.unmount();
+  expect(count(f, "POST /api/search")).toBe(3);
+
+  const docs = render(<DocumentsView />);
+  await screen.findByText("Refund policy");
+  await change(f);
+  docs.unmount();
+
+  const before = count(f, "POST /api/search");
+  render(<CompareView />);
+  await screen.findByRole("list", { name: "Hybrid results" });
+  return count(f, "POST /api/search") - before;
+}
+
+test("after an upload, a Compare remount runs new searches instead of using the cache", async () => {
+  const fresh = await compareThenChangeDocuments(async () => {
+    fireEvent.change(await screen.findByLabelText("Upload a document"), {
+      target: { files: [new File(["x"], "new.pdf", { type: "application/pdf" })] },
+    });
+    await screen.findByText("new.pdf");
+  });
+  expect(fresh).toBe(3);
+});
+
+test("after a delete, a Compare remount runs new searches instead of using the cache", async () => {
+  const fresh = await compareThenChangeDocuments(async () => {
+    vi.spyOn(window, "confirm").mockReturnValueOnce(true);
+    fireEvent.click(await screen.findByRole("button", { name: "Delete Refund policy" }));
+    await waitFor(() => expect(screen.queryByText("Refund policy")).not.toBeInTheDocument());
+  });
+  expect(fresh).toBe(3);
+});
+
+test("without any document change a Compare remount is served from the cache", async () => {
+  const fresh = await compareThenChangeDocuments(async () => {});
+  expect(fresh).toBe(0);
 });

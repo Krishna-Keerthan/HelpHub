@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useId, useState } from "react";
 import { useDocuments } from "@/lib/query/hooks";
 import type { ChatSource } from "@/lib/api/sse";
@@ -48,11 +47,6 @@ export function SourceChips({ sources }: { sources: ChatSource[] }) {
           <p className="mt-2 text-xs text-muted">
             The answer does not include the cited passage, so only the document is shown.
           </p>
-          {!gone(open) && (
-            <Link href="/documents" className="mt-2 inline-block min-h-8 text-xs underline">
-              Open the documents list
-            </Link>
-          )}
         </div>
       )}
     </div>

@@ -272,11 +272,28 @@ test("a citation chip is a button; opening it resolves the title from the docume
   expect(panel).toHaveTextContent("Refund policy v2");
   expect(panel).not.toHaveTextContent(/section/i);
   expect(panel).toHaveTextContent("does not include the cited passage");
-  expect(within(panel).getByRole("link", { name: "Open the documents list" })).toHaveAttribute("href", "/documents");
+  expect(within(panel).queryByRole("link")).toBeNull();
 
   fireEvent.click(screen.getByRole("button", { name: /\[1\]/ }));
   expect(screen.queryByRole("region", { name: "Source 1" })).toBeNull();
   expect(f.keys().filter((k) => k === "GET /api/documents")).toHaveLength(1);
+});
+
+test("expanding a chip does not navigate and its panel has no link, also for a document that is still listed", async () => {
+  const before = location.href;
+  routeFetch({
+    "POST /api/chat/stream": answerWithSource,
+    "GET /api/documents": () => Response.json([docRow("d1", "Refund policy v2")]),
+  });
+  render(<ChatView />);
+  ask("refunds?");
+  fireEvent.click(await screen.findByRole("button", { name: /\[1\] Stale title/ }));
+  const panel = await screen.findByRole("region", { name: "Source 1" });
+  await screen.findByRole("button", { name: /\[1\] Refund policy v2/ });
+  expect(panel.querySelector("a")).toBeNull();
+  expect(within(panel).queryByRole("link")).toBeNull();
+  expect(screen.queryByText("Open the documents list")).toBeNull();
+  expect(location.href).toBe(before);
 });
 
 test("a cited document that is no longer listed keeps its title and says so; a failed list falls back to the cited title", async () => {

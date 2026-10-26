@@ -179,3 +179,17 @@ test("an invalid stored source in the middle is dropped and the right chips are 
   expect(chips).not.toHaveTextContent("[2]");
   expect(chips.querySelectorAll("li")).toHaveLength(2);
 });
+
+test("the history failure alert goes away once a question is sent successfully", async () => {
+  sessionStorage.setItem(CONVERSATION_STORAGE, ID);
+  routeFetch({
+    [HISTORY]: () => Response.json({ detail: "x" }, { status: 500 }),
+    "POST /api/chat/stream": () =>
+      sse(["token", { text: "answered" }], ["done", { conversation_id: ID, status: "complete", cited: [] }]),
+  });
+  render(<ChatView />);
+  expect(await screen.findByRole("alert")).toHaveTextContent("Something went wrong on our side");
+  ask("hello");
+  expect(await screen.findByText("answered")).toBeInTheDocument();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});

@@ -3,6 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { api, retryAfterSeconds } from "@/lib/api/client";
+import { afterDocumentsChanged } from "@/lib/query/invalidate";
 import { ApiError, queryKeys, useDocuments, useMe, type Doc } from "@/lib/query/hooks";
 import { Notice } from "./Notice";
 import { failureMessage, MAX_UPLOAD_BYTES, uploadTooLargeMessage } from "@/lib/ui/failure";
@@ -66,7 +67,7 @@ export function DocumentsView() {
       });
       if (response.ok) {
         setActionMessage(null);
-        await queryClient.invalidateQueries({ queryKey: queryKeys.documents });
+        await afterDocumentsChanged(queryClient);
       }
       else if (response.status === 403) setActionMessage(READ_ONLY_MESSAGE);
       else if (response.status === 413) setActionMessage(tooLargeMessage(error));
@@ -88,7 +89,7 @@ export function DocumentsView() {
       });
       if (response.ok) {
         queryClient.setQueryData<Doc[]>(queryKeys.documents, (cur) => cur?.filter((d) => d.id !== doc.id));
-        await queryClient.invalidateQueries({ queryKey: queryKeys.documents });
+        await afterDocumentsChanged(queryClient);
       } else setActionMessage(failureMessage(response.status, null, retryAfterSeconds(response)));
     } catch {
       setActionMessage("Delete failed. Check your connection and try again.");

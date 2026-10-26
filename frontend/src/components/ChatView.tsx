@@ -99,6 +99,7 @@ function ChatSession() {
   const [nextId, setNextId] = useState(1);
   const input = useRef<HTMLInputElement>(null);
   const [hydrated, setHydrated] = useState(false);
+  const [alertDismissed, setAlertDismissed] = useState(false);
   const history = useConversationMessages(restoreId);
   const gone = history.error instanceof ApiError && history.error.status === 404;
   const restoring = restoreId !== null && !hydrated && !history.isError;
@@ -136,6 +137,7 @@ function ChatSession() {
   async function send(message: string, focusWasInForm: boolean) {
     const id = nextId;
     setNextId(id + 1);
+    setAlertDismissed(true); // a failed history read no longer applies once a question has been sent
     setTurns((cur) => [...cur, newTurn(id, message)]);
     setBusy(true);
     abort.current = new AbortController();
@@ -176,7 +178,7 @@ function ChatSession() {
     <section className="flex flex-col gap-4">
       <h1 className="text-xl font-semibold">Chat</h1>
       {restoring && <Notice className="rounded">Loading conversation…</Notice>}
-      {history.isError && !gone && (
+      {history.isError && !gone && !alertDismissed && (
         <p role="alert" className="text-sm text-danger">
           {history.error instanceof ApiError
             ? chatHttpMessage(history.error.status, history.error.retryAfter)

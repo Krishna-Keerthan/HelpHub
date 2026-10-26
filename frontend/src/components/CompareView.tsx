@@ -23,6 +23,7 @@ import {
   type SearchHit,
   type SearchMode,
 } from "@/lib/ui/compare";
+import { COMPARE_KEY } from "@/lib/query/invalidate";
 import { useIsClient } from "@/lib/session/use-is-client";
 import { COMPARE_QUERY_STORAGE, readStored, writeStored } from "@/lib/session/storage";
 import { Notice } from "./Notice";
@@ -30,7 +31,7 @@ import { Notice } from "./Notice";
 const RESULTS_PER_MODE = 5; // same as the backend default; the generated type requires it
 /** How long one mode's results for one query are reused from the in-memory cache (a choice, see D15). */
 export const COMPARE_STALE_MS = 5 * 60_000;
-const compareKey = (mode: SearchMode, query: string) => ["compare", mode, query] as const;
+const compareKey = (mode: SearchMode, query: string) => [...COMPARE_KEY, mode, query] as const;
 
 class SearchFailed extends Error {
   constructor(readonly column: Column) {
