@@ -2,32 +2,46 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ChatHttpError, streamChat } from "@/lib/api/client";
-import { applyEvent, newTurn, REFUSAL_MESSAGE, streamErrorMessage, type Turn } from "@/lib/ui/chat-state";
+import {
+  applyEvent,
+  CONNECTION_LOST_MESSAGE,
+  chatHttpMessage,
+  newTurn,
+  REFUSAL_MESSAGE,
+  STREAM_CUT_OFF,
+  streamErrorMessage,
+  type Turn,
+} from "@/lib/ui/chat-state";
 import { displayCitations } from "@/lib/ui/citation-display";
 import { Notice } from "./Notice";
-import { failureMessage } from "@/lib/ui/failure";
+import { SourceChips, useDocumentTitles } from "./SourceChips";
+import { DEMO_QUERIES } from "@/lib/demo-queries";
 
 const MAX_MESSAGE_CHARS = 2000;
+/** No first event after this long: the backend is probably cold-starting. */
+export const SLOW_FIRST_EVENT_MS = 8000;
 
-function Citations({ turn }: { turn: Turn }) {
-  const cited = turn.sources.filter((s) => turn.cited.includes(s.index));
-  if (cited.length === 0) return null;
+/** Shown from sending until the first event; switches to the cold-start message when that takes long. */
+function Searching() {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setSlow(true), SLOW_FIRST_EVENT_MS);
+    return () => clearTimeout(t);
+  }, []);
   return (
-    <ul aria-label="Sources" className="mt-2 flex flex-wrap gap-2">
-      {cited.map((s) => (
-        <li
-          key={s.chunk_id}
-          title={`Document ${s.document_id}, section ${s.chunk_index}`}
-          className="rounded-full bg-chip px-2 py-0.5 text-xs"
-        >
-          [{s.index}] {s.document_title}
-        </li>
-      ))}
-    </ul>
+    <Notice className="mt-1 rounded">
+      {slow ? "Waking the server, this can take about a minute…" : "Searching your documents…"}
+    </Notice>
   );
 }
 
-function Answer({ turn }: { turn: Turn }) {
+function Citations({ turn, docs }: { turn: Turn; docs: ReturnType<typeof useDocumentTitles> }) {
+  const cited = turn.sources.filter((s) => turn.cited.includes(s.index));
+  if (cited.length === 0) return null;
+  return <SourceChips sources={cited} titles={docs.titles} onOpen={docs.ensure} />;
+}
+
+function Answer({ turn, docs }: { turn: Turn; docs: ReturnType<typeof useDocumentTitles> }) {
   if (turn.errorText) {
     return (
       <p role="alert" className="text-sm text-danger">
@@ -47,8 +61,14 @@ function Answer({ turn }: { turn: Turn }) {
           {streamErrorMessage(turn.errorCode)}
         </p>
       )}
-      {turn.status === "streaming" && !turn.answer && <Notice className="mt-1 rounded">Searching…</Notice>}
-      <Citations turn={turn} />
+      {turn.status === "streaming" && !turn.answer && turn.sources.length === 0 && <Searching />}
+      {turn.status === "streaming" && !turn.answer && turn.sources.length > 0 && (
+        <Notice className="mt-1 rounded">Found {turn.sources.length} matching {turn.sources.length === 1 ? "passage" : "passages"}. Writing the answer…</Notice>
+      )}
+      {turn.status === "streaming" && turn.answer && (
+        <span aria-hidden="true" data-testid="streaming-indicator" className="inline-block motion-safe:animate-pulse">▍</span>
+      )}
+      <Citations turn={turn} docs={docs} />
     </>
   );
 }
@@ -60,13 +80,14 @@ export function ChatView() {
   const abort = useRef<AbortController | null>(null);
   const nextId = useRef(1);
   const input = useRef<HTMLInputElement>(null);
+  const docs = useDocumentTitles();
 
   useEffect(() => () => abort.current?.abort(), []);
 
   const update = (id: number, fn: (t: Turn) => Turn) =>
     setTurns((cur) => cur.map((t) => (t.id === id ? fn(t) : t)));
 
-  async function onSubmit(e: FormEvent<HTMLFormElement>) {
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
     const message = String(new FormData(form).get("message") ?? "").trim();
@@ -74,6 +95,10 @@ export function ChatView() {
     // Keep focus only if it was already in the form; never pull it from elsewhere.
     const focusWasInForm = form.contains(document.activeElement);
     form.reset();
+    void send(message, focusWasInForm);
+  }
+
+  async function send(message: string, focusWasInForm: boolean) {
     const id = nextId.current++;
     setTurns((cur) => [...cur, newTurn(id, message)]);
     setBusy(true);
@@ -90,14 +115,12 @@ export function ChatView() {
       }
       // A stream that ends without done/error was cut off.
       update(id, (t) =>
-        t.status === "streaming" ? { ...t, status: "error", errorCode: "interrupted" } : t,
+        t.status === "streaming" ? { ...t, status: "error", errorCode: STREAM_CUT_OFF } : t,
       );
     } catch (err) {
       if (abort.current?.signal.aborted) return;
-      const text =
-        err instanceof ChatHttpError
-          ? failureMessage(err.status, err.status === 503 ? "service_waking" : null, err.retryAfter)
-          : "Connection lost. Check your connection and try again.";
+      if (err instanceof ChatHttpError && err.status === 404) conversationId.current = null;
+      const text = err instanceof ChatHttpError ? chatHttpMessage(err.status, err.retryAfter) : CONNECTION_LOST_MESSAGE;
       update(id, (t) => ({ ...t, status: "error", errorText: text }));
     } finally {
       setBusy(false);
@@ -113,16 +136,33 @@ export function ChatView() {
     <section className="flex flex-col gap-4">
       <h1 className="text-xl font-semibold">Chat</h1>
       {turns.length === 0 && (
-        <p className="rounded border border-dashed border-line p-6 text-center text-muted">
-          Ask a question about your documents. Answers cite the documents they come from.
-        </p>
+        <div className="rounded border border-dashed border-line p-6">
+          <p className="text-center text-muted">
+            Ask a question about your documents. HelpHub searches them and answers with citations to the documents it used.
+          </p>
+          <p className="mt-4 text-sm font-medium">Try one of these:</p>
+          <ul aria-label="Suggested questions" className="mt-2 flex flex-col gap-2">
+            {DEMO_QUERIES.map((q) => (
+              <li key={q}>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void send(q, false)}
+                  className="min-h-10 w-full rounded border border-control-border px-3 py-2 text-left text-sm disabled:opacity-50"
+                >
+                  {q}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       <ol aria-label="Conversation" className="space-y-6">
         {turns.map((t) => (
           <li key={t.id}>
             <p className="break-words font-medium">{t.question}</p>
             <div className="mt-1 text-fg" aria-live="polite" aria-busy={t.status === "streaming"}>
-              <Answer turn={t} />
+              <Answer turn={t} docs={docs} />
             </div>
           </li>
         ))}

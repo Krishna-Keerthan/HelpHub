@@ -1,5 +1,7 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { expect, test } from "vitest";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { expect, test, vi } from "vitest";
+import { DEMO_QUERIES } from "@/lib/demo-queries";
+import { STREAM_CUT_OFF_MESSAGE, streamErrorMessage } from "@/lib/ui/chat-state";
 import { routeFetch, sse } from "@/test/fetch-mock";
 import { ChatView } from "./ChatView";
 
@@ -58,7 +60,7 @@ test("embedding_unavailable error event is explained", async () => {
   });
   render(<ChatView />);
   ask("hello");
-  expect(await screen.findByRole("alert")).toHaveTextContent("Search is temporarily unavailable");
+  expect(await screen.findByRole("alert")).toHaveTextContent("The search service is unavailable. Please try again later.");
 });
 
 test("keeps partial text and shows the error when the stream fails mid-answer", async () => {
@@ -83,7 +85,7 @@ test("429 shows Retry-After seconds", async () => {
   });
   render(<ChatView />);
   ask("hello");
-  expect(await screen.findByRole("alert")).toHaveTextContent("Try again in 12 seconds");
+  expect(await screen.findByRole("alert")).toHaveTextContent("Wait 12 seconds and ask again");
 });
 
 test("cold start (503) shows the waking message", async () => {
@@ -106,7 +108,7 @@ test("a stream that ends without done is reported, and the conversation id is re
   });
   render(<ChatView />);
   ask("one");
-  expect(await screen.findByRole("alert")).toHaveTextContent("Something went wrong");
+  expect(await screen.findByRole("alert")).toHaveTextContent(STREAM_CUT_OFF_MESSAGE);
   await waitFor(() => expect(screen.getByRole("button", { name: "Ask" })).toBeEnabled());
   ask("two");
   await waitFor(() => expect(f.calls).toHaveLength(2));
@@ -157,7 +159,7 @@ test("the searching state is an informational polite status, errors stay alerts"
   });
   render(<ChatView />);
   ask("hello");
-  expect(await screen.findByRole("status")).toHaveTextContent("Searching");
+  expect(await screen.findByRole("status")).toHaveTextContent("Searching your documents…");
   release();
   expect(await screen.findByRole("alert")).toHaveTextContent("took too long");
 });
@@ -203,4 +205,213 @@ test("a marker for a source that is not in done.cited adds no chip", async () =>
   ask("q");
   expect(await screen.findByText("Five days[1].")).toBeInTheDocument();
   expect(screen.queryByRole("list", { name: "Sources" })).toBeNull();
+});
+
+test("first visit lists the five demo questions; clicking one asks it and the list goes away", async () => {
+  const bodies: unknown[] = [];
+  routeFetch({
+    "POST /api/chat/stream": async (req) => {
+      bodies.push(await req.json());
+      return sse(["token", { text: "ok" }], ["done", { conversation_id: "c1", status: "complete", cited: [] }]);
+    },
+  });
+  render(<ChatView />);
+  expect(screen.getByText(/searches them and answers with citations/)).toBeInTheDocument();
+  const list = screen.getByRole("list", { name: "Suggested questions" });
+  expect(DEMO_QUERIES).toHaveLength(5);
+  expect(within(list).getAllByRole("button").map((b) => b.textContent)).toEqual([...DEMO_QUERIES]);
+
+  fireEvent.click(within(list).getByRole("button", { name: DEMO_QUERIES[1]! }));
+  expect(await screen.findByText("ok")).toBeInTheDocument();
+  expect(bodies).toEqual([{ message: DEMO_QUERIES[1], conversation_id: null }]);
+  expect(screen.queryByRole("list", { name: "Suggested questions" })).toBeNull();
+  expect(screen.getByRole("list", { name: "Conversation" })).toHaveTextContent(DEMO_QUERIES[1]!);
+});
+
+/** An SSE response that stays open after `first` until `rest()` is called. */
+function heldStream(first: [string, object][]) {
+  const enc = new TextEncoder();
+  const msg = ([e, d]: [string, object]) => enc.encode(`event: ${e}\ndata: ${JSON.stringify(d)}\n\n`);
+  let ctl!: ReadableStreamDefaultController<Uint8Array>;
+  const res = () =>
+    new Response(new ReadableStream<Uint8Array>({ start: (c) => { ctl = c; first.forEach((e) => c.enqueue(msg(e))); } }), {
+      headers: { "Content-Type": "text/event-stream" },
+    });
+  return { res, rest: (events: [string, object][]) => { events.forEach((e) => ctl.enqueue(msg(e))); ctl.close(); } };
+}
+
+const docRow = (id: string, title: string) => ({
+  id, title, status: "READY", error: null, created_by: null,
+  created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
+});
+
+const answerWithSource = () =>
+  sse(
+    ["sources", { conversation_id: "c1", sources: [source(1, "Stale title")] }],
+    ["token", { text: "Five days [1]." }],
+    ["done", { conversation_id: "c1", status: "complete", cited: [1] }],
+  );
+
+test("a citation chip is a button; opening it resolves the title from the documents list and says the passage is not available", async () => {
+  const f = routeFetch({
+    "POST /api/chat/stream": answerWithSource,
+    "GET /api/documents": () => Response.json([docRow("d1", "Refund policy v2")]),
+  });
+  render(<ChatView />);
+  ask("refunds?");
+  const chip = await screen.findByRole("button", { name: /\[1\] Stale title/ });
+  expect(chip).toHaveAttribute("aria-expanded", "false");
+  expect(f.keys()).not.toContain("GET /api/documents"); // nothing is fetched until a chip is used
+
+  fireEvent.click(chip);
+  expect(await screen.findByRole("button", { name: /\[1\] Refund policy v2/ })).toHaveAttribute("aria-expanded", "true");
+  const panel = screen.getByRole("region", { name: "Source 1" });
+  expect(panel).toHaveTextContent("Refund policy v2");
+  expect(panel).not.toHaveTextContent(/section/i);
+  expect(panel).toHaveTextContent("does not include the cited passage");
+  expect(within(panel).getByRole("link", { name: "Open the documents list" })).toHaveAttribute("href", "/documents");
+
+  fireEvent.click(screen.getByRole("button", { name: /\[1\]/ }));
+  expect(screen.queryByRole("region", { name: "Source 1" })).toBeNull();
+  expect(f.keys().filter((k) => k === "GET /api/documents")).toHaveLength(1);
+});
+
+test("a cited document that is no longer listed keeps its title and says so; a failed list falls back to the cited title", async () => {
+  routeFetch({
+    "POST /api/chat/stream": answerWithSource,
+    "GET /api/documents": () => Response.json([docRow("other", "Something else")]),
+  });
+  const first = render(<ChatView />);
+  ask("q");
+  fireEvent.click(await screen.findByRole("button", { name: /\[1\] Stale title/ }));
+  expect(await screen.findByText(/no longer in your library/)).toBeInTheDocument();
+  first.unmount();
+
+  routeFetch({
+    "POST /api/chat/stream": answerWithSource,
+    "GET /api/documents": () => Response.json({ detail: "x" }, { status: 500 }),
+  });
+  render(<ChatView />);
+  ask("q");
+  fireEvent.click(await screen.findByRole("button", { name: /\[1\] Stale title/ }));
+  const panel = await screen.findByRole("region", { name: "Source 1" });
+  expect(panel).toHaveTextContent("Stale title");
+  expect(panel).not.toHaveTextContent("no longer in your library");
+});
+
+test("waiting states: searching, then cold-start message when the first event is slow, then writing, then a streaming indicator until done", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    let release!: (r: Response) => void;
+    const gate = new Promise<Response>((r) => (release = r));
+    routeFetch({ "POST /api/chat/stream": () => gate });
+    render(<ChatView />);
+    ask("hello");
+    expect(screen.getByRole("status")).toHaveTextContent("Searching your documents…");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(7000);
+    });
+    expect(screen.getByRole("status")).toHaveTextContent("Searching your documents…");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    expect(screen.getByRole("status")).toHaveTextContent("Waking the server, this can take about a minute");
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    const held = heldStream([
+      ["sources", { conversation_id: "c1", sources: [source(1, "A"), source(2, "B")] }],
+      ["token", { text: "Hi" }],
+    ]);
+    release(held.res());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(50);
+    });
+    expect(screen.getByTestId("streaming-indicator")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).toBeNull();
+    held.rest([["done", { conversation_id: "c1", status: "complete", cited: [] }]]);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(50);
+    });
+    expect(screen.queryByTestId("streaming-indicator")).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("between sources and the first token the status says the answer is being written", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  routeFetch({
+    "POST /api/chat/stream": () => {
+      const enc = new TextEncoder();
+      return new Response(
+        new ReadableStream({
+          async start(c) {
+            c.enqueue(enc.encode(`event: sources\ndata: ${JSON.stringify({ conversation_id: "c1", sources: [source(1, "A")] })}\n\n`));
+            await gate;
+            c.enqueue(enc.encode(`event: done\ndata: ${JSON.stringify({ conversation_id: "c1", status: "complete", cited: [] })}\n\n`));
+            c.close();
+          },
+        }),
+        { headers: { "Content-Type": "text/event-stream" } },
+      );
+    },
+  });
+  render(<ChatView />);
+  ask("hello");
+  expect(await screen.findByText(/Found 1 matching passage\. Writing the answer…/)).toBeInTheDocument();
+  release();
+  await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+});
+
+test("a lost connection is explained, and a 404 on a stale conversation starts a new one next time", async () => {
+  const bodies: unknown[] = [];
+  let n = 0;
+  routeFetch({
+    "POST /api/chat/stream": async (req) => {
+      bodies.push(await req.json());
+      n++;
+      if (n === 1) return sse(["sources", { conversation_id: "c7", sources: [] }], ["done", { conversation_id: "c7", status: "complete", cited: [] }]);
+      if (n === 2) return Response.json({ detail: "Conversation not found" }, { status: 404 });
+      return sse(["done", { conversation_id: "c8", status: "complete", cited: [] }]);
+    },
+  });
+  render(<ChatView />);
+  ask("one");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Ask" })).toBeEnabled());
+  ask("two");
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("conversation is no longer available");
+  expect(alert).not.toHaveTextContent("Conversation not found");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Ask" })).toBeEnabled());
+  ask("three");
+  await waitFor(() => expect(bodies).toHaveLength(3));
+  expect(bodies[1]).toMatchObject({ conversation_id: "c7" });
+  expect(bodies[2]).toMatchObject({ conversation_id: null });
+});
+
+test("a network failure before any answer says the server could not be reached", async () => {
+  routeFetch({
+    "POST /api/chat/stream": () => {
+      throw new TypeError("Failed to fetch");
+    },
+  });
+  render(<ChatView />);
+  ask("hello");
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("Could not reach the server");
+  expect(alert).not.toHaveTextContent("Failed to fetch");
+});
+
+test("a stream that ends without done or error shows the cut-off message, not the generic one", async () => {
+  routeFetch({
+    "POST /api/chat/stream": () =>
+      sse(["sources", { conversation_id: "c1", sources: [] }], ["token", { text: "half an ans" }]),
+  });
+  render(<ChatView />);
+  ask("hello");
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent(STREAM_CUT_OFF_MESSAGE);
+  expect(alert.textContent).not.toBe(streamErrorMessage("internal_error"));
+  expect(screen.getByText("half an ans")).toBeInTheDocument();
 });
