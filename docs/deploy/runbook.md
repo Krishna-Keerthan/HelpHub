@@ -1,5 +1,13 @@
 # Deploy runbook (Render + Supabase)
 
+## Status on 2026-10-24
+CI, Supabase and demo-data lines are as reported by the owner; this update did not check them against GitHub or Supabase.
+- CI is green. Supabase is at migration 0012. The demo tenant, a viewer user and 24 documents are seeded on Supabase (20261024).
+- `backend/scripts/smoke_live.py` exists; it has not been run against Render.
+- `.github/workflows/db-ops.yml` exists (manual dispatch, jobs `migrate` and `backup`). `render.yaml` does not exist.
+- **Render itself is unmeasured.** Every memory and timing figure below came from local Docker with emulated limits (`--memory=512m --cpus=0.1`), not from a Render instance.
+- The C2, C7 and C8 sections measure the **local fastembed model** (in-process ONNX). Production now uses Cloudflare embeddings (`EMBEDDING_PROVIDER=cloudflare`, AR-20); see "Cloudflare-embedding plateau" near the end.
+
 ## Connection defaults
 - Both the app (`DATABASE_URL`) and migrations (`MIGRATION_DATABASE_URL`) use the Supabase **session pooler**, port 5432, username `role.<project-ref>`. Measured working with no asyncpg changes (spikes.md section 1).
 - If the app is ever moved to the transaction pooler (port 6543), set asyncpg `statement_cache_size=0` in `app/db/session.py`; without it 174 of 180 test transactions failed with SQLSTATE 26000.
@@ -34,7 +42,7 @@ The body of `rls_auto_enable` has not been read by us; the user may add it here.
 
 Resolution (in the repo): migration `0011_tenants_rls.py` enables RLS on `tenants` with explicit policies `TO helphub_app` for SELECT and INSERT only (the commands the app runs; no UPDATE or DELETE policy, no FORCE). `tests/migrations/test_rls_invariant.py` requires every table in `public` except `alembic_version` to have RLS enabled and at least one policy. Local, CI and Supabase now behave the same. Because there is no FORCE, the owner bypasses RLS: the runtime service must never get `MIGRATION_DATABASE_URL` (see AR-21).
 
-## Container measurement (C2, 2026-10-17)
+## Container measurement (C2, 2026-10-17) — LOCAL-model baseline
 Image `backend/Dockerfile` (python:3.12-slim, uv, non-root uid 10001, model baked at `/srv/backend/.cache/fastembed`, one uvicorn process; image 787 MB on disk). Run with `--memory=512m --memory-swap=512m --cpus=0.1`, DB = Supabase session pooler from the dev box, no `GROQ_API_KEY` (so chat streamed an LLM-unavailable response: retrieval and embedding ran, the Groq call did not). Load: register, one text document, then one 10-page PDF upload + 5 concurrent `POST /chat/stream`. Sampler runs inside the container every 100 ms (RSS and PSS of all processes, cgroup `memory.peak`).
 
 | Run | Time to ready | Peak RSS (sum of tree) | Peak PSS (tree) | cgroup peak | PDF upload |
@@ -73,8 +81,77 @@ From `backend/`, with `DATABASE_URL` (app role, session pooler), `MIGRATION_DATA
 `SEED_ADMIN_PASSWORD=... uv run python scripts/seed_tenant.py --name "Acme" --slug acme --email admin@acme.test`
 (omit the variable to be prompted). `scripts/` is not in the image; run it from a checkout.
 
+## Seeding the hosted demo tenant
+Prerequisite: the hosted tenant and its admin already exist (see "Creating tenants"). Run this in a SEPARATE terminal opened only for this job, from `backend/`.
+
+**How it works.** `scripts/create_viewer.py` and `scripts/load_demo_corpus.py` are plain HTTP clients (httpx). They log in with `POST /auth/login` and then call `POST /users` (create_viewer) or `GET /documents`, `POST /documents/upload`, `GET /documents/{id}` (load_demo_corpus). They never touch the database. So a locally running app, started with the hosted `DATABASE_URL`, is required: the app embeds the uploads and writes to the hosted database. (Alternative not covered here: point `BASE_URL` at the Render service and skip the local app. Embedding then runs on the 0.1 CPU instance.)
+
+| Variable | Used by | Source |
+|---|---|---|
+| `DATABASE_URL` (app role, `helphub_app`) | the local app | `~/.helphub-supabase.env` |
+| `JWT_SECRET` | the local app | `~/.helphub-supabase.env` |
+| `BASE_URL` (`http://127.0.0.1:8001`), `TENANT_SLUG`, `EMAIL`, `PASSWORD` (hosted tenant admin) | both scripts | `~/.helphub-hosted-creds` (below) |
+| `VIEWER_EMAIL`, `VIEWER_PASSWORD` | create_viewer only | typed into the shell, environment only |
+
+`MIGRATION_DATABASE_URL` is never exported here. The app does not need it at runtime.
+
+**Credentials files.** `~/.helphub-local-creds` is the LOCAL database's admin and is never used here. The scripts read it as a fallback for any of `BASE_URL`, `TENANT_SLUG`, `EMAIL`, `PASSWORD` that is not in the environment, so this terminal exports all four from `~/.helphub-hosted-creds` (mode 600, `KEY=VALUE` lines, same four keys) and the fallback is never reached. Create it yourself; no script writes it. As of 2026-10-24 `~/.helphub-supabase.env` holds only `JWT_SECRET`: add a `DATABASE_URL=` line (the app-role session-pooler URL, `postgresql+asyncpg://...`) before the steps below, or the export step fails.
+
+**Caveat on `.env`.** The app still reads `backend/.env` for settings the shell does not set. Exported variables take precedence, so `DATABASE_URL` and `JWT_SECRET` come from the shell. Do not edit `.env` for this job.
+
+```bash
+cd ~/projects/helphub/backend
+
+# 1. Export only DATABASE_URL and JWT_SECRET (nothing else from the file).
+for k in DATABASE_URL JWT_SECRET; do
+  v=$(grep -E "^(export +)?$k=" ~/.helphub-supabase.env | tail -1 \
+      | sed -E "s/^(export +)?$k=//; s/^['\"]//; s/['\"]$//")
+  [ -n "$v" ] || { echo "missing $k in ~/.helphub-supabase.env"; return 1 2>/dev/null; }
+  export "$k=$v"
+done
+unset v MIGRATION_DATABASE_URL
+
+# 2. Hosted tenant admin (all four keys, so ~/.helphub-local-creds is not used).
+for k in BASE_URL TENANT_SLUG EMAIL PASSWORD; do
+  v=$(grep -E "^$k=" ~/.helphub-hosted-creds | tail -1 \
+      | sed -E "s/^$k=//; s/^['\"]//; s/['\"]$//")
+  [ -n "$v" ] || { echo "missing $k in ~/.helphub-hosted-creds"; return 1 2>/dev/null; }
+  export "$k=$v"
+done
+unset v
+case "$BASE_URL" in http://127.0.0.1:8001|http://localhost:8001) ;; *) echo "BASE_URL must be the local app on :8001" ;; esac
+
+# 3. Check where the database variables point. Expected in THIS terminal only:
+#    DATABASE_URL (environment): hosted; MIGRATION_DATABASE_URL (environment): unset;
+#    the two ".env only" lines: local. Exit code 1 is expected. In any other terminal
+#    a "hosted" result is a stop sign.
+uv run python scripts/check_local_db.py
+
+# 4. Start the app on a port (no reload) and wait until it is ready.
+uv run fastapi run app/main.py --host 127.0.0.1 --port 8001 &
+APP_PID=$!
+until curl -fsS http://127.0.0.1:8001/health/ready >/dev/null 2>&1; do sleep 2; done
+
+# 5. Viewer, then corpus. Both are idempotent (existing viewer / existing titles are skipped).
+read -r -p "viewer email: " VIEWER_EMAIL; read -r -s -p "viewer password: " VIEWER_PASSWORD; echo
+export VIEWER_EMAIL VIEWER_PASSWORD
+uv run python scripts/create_viewer.py       # prints created=N existing=N conflicts=N
+uv run python scripts/load_demo_corpus.py    # prints files= uploaded= skipped= failed= not_ready=
+```
+
+Expect `conflicts=0` and `failed=0 not_ready=0`. Exit 0 from both scripts means success; a rerun should show `created=0 existing=1` and `uploaded=0 skipped=<files>`.
+
+**Closing the terminal.** Never run `pytest`, `scripts/gate.sh` or `scripts/flake_hunt.sh` in this terminal: this shell holds the hosted `DATABASE_URL`. When done:
+
+```bash
+kill "$APP_PID"; wait "$APP_PID" 2>/dev/null
+ss -ltn 'sport = :8001'        # must list nothing
+unset DATABASE_URL JWT_SECRET BASE_URL TENANT_SLUG EMAIL PASSWORD VIEWER_EMAIL VIEWER_PASSWORD APP_PID
+exit                           # close the terminal; do not reuse it
+```
+
 ## Migrations
-Run `uv run alembic upgrade head` with `MIGRATION_DATABASE_URL` = `helphub_owner.<ref>` over the session pooler, from a dev machine or a CI job; never as `postgres` and never from the app's runtime role. `.github/workflows/ci.yml` runs tests only; a deploy-time migrate job is NOT built (deploy session). Migration 0010 adds `refresh_tokens` (RLS in the same migration).
+Run `uv run alembic upgrade head` with `MIGRATION_DATABASE_URL` = `helphub_owner.<ref>` over the session pooler, from a dev machine or a CI job; never as `postgres` and never from the app's runtime role. `.github/workflows/ci.yml` runs tests only. A manual `migrate` job exists in `.github/workflows/db-ops.yml` (workflow_dispatch, environment `production`, secret `MIGRATION_DATABASE_URL`); it is not triggered by a deploy, and whether it has been run is not recorded here. Migration 0010 adds `refresh_tokens` (RLS in the same migration).
 
 ## VERIFY items from the plan (checked 2026-10-17)
 | Item | Status | Evidence |
@@ -89,7 +166,7 @@ Run `uv run alembic upgrade head` with `MIGRATION_DATABASE_URL` = `helphub_owner
 | Render free RAM | **VERIFIED 512 MB** (spikes.md section 5) | |
 | Backups | **GAP, not built**: Supabase free has none. Options: scheduled `pg_dump` from CI to storage you control, or state the gap in the README | deploy session |
 
-## C7 re-measurement (2026-10-17): criteria NOT met
+## C7 re-measurement (2026-10-17): criteria NOT met — LOCAL-model baseline
 Setup: image built from commit db09187's app code, `--memory=512m --memory-swap=512m --cpus=0.1`, real Groq streaming, DB = Supabase session pooler from the dev box (WAN latency included), `APP_ENV=production`, `PDF_TIMEOUT_SECONDS=120`, `PDF_CPU_SECONDS` at its default 10, `RATE_LIMIT_*_PER_USER` raised so the limiter did not interfere. A sampler inside the container (every 0.2 s) sums PSS over all processes; `anon` comes from `memory.stat` at the PSS peak. One round = login, then concurrently 5 chat requests and N PDF uploads (N = `PDF_MAX_CONCURRENCY`), each PDF 10 pages and unique. 10 rounds per setting. The sampler itself competes for the 0.1 CPU.
 
 | | PDF concurrency 1 | PDF concurrency 2 |
@@ -116,7 +193,7 @@ Two defects seen in the container log (found during C7; the first is fixed in C8
 
 Options (not chosen, for the owner): a larger instance class or CPU share; a smaller or lazily loaded embedding model; lower PDF limits (smaller `pdf_memory_bytes`, fewer pages) and PDF concurrency 1; moving PDF extraction out of the web process; fewer concurrent chats per instance; accept the free class for a demo with concurrency 1 and a documented 500-or-slow tail.
 
-## C8 follow-up (2026-10-19)
+## C8 follow-up (2026-10-19) — LOCAL-model baseline
 Measurement setup for all C8 numbers: image built from the repo, `--memory=512m --memory-swap=512m --cpus=0.1`, scratch Postgres 16 + pgvector in a sibling container on the same Docker network (migrated with `alembic upgrade head` from the image; **no WAN latency**, unlike C7's Supabase pooler), Groq replaced by a local stub that streams 60 chunks (**no real Groq**: the key lives in `.env`, which is off limits). Absolute times therefore differ from C7; compare within C8 only.
 
 ### C8.2 baked model cache readable by the app user
@@ -262,11 +339,19 @@ RAM and CPU: https://render.com/docs/compute-plans (web service table). Price: h
 | `12c-48g` | 12 CPU | 48 GB | $800/month |
 | `12c-96g` | 12 CPU | 96 GB | $1,500/month |
 
+## Cloudflare-embedding plateau (recorded in the Gate 0 check of 2026-10-20, local Docker; Render NOT measured)
+This is the only memory measurement with the production embedding provider. Source: `docs/cleanup/gate0.md`, item 7. The harness `bench.py` lived in a session scratchpad and is not in the repo, so the sampler details below are what the gate record states and nothing more.
+- Method: image `helphub-backend:c9b`, local Docker, `--memory=512m --memory-swap=512m --cpus=0.1`; 10 rounds per run, each round 5 chats plus 1 10-page PDF upload; real Cloudflare Workers AI embeddings; **stub LLM (no Groq)**; local pgvector Postgres (no Supabase, no WAN latency to the database); 6 runs.
+- Result: max PSS 165.2 to 165.5 MB; plateau 165.1 to 165.5 MB; 0 oom_kills; 360 of 360 requests ok (6 runs x 10 rounds x 6 requests).
+- Likely reason it is far below the 321 to 485 MB of C7/C8: the ONNX model (about +230 MB at warm-up, C8.4) is not loaded when embeddings are remote. This was not verified by a measurement. The two sets of numbers are different configurations; do not mix them.
+- Not measured: Render (CPU and memory behaviour of the real free instance, startup time, wake from sleep), Supabase over the WAN, real Groq streaming, Cloudflare latency or quota behaviour under load (AR-20), concurrency above one PDF, PDFs over 10 pages. The plateau definition and sampling interval are not recorded in the repo.
+- Consequence: the C7 criteria failure (PSS above 461 MB) applies to the local-model image only. No criterion has been checked against Render.
+
 ## Open items
 - [ ] **Render IPv6 to Supabase direct connection: unknown.** Not testable from the dev box. Stay on the session pooler until answered; test on the first Render deploy and record the result here.
 - [x] **`MIGRATION_DATABASE_URL` is optional for the app** (C8): leave it unset on the runtime service; set it only where `alembic upgrade head` runs. Never put the owner URL on the runtime service.
 - [ ] **Client IPs behind Render's proxy** are not trusted (uvicorn runs without `--proxy-headers`), which is why login limits are per account, not per IP (AR-19).
-- [ ] **Live smoke script** (register or seed, upload, search, chat, delete against the deployed URL): not built.
+- [ ] **Live smoke script**: built (`backend/scripts/smoke_live.py`); not yet run against the deployed URL.
 - [ ] **Uptime bot** and the keep-alive target (`GET /health/ready`): not configured. When it is: set it to alert only after 2 consecutive failures (tolerate one). C7 saw one `/health/ready` timeout under load at 0.1 CPU (the 5 s `SELECT 1` limit), so a single failed probe is expected noise, not an outage.
 - [ ] **Render's health check path must be `/health`** (liveness, touches nothing else), not `/health/ready`. Reason: a database blip or a slow `SELECT 1` on a busy 0.1 CPU instance would otherwise count against the instance, and Render restarts an instance after 60 s of failed checks (https://render.com/docs/health-checks, quoted in the table above). `/health/ready` is for the uptime bot and the Supabase keep-alive only.
-- [ ] **Memory gate (Gate 0 item 7) is OPEN and the C7 criteria failed**: see the C7 section above. No instance class, model or architecture change has been made.
+- [ ] **Memory gate (Gate 0 item 7) is OPEN**: the C7 criteria failed for the local-model image; the Cloudflare-embedding image plateaus at about 165 MB locally (section above), but Render is unmeasured. No instance class or architecture change has been made.
