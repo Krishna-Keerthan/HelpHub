@@ -10,12 +10,17 @@ export const MODES: readonly { mode: SearchMode; label: string }[] = [
 ];
 
 /** One-line captions shown when a column is revealed. */
-export const COLUMN_CAPTIONS: Record<SearchMode, string> = {
-  vector: "Passages whose meaning is closest to the question.",
-  keyword: "Passages that contain the question's words or codes.",
-  hybrid: "The vector and keyword rankings merged into one list.",
-};
-export const KEYWORD_NOTE = "The API returns no keyword score, only the rank.";
+export function columnCaption(mode: SearchMode): string {
+  switch (mode) {
+    case "vector":
+      return "Passages whose meaning is closest to the question.";
+    case "keyword":
+      return "Passages that contain the question's words or codes.";
+    case "hybrid":
+      return "The vector and keyword rankings merged into one list.";
+  }
+}
+export const RANK_ONLY_NOTE = "The API returns no keyword score, only the rank.";
 export const HYBRID_NOTE = "The order combines the two ranks, which is why the similarity values are not descending.";
 export const SIMILARITY_HELP = "Cosine similarity between the question and this passage. Only comparable within one column.";
 export const RANK_HELP = "Position among the passages this search found, 1 being first.";

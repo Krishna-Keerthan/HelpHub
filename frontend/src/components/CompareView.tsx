@@ -5,11 +5,11 @@ import { api, retryAfterSeconds } from "@/lib/api/client";
 import { DEMO_QUERIES } from "@/lib/demo-queries";
 import { failureMessage } from "@/lib/ui/failure";
 import {
-  COLUMN_CAPTIONS,
+  columnCaption,
   HYBRID_NOTE,
-  KEYWORD_NOTE,
   MODES,
   RANK_HELP,
+  RANK_ONLY_NOTE,
   REVEAL_STEP_MS,
   SIMILARITY_HELP,
   showsSimilarity,
@@ -177,8 +177,8 @@ export function CompareView() {
                   <p className="rounded border border-dashed border-line p-4 text-sm text-muted">No results.</p>
                 ) : (
                   <>
-                  <p className="mb-2 text-xs text-muted">{COLUMN_CAPTIONS[mode]}</p>
-                  {mode === "keyword" && <p className="mb-2 text-xs text-muted">{KEYWORD_NOTE}</p>}
+                  <p className="mb-2 text-xs text-muted">{columnCaption(mode)}</p>
+                  {mode === "keyword" && <p className="mb-2 text-xs text-muted">{RANK_ONLY_NOTE}</p>}
                   {mode === "hybrid" && <p className="mb-2 text-xs text-muted">{HYBRID_NOTE}</p>}
                   <ol aria-label={`${label} results`} className="space-y-3">
                     {col.hits.map((h, n) => (
