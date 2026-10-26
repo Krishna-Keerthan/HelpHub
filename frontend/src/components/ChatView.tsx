@@ -2,11 +2,18 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ChatHttpError, streamChat } from "@/lib/api/client";
-import { applyEvent, newTurn, REFUSAL_MESSAGE, streamErrorMessage, type Turn } from "@/lib/ui/chat-state";
+import {
+  applyEvent,
+  CONNECTION_LOST_MESSAGE,
+  chatHttpMessage,
+  newTurn,
+  REFUSAL_MESSAGE,
+  streamErrorMessage,
+  type Turn,
+} from "@/lib/ui/chat-state";
 import { displayCitations } from "@/lib/ui/citation-display";
 import { Notice } from "./Notice";
 import { SourceChips, useDocumentTitles } from "./SourceChips";
-import { failureMessage } from "@/lib/ui/failure";
 import { DEMO_QUERIES } from "@/lib/demo-queries";
 
 const MAX_MESSAGE_CHARS = 2000;
@@ -111,10 +118,8 @@ export function ChatView() {
       );
     } catch (err) {
       if (abort.current?.signal.aborted) return;
-      const text =
-        err instanceof ChatHttpError
-          ? failureMessage(err.status, err.status === 503 ? "service_waking" : null, err.retryAfter)
-          : "Connection lost. Check your connection and try again.";
+      if (err instanceof ChatHttpError && err.status === 404) conversationId.current = null;
+      const text = err instanceof ChatHttpError ? chatHttpMessage(err.status, err.retryAfter) : CONNECTION_LOST_MESSAGE;
       update(id, (t) => ({ ...t, status: "error", errorText: text }));
     } finally {
       setBusy(false);

@@ -84,7 +84,7 @@ test("429 shows Retry-After seconds", async () => {
   });
   render(<ChatView />);
   ask("hello");
-  expect(await screen.findByRole("alert")).toHaveTextContent("Try again in 12 seconds");
+  expect(await screen.findByRole("alert")).toHaveTextContent("Wait 12 seconds and ask again");
 });
 
 test("cold start (503) shows the waking message", async () => {
@@ -361,4 +361,43 @@ test("between sources and the first token the status says the answer is being wr
   expect(await screen.findByText(/Found 1 matching passage\. Writing the answer…/)).toBeInTheDocument();
   release();
   await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+});
+
+test("a lost connection is explained, and a 404 on a stale conversation starts a new one next time", async () => {
+  const bodies: unknown[] = [];
+  let n = 0;
+  routeFetch({
+    "POST /api/chat/stream": async (req) => {
+      bodies.push(await req.json());
+      n++;
+      if (n === 1) return sse(["sources", { conversation_id: "c7", sources: [] }], ["done", { conversation_id: "c7", status: "complete", cited: [] }]);
+      if (n === 2) return Response.json({ detail: "Conversation not found" }, { status: 404 });
+      return sse(["done", { conversation_id: "c8", status: "complete", cited: [] }]);
+    },
+  });
+  render(<ChatView />);
+  ask("one");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Ask" })).toBeEnabled());
+  ask("two");
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("conversation is no longer available");
+  expect(alert).not.toHaveTextContent("Conversation not found");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Ask" })).toBeEnabled());
+  ask("three");
+  await waitFor(() => expect(bodies).toHaveLength(3));
+  expect(bodies[1]).toMatchObject({ conversation_id: "c7" });
+  expect(bodies[2]).toMatchObject({ conversation_id: null });
+});
+
+test("a network failure before any answer says the server could not be reached", async () => {
+  routeFetch({
+    "POST /api/chat/stream": () => {
+      throw new TypeError("Failed to fetch");
+    },
+  });
+  render(<ChatView />);
+  ask("hello");
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("Could not reach the server");
+  expect(alert).not.toHaveTextContent("Failed to fetch");
 });
