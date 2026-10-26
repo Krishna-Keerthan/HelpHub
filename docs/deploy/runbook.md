@@ -1,11 +1,12 @@
 # Deploy runbook (Render + Supabase)
 
-## Status on 2026-10-24
-CI, Supabase and demo-data lines are as reported by the owner; this update did not check them against GitHub or Supabase.
-- CI is green. Supabase is at migration 0012. The demo tenant, a viewer user and 24 documents are seeded on Supabase (20261024).
-- `backend/scripts/smoke_live.py` exists; it has not been run against Render.
+## Status on 2026-10-26
+Every line in this block marked owner-reported was stated by the owner; this update did not check it against GitHub, Render, Vercel, Supabase or the uptime service.
+- CI is green (owner-reported; main CI green after PR #4). Supabase is at migration 0012 (owner-reported). The demo tenant, a viewer user and 24 documents are seeded on Supabase (2026-10-24, owner-reported).
+- The Render service is live (owner-reported). `backend/scripts/smoke_live.py` passed twice against it (owner-reported; output not recorded here).
+- The Vercel project is deployed (owner-reported). The uptime bot is configured (owner-reported; its service, interval and alert rule are not recorded here).
 - `.github/workflows/db-ops.yml` exists (manual dispatch, jobs `migrate` and `backup`). `render.yaml` does not exist.
-- **Render itself is unmeasured.** Every memory and timing figure below came from local Docker with emulated limits (`--memory=512m --cpus=0.1`), not from a Render instance.
+- **Render itself is unmeasured.** No Render memory, region or cold-start figure is recorded. Every memory and timing figure below came from local Docker with emulated limits (`--memory=512m --cpus=0.1`), not from a Render instance.
 - The C2, C7 and C8 sections measure the **local fastembed model** (in-process ONNX). Production now uses Cloudflare embeddings (`EMBEDDING_PROVIDER=cloudflare`, AR-20); see "Cloudflare-embedding plateau" near the end.
 
 ## Connection defaults
@@ -172,7 +173,7 @@ for k in BASE_URL TENANT_SLUG EMAIL PASSWORD; do
   export "$k=$v"
 done
 unset v
-case "$BASE_URL" in https://*.onrender.com) ;; *) echo "BASE_URL is not the Render URL"; exit 1 ;; esac
+case "$BASE_URL" in *'<'*|*'>'*) echo "BASE_URL still contains a placeholder"; exit 1 ;; https://*.onrender.com) ;; *) echo "BASE_URL is not the Render URL"; exit 1 ;; esac
 
 # Free-tier cold start is about a minute (Render's figure). Wake it first, bounded.
 ready=0
@@ -401,7 +402,7 @@ This is the only memory measurement with the production embedding provider. Sour
 - [ ] **Render IPv6 to Supabase direct connection: unknown.** Not testable from the dev box. Stay on the session pooler until answered; test on the first Render deploy and record the result here.
 - [x] **`MIGRATION_DATABASE_URL` is optional for the app** (C8): leave it unset on the runtime service; set it only where `alembic upgrade head` runs. Never put the owner URL on the runtime service.
 - [ ] **Client IPs behind Render's proxy** are not trusted (uvicorn runs without `--proxy-headers`), which is why login limits are per account, not per IP (AR-19).
-- [ ] **Live smoke script**: built (`backend/scripts/smoke_live.py`); not yet run against the deployed URL.
-- [ ] **Uptime bot** and the keep-alive target (`GET /health/ready`): not configured. When it is: set it to alert only after 2 consecutive failures (tolerate one). C7 saw one `/health/ready` timeout under load at 0.1 CPU (the 5 s `SELECT 1` limit), so a single failed probe is expected noise, not an outage.
+- [x] **Live smoke script**: built (`backend/scripts/smoke_live.py`); passed twice against the deployed Render service (owner-reported 2026-10-26; output not recorded in the repo).
+- [x] **Uptime bot** and the keep-alive target (`GET /health/ready`): configured (owner-reported 2026-10-26; whether it follows the rule below is not checked). It should be set to alert only after 2 consecutive failures (tolerate one). C7 saw one `/health/ready` timeout under load at 0.1 CPU (the 5 s `SELECT 1` limit), so a single failed probe is expected noise, not an outage.
 - [ ] **Render's health check path must be `/health`** (liveness, touches nothing else), not `/health/ready`. Reason: a database blip or a slow `SELECT 1` on a busy 0.1 CPU instance would otherwise count against the instance, and Render restarts an instance after 60 s of failed checks (https://render.com/docs/health-checks, quoted in the table above). `/health/ready` is for the uptime bot and the Supabase keep-alive only.
 - [ ] **Memory gate (Gate 0 item 7) is OPEN**: the C7 criteria failed for the local-model image; the Cloudflare-embedding image plateaus at about 165 MB locally (section above), but Render is unmeasured. No instance class or architecture change has been made.
