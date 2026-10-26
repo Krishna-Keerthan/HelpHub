@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { api } from "@/lib/api/client";
+import { api, retryAfterSeconds } from "@/lib/api/client";
 import { DEMO_QUERIES } from "@/lib/demo-queries";
 import { failureMessage } from "@/lib/ui/failure";
 import { MODES, snippet, uniqueDocumentIds, type SearchHit, type SearchMode } from "@/lib/ui/compare";
@@ -20,8 +20,7 @@ async function runSearch(mode: SearchMode, query: string): Promise<Column> {
   try {
     const { data, response } = await api.POST("/search", { body: { query, mode, k: RESULTS_PER_MODE } });
     if (data) return { state: "done", hits: data };
-    const retry = Number(response.headers.get("Retry-After"));
-    return { state: "error", message: failureMessage(response.status, null, retry > 0 ? retry : null) };
+    return { state: "error", message: failureMessage(response.status, null, retryAfterSeconds(response)) };
   } catch (e) {
     console.error("search failed:", e instanceof Error ? e.constructor.name : typeof e);
     return { state: "error", message: "Could not reach the service. Check your connection and try again." };

@@ -2,18 +2,13 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
-import { api } from "@/lib/api/client";
+import { api, retryAfterSeconds } from "@/lib/api/client";
 import { ApiError, queryKeys, useDocuments, useMe, type Doc } from "@/lib/query/hooks";
 import { Notice } from "./Notice";
 import { failureMessage, MAX_UPLOAD_BYTES, uploadTooLargeMessage } from "@/lib/ui/failure";
 
 
 const READ_ONLY_MESSAGE = "This account is read-only, so it cannot upload documents.";
-
-function retryAfter(res: Response): number | null {
-  const n = Number(res.headers.get("Retry-After"));
-  return n > 0 ? n : null;
-}
 
 // The backend's 413 detail says which limit was hit (file, request body or extracted text); show it.
 function tooLargeMessage(error: unknown): string {
@@ -76,7 +71,7 @@ export function DocumentsView() {
       else if (response.status === 403) setActionMessage(READ_ONLY_MESSAGE);
       else if (response.status === 413) setActionMessage(tooLargeMessage(error));
       else if (response.status === 415) setActionMessage("This file type is not supported.");
-      else setActionMessage(failureMessage(response.status, null, retryAfter(response)));
+      else setActionMessage(failureMessage(response.status, null, retryAfterSeconds(response)));
     } catch {
       setActionMessage("Upload failed. Check your connection and try again.");
     } finally {
@@ -94,7 +89,7 @@ export function DocumentsView() {
       if (response.ok) {
         queryClient.setQueryData<Doc[]>(queryKeys.documents, (cur) => cur?.filter((d) => d.id !== doc.id));
         await queryClient.invalidateQueries({ queryKey: queryKeys.documents });
-      } else setActionMessage(failureMessage(response.status, null, retryAfter(response)));
+      } else setActionMessage(failureMessage(response.status, null, retryAfterSeconds(response)));
     } catch {
       setActionMessage("Delete failed. Check your connection and try again.");
     }

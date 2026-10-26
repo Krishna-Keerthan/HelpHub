@@ -105,5 +105,6 @@ Screenshots: not captured (no browser available in this environment); see the ph
   - Write controls still need a successful, parseable `/auth/me` with an allowed role (D11). A role revalidation that fails or returns garbage hides the write controls (fail closed): it can never grant write access, and it removes it from an admin until the next successful check.
   - A failed documents revalidation keeps the last list, shows the existing alert plus "Showing the last list that loaded.", and "Try again" refetches.
 - **Invalidation:** the list is invalidated after a successful upload and after a delete (the deleted row is removed first, then the list is refetched).
+- **Per tab:** the cache is per tab and does not follow a logout or login made in another tab, so an older tab can show the previous role for up to 5 minutes (`ME_STALE_MS`) until it refetches; the backend still enforces roles.
 - **Negative controls run:** the new cache tests fail 5/9 against the previous `DocumentsView` (including the second-visit test), and 3/9 with the `resetSessionCache` calls removed from login/logout.
 - **Not measured:** the number of requests saved over a real page tour (no browser here); the tests show only that a second visit inside the window sends none.

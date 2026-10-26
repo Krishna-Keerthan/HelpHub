@@ -9,6 +9,12 @@ export type { ChatEvent, ChatRequest, ChatSource } from "./sse";
 /** Base path of the Next.js BFF; the browser never talks to FastAPI directly. */
 export const API_BASE = "/api";
 
+/** Seconds from a Retry-After header, or null when it is absent, not a positive finite number. */
+export function retryAfterSeconds(res: Response): number | null {
+  const n = Number(res.headers.get("Retry-After"));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 /** Typed JSON/multipart client for every route in docs/api/openapi.json. */
 const apiUrl = (path: string) =>
   `${typeof location === "undefined" ? "" : location.origin}${API_BASE}${path}`;
@@ -33,8 +39,7 @@ export async function login(body: LoginBody): Promise<{ ok: true } | { ok: false
     return { ok: true };
   }
   const code = ((await res.json().catch(() => ({}))) as { code?: string }).code ?? "login_failed";
-  const retry = Number(res.headers.get("Retry-After"));
-  return { ok: false, status: res.status, code, retryAfter: retry > 0 ? retry : null };
+  return { ok: false, status: res.status, code, retryAfter: retryAfterSeconds(res) };
 }
 
 /** Log in as the shared demo viewer. The credentials live on the server; nothing is sent from here. */
@@ -46,8 +51,7 @@ export async function demoLogin(): Promise<{ ok: true } | { ok: false; status: n
     return { ok: true };
   }
   const code = ((await res.json().catch(() => ({}))) as { code?: string }).code ?? "login_failed";
-  const retry = Number(res.headers.get("Retry-After"));
-  return { ok: false, status: res.status, code, retryAfter: retry > 0 ? retry : null };
+  return { ok: false, status: res.status, code, retryAfter: retryAfterSeconds(res) };
 }
 
 /** Log out through the BFF; local cookies are cleared even if the backend is down. */
@@ -85,8 +89,7 @@ export async function* streamChat(
     }),
   );
   if (!res.ok || !res.body) {
-    const retry = Number(res.headers.get("Retry-After"));
-    throw new ChatHttpError(res.status, Number.isFinite(retry) && retry > 0 ? retry : null);
+    throw new ChatHttpError(res.status, retryAfterSeconds(res));
   }
   yield* readChatEvents(res.body);
 }

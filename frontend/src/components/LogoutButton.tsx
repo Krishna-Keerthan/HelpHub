@@ -14,6 +14,8 @@ export function LogoutButton() {
         setBusy(true);
         try {
           await logout();
+        } catch {
+          // The server call failed; the client cache is already cleared. Still leave the page.
         } finally {
           // Full navigation on purpose: drops all in-memory client state after logout.
           // eslint-disable-next-line @next/next/no-location-assign-relative-destination

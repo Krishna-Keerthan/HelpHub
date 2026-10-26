@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api/client";
+import { api, retryAfterSeconds } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { DOCUMENTS_STALE_MS, ME_STALE_MS } from "./client";
 
@@ -24,11 +24,6 @@ export class ApiError extends Error {
   }
 }
 
-const retryAfter = (res: Response): number | null => {
-  const n = Number(res.headers.get("Retry-After"));
-  return n > 0 ? n : null;
-};
-
 /** GET /documents, shared by Documents and the chat citation chips. */
 export function useDocuments({ enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
@@ -37,7 +32,7 @@ export function useDocuments({ enabled = true }: { enabled?: boolean } = {}) {
     staleTime: DOCUMENTS_STALE_MS,
     queryFn: async (): Promise<Doc[]> => {
       const { data, response } = await api.GET("/documents");
-      if (!data) throw new ApiError(response.status, retryAfter(response));
+      if (!data) throw new ApiError(response.status, retryAfterSeconds(response));
       return data;
     },
     // Documents being processed finish on their own; poll until none is pending.
@@ -53,7 +48,7 @@ export function useMe() {
     queryFn: async (): Promise<{ role: string }> => {
       const { data, response } = await api.GET("/auth/me");
       const role = (data as { role?: unknown } | undefined)?.role;
-      if (!data) throw new ApiError(response.status, retryAfter(response));
+      if (!data) throw new ApiError(response.status, retryAfterSeconds(response));
       if (typeof role !== "string") throw new ApiError(response.status, null);
       return { role };
     },
