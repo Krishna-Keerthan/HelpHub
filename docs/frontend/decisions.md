@@ -83,3 +83,7 @@ Tests: `src/lib/api/session.test.ts` (single-flight, lock/adoption, backoff, ind
 
 ## D10. `exp` is a refresh hint, never authorization
 The BFF reads the access token's `exp` (unverified) only to decide whether to refresh before calling FastAPI, with a 5 s margin for clock skew (`isExpired`). A token whose `exp` looks valid is still forwarded and FastAPI decides (tests in `passthrough.test.ts`). Nothing in the Next.js code grants access from `exp` or any other claim.
+
+## D11. UI pass, Phase 0: write controls fail closed
+`DocumentsView` shows Upload only when `GET /api/auth/me` answered `admin` or `agent`, and Delete only for `admin` (the backend uses `require_admin`). While the lookup is pending, and when it fails, returns a non-2xx status, is not JSON, or has a missing or unknown role, the view is read-only (the read-only note appears once the lookup has settled). Previously a failed lookup left the controls shown. The backend still enforces roles; this only decides what is displayed. Tests: `DocumentsView.test.tsx` (viewer, pending lookup, seven failure shapes, agent, admin).
+Screenshots: not captured (no browser available in this environment); see the phase report.

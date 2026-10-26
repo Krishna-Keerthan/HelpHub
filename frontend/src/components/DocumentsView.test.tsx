@@ -18,23 +18,27 @@ afterEach(() => vi.restoreAllMocks());
 // The role lookup (GET /api/auth/me) is not what these tests are about.
 const docKeys = (f: { keys: () => string[] }) => f.keys().filter((k) => k !== "GET /api/auth/me");
 
-const pick = (file: File) =>
-  fireEvent.change(screen.getByLabelText("Upload a document"), { target: { files: [file] } });
+const me = (role: string) => ({ "GET /api/auth/me": () => Response.json({ id: "u", email: "u@x.co", role }) });
+const asAdmin = me("admin");
+
+const pick = async (file: File) =>
+  fireEvent.change(await screen.findByLabelText("Upload a document"), { target: { files: [file] } });
 
 test("lists documents", async () => {
-  routeFetch({ "GET /api/documents": () => Response.json([doc("1", "Refund policy"), doc("2", "Setup guide")]) });
+  routeFetch({ ...asAdmin, "GET /api/documents": () => Response.json([doc("1", "Refund policy"), doc("2", "Setup guide")]) });
   render(<DocumentsView />);
   expect(await screen.findByText("Refund policy")).toBeInTheDocument();
   expect(screen.getByText("Setup guide")).toBeInTheDocument();
   expect(screen.getByRole("list", { name: "Documents" })).toBeInTheDocument();
-  expect(screen.getByLabelText("Upload a document")).toHaveAccessibleDescription(/Files up to 4 MB\. Plain-text documents are also capped at about 500,000 extracted characters\./);
+  expect(await screen.findByLabelText("Upload a document")).toHaveAccessibleDescription(/Files up to 4 MB\. Plain-text documents are also capped at about 500,000 extracted characters\./);
 });
 
 test("a file over 4 MB is rejected client-side with a clear message and nothing is sent", async () => {
-  const f = routeFetch({ "GET /api/documents": () => Response.json([]) });
+  const f = routeFetch({
+    ...asAdmin, "GET /api/documents": () => Response.json([]) });
   render(<DocumentsView />);
   await screen.findByText("No documents yet.");
-  pick(new File([new Uint8Array(4 * 1024 * 1024 + 1)], "big.pdf", { type: "application/pdf" }));
+  await pick(new File([new Uint8Array(4 * 1024 * 1024 + 1)], "big.pdf", { type: "application/pdf" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("limited to 4 MB");
   expect(docKeys(f)).toEqual(["GET /api/documents"]);
 });
@@ -42,24 +46,26 @@ test("a file over 4 MB is rejected client-side with a clear message and nothing 
 test("exactly 4 MB is uploaded, then the list reloads", async () => {
   let listed = 0;
   const f = routeFetch({
+    ...asAdmin,
     "GET /api/documents": () => Response.json(listed++ === 0 ? [] : [doc("1", "ok.pdf")]),
     "POST /api/documents/upload": () => Response.json(doc("1", "ok.pdf"), { status: 201 }),
   });
   render(<DocumentsView />);
   await screen.findByText("No documents yet.");
-  pick(new File([new Uint8Array(4 * 1024 * 1024)], "ok.pdf", { type: "application/pdf" }));
+  await pick(new File([new Uint8Array(4 * 1024 * 1024)], "ok.pdf", { type: "application/pdf" }));
   expect(await screen.findByText("ok.pdf")).toBeInTheDocument();
   expect(docKeys(f)).toEqual(["GET /api/documents", "POST /api/documents/upload", "GET /api/documents"]);
 });
 
 test("server 413 on upload shows the backend's message and both limits", async () => {
   routeFetch({
+    ...asAdmin,
     "GET /api/documents": () => Response.json([]),
     "POST /api/documents/upload": () => Response.json({ detail: "Document is too large" }, { status: 413 }),
   });
   render(<DocumentsView />);
   await screen.findByText("No documents yet.");
-  pick(new File(["x"], "long.txt"));
+  await pick(new File(["x"], "long.txt"));
   const alert = await screen.findByRole("alert");
   expect(alert).toHaveTextContent("Document is too large");
   expect(alert).toHaveTextContent("500,000 extracted characters");
@@ -67,17 +73,19 @@ test("server 413 on upload shows the backend's message and both limits", async (
 
 test("server 415 on upload is explained", async () => {
   routeFetch({
+    ...asAdmin,
     "GET /api/documents": () => Response.json([]),
     "POST /api/documents/upload": () => Response.json({}, { status: 415 }),
   });
   render(<DocumentsView />);
   await screen.findByText("No documents yet.");
-  pick(new File(["x"], "a.exe"));
+  await pick(new File(["x"], "a.exe"));
   expect(await screen.findByRole("alert")).toHaveTextContent("not supported");
 });
 
 test("delete asks for confirmation; cancel sends nothing, confirm deletes", async () => {
   const f = routeFetch({
+    ...asAdmin,
     "GET /api/documents": () => Response.json([doc("1", "Refund policy")]),
     "DELETE /api/documents/1": () => new Response(null, { status: 204 }),
   });
@@ -151,11 +159,68 @@ test("an admin still sees the upload control", async () => {
 
 test("a 403 on upload says the account is read-only", async () => {
   routeFetch({
+    ...asAdmin,
     "GET /api/documents": () => Response.json([]),
     "POST /api/documents/upload": () => Response.json({ detail: "Forbidden" }, { status: 403 }),
   });
   render(<DocumentsView />);
   await screen.findByText("No documents yet.");
-  pick(new File(["x"], "a.txt"));
+  await pick(new File(["x"], "a.txt"));
   expect(await screen.findByRole("alert")).toHaveTextContent("read-only");
+});
+
+const noWriteControls = () => {
+  expect(screen.queryByLabelText("Upload a document")).toBeNull();
+  expect(screen.queryByRole("button", { name: /^Delete / })).toBeNull();
+};
+
+test("a viewer sees neither Upload nor Delete", async () => {
+  routeFetch({ ...me("viewer"), "GET /api/documents": () => Response.json([doc("1", "Refund policy")]) });
+  render(<DocumentsView />);
+  await screen.findByText("Read-only account: uploads are disabled.");
+  expect(screen.getByText("Refund policy")).toBeInTheDocument();
+  noWriteControls();
+});
+
+test("write controls stay hidden while the role is still being looked up", async () => {
+  routeFetch({
+    "GET /api/auth/me": () => new Promise<Response>(() => {}),
+    "GET /api/documents": () => Response.json([doc("1", "Refund policy")]),
+  });
+  render(<DocumentsView />);
+  await screen.findByText("Refund policy");
+  noWriteControls();
+});
+
+test("if /auth/me fails, returns an error status or cannot be parsed, the view is read-only", async () => {
+  const bad: Record<string, () => Response> = {
+    "network error": () => {
+      throw new TypeError("offline");
+    },
+    "500": () => Response.json({ detail: "boom" }, { status: 500 }),
+    "401": () => Response.json({ detail: "no" }, { status: 401 }),
+    "not json": () => new Response("<html>", { status: 200, headers: { "Content-Type": "application/json" } }),
+    "missing role": () => Response.json({ id: "u" }),
+    "unknown role": () => Response.json({ id: "u", role: "owner-ish" }),
+    "role not a string": () => Response.json({ id: "u", role: { x: 1 } }),
+  };
+  for (const [label, handler] of Object.entries(bad)) {
+    routeFetch({ "GET /api/auth/me": handler, "GET /api/documents": () => Response.json([doc("1", label)]) });
+    const { unmount } = render(<DocumentsView />);
+    await screen.findByText(label, { selector: "span" });
+    await screen.findByText("Read-only account: uploads are disabled.");
+    noWriteControls();
+    unmount();
+  }
+});
+
+test("an agent sees Upload but not Delete; an admin sees both", async () => {
+  for (const [role, canDelete] of [["agent", false], ["admin", true]] as const) {
+    routeFetch({ ...me(role), "GET /api/documents": () => Response.json([doc("1", "A")]) });
+    const { unmount } = render(<DocumentsView />);
+    expect(await screen.findByLabelText("Upload a document")).toBeInTheDocument();
+    await screen.findByText("A");
+    expect(screen.queryByRole("button", { name: "Delete A" }) !== null, role).toBe(canDelete);
+    unmount();
+  }
 });
