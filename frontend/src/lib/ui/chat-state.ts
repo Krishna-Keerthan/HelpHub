@@ -1,4 +1,5 @@
 import type { ChatEvent, ChatSource } from "@/lib/api/sse";
+import { parseCitations } from "./citations";
 
 export type Turn = {
   id: number;
@@ -74,3 +75,60 @@ export function chatHttpMessage(status: number, retryAfter: number | null): stri
 
 /** Shown for done.status === "no_answer" (detected by status, never by the text). */
 export const REFUSAL_MESSAGE = "I couldn't find anything in your documents that answers this question.";
+
+/** One row of GET /conversations/{id}/messages, as far as the client relies on it. */
+export type MessageRow = { role: string; content: string; status: string; sources: unknown };
+
+function isSource(s: unknown): s is ChatSource {
+  if (typeof s !== "object" || s === null) return false;
+  const o = s as Record<string, unknown>;
+  return (
+    Number.isInteger(o.index) &&
+    typeof o.chunk_id === "string" &&
+    typeof o.document_id === "string" &&
+    typeof o.document_title === "string" &&
+    Number.isInteger(o.chunk_index) &&
+    typeof o.score === "number"
+  );
+}
+
+/**
+ * Rebuild turns from stored messages: each user message is paired with the assistant message right after
+ * it. The server does not store `cited`, so it is recomputed from the answer; sources keep their original
+ * `index` (an invalid one is dropped, never renumbered) and the citation count is the stored list length,
+ * as in the backend. A row with an unknown role is skipped; an unknown status shows as cut off.
+ */
+export function messagesToTurns(rows: readonly MessageRow[]): { turns: Turn[]; nextId: number } {
+  const turns: Turn[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]!;
+    if (row.role !== "user") continue;
+    const id = turns.length + 1;
+    const next = rows[i + 1];
+    if (next?.role !== "assistant") {
+      turns.push({ id, question: row.content, answer: "", sources: [], cited: [], status: "error", errorCode: STREAM_CUT_OFF });
+      continue;
+    }
+    i++;
+    const stored = Array.isArray(next.sources) ? (next.sources as unknown[]) : [];
+    const sources = stored.filter(isSource);
+    const base = { id, question: row.content, answer: next.content, sources, cited: [] as number[] };
+    switch (next.status) {
+      case "complete":
+        turns.push({ ...base, status: "complete", cited: parseCitations(next.content, stored.length) });
+        break;
+      case "no_answer":
+        turns.push({ ...base, status: "no_answer" });
+        break;
+      case "failed":
+        turns.push({ ...base, status: "error" });
+        break;
+      case "interrupted":
+        turns.push({ ...base, status: "error", errorCode: STREAM_CUT_OFF });
+        break;
+      default:
+        turns.push({ ...base, answer: "", sources: [], status: "error", errorCode: STREAM_CUT_OFF });
+    }
+  }
+  return { turns, nextId: turns.length + 1 };
+}

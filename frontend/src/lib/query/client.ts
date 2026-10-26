@@ -1,10 +1,13 @@
 import { QueryClient } from "@tanstack/react-query";
 
 /**
- * In-memory client cache for authenticated GET data (documents list, current user).
- * Nothing here is persisted: no localStorage, sessionStorage or IndexedDB, so a hard reload
- * refetches by design. The cache is cleared on login and logout (see `resetSessionCache`);
- * a session that ends on its own does a full page navigation, which drops memory too.
+ * In-memory client cache for authenticated GET data (documents list, current user) and the Compare
+ * search results. The cache itself is never persisted: no localStorage or IndexedDB, and a hard reload
+ * starts it empty. Separately, `lib/session/storage.ts` keeps two small sessionStorage entries so a
+ * refresh can restore the page: the chat conversation id and the last Compare query. Answers, passages
+ * and chat messages are never written to the browser (decisions.md D15). Everything is cleared by
+ * `endSessionState` (lib/session/end.ts), which calls `resetSessionCache` below, on login, logout and
+ * session expiry.
  */
 
 /** How long the documents list counts as fresh. A choice, not a measurement (decisions.md D13). */

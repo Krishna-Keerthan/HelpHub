@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, retryAfterSeconds } from "@/lib/api/client";
 import { DEMO_QUERIES } from "@/lib/demo-queries";
 import { failureMessage } from "@/lib/ui/failure";
@@ -22,9 +23,20 @@ import {
   type SearchHit,
   type SearchMode,
 } from "@/lib/ui/compare";
+import { useIsClient } from "@/lib/session/use-is-client";
+import { COMPARE_QUERY_STORAGE, readStored, writeStored } from "@/lib/session/storage";
 import { Notice } from "./Notice";
 
 const RESULTS_PER_MODE = 5; // same as the backend default; the generated type requires it
+/** How long one mode's results for one query are reused from the in-memory cache (a choice, see D15). */
+export const COMPARE_STALE_MS = 5 * 60_000;
+const compareKey = (mode: SearchMode, query: string) => ["compare", mode, query] as const;
+
+class SearchFailed extends Error {
+  constructor(readonly column: Column) {
+    super("search failed");
+  }
+}
 
 type Column =
   | { state: "loading" }
@@ -33,14 +45,30 @@ type Column =
 
 type Columns = Partial<Record<SearchMode, Column>>;
 
-async function runSearch(mode: SearchMode, query: string): Promise<Column> {
+async function fetchColumn(mode: SearchMode, query: string): Promise<SearchHit[]> {
   try {
     const { data, response } = await api.POST("/search", { body: { query, mode, k: RESULTS_PER_MODE } });
-    if (data) return { state: "done", hits: data };
-    return { state: "error", message: failureMessage(response.status, null, retryAfterSeconds(response)) };
+    if (data) return data;
+    throw new SearchFailed({ state: "error", message: failureMessage(response.status, null, retryAfterSeconds(response)) });
   } catch (e) {
+    if (e instanceof SearchFailed) throw e;
     console.error("search failed:", e instanceof Error ? e.constructor.name : typeof e);
-    return { state: "error", message: "Could not reach the service. Check your connection and try again." };
+    throw new SearchFailed({ state: "error", message: "Could not reach the service. Check your connection and try again." });
+  }
+}
+
+/** Through the query cache; a failure throws, so an error is never cached and "Try again" really retries. */
+async function runSearch(client: QueryClient, mode: SearchMode, query: string): Promise<Column> {
+  try {
+    const hits = await client.fetchQuery({
+      queryKey: compareKey(mode, query),
+      queryFn: () => fetchColumn(mode, query),
+      staleTime: COMPARE_STALE_MS,
+      retry: false,
+    });
+    return { state: "done", hits };
+  } catch (e) {
+    return e instanceof SearchFailed ? e.column : { state: "error", message: "Could not reach the service. Check your connection and try again." };
   }
 }
 
@@ -49,14 +77,37 @@ const prefersReducedMotion = () =>
     ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
     : false;
 
+/** The restore reads sessionStorage, so the real view mounts only on the client (no hydration mismatch). */
 export function CompareView() {
-  const [query, setQuery] = useState("");
-  const [submitted, setSubmitted] = useState<string | null>(null);
-  const [columns, setColumns] = useState<Columns>({});
+  return useIsClient() ? (
+    <CompareSession />
+  ) : (
+    <section data-wide>
+      <h1 className="mb-4 text-xl font-semibold">Compare retrieval</h1>
+    </section>
+  );
+}
+
+function CompareSession() {
+  const client = useQueryClient();
+  // After a page change or refresh the last submitted query comes back from sessionStorage. Columns
+  // already in the cache are shown at once (no request); the others load, with no step delay (reduced).
+  const [restored] = useState(() => readStored(COMPARE_QUERY_STORAGE));
+  const [query, setQuery] = useState(restored ?? "");
+  const [submitted, setSubmitted] = useState<string | null>(restored);
+  const [columns, setColumns] = useState<Columns>(() => {
+    if (!restored) return {};
+    return Object.fromEntries(
+      MODES.map(({ mode }) => {
+        const hits = client.getQueryData<SearchHit[]>(compareKey(mode, restored));
+        return [mode, hits ? { state: "done", hits } : { state: "loading" }];
+      }),
+    ) as Columns;
+  });
   const latest = useRef(0);
   // Columns are fetched in parallel; this only paces when finished ones appear (presentation). `cooledFor`
   // is the number of shown columns whose step has elapsed; `floor` keeps columns shown while one is retried.
-  const [reduced, setReduced] = useState(false);
+  const [reduced, setReduced] = useState(restored !== null);
   const [cooledFor, setCooledFor] = useState(0);
   const [floor, setFloor] = useState(0);
   const [retried, setRetried] = useState<ReadonlySet<SearchMode>>(new Set());
@@ -75,19 +126,35 @@ export function CompareView() {
     return () => clearTimeout(timer);
   }, [reduced, revealed]);
 
+  const startSearches = useCallback(
+    (q: string, modes: readonly SearchMode[]) => {
+      const run = ++latest.current;
+      for (const mode of modes) {
+        void runSearch(client, mode, q).then((col) => {
+          if (run === latest.current) setColumns((cur) => ({ ...cur, [mode]: col }));
+        });
+      }
+    },
+    [client],
+  );
+
   function runModes(q: string, modes: readonly SearchMode[]) {
-    const run = ++latest.current;
     setColumns((cur) => ({ ...cur, ...Object.fromEntries(modes.map((m) => [m, { state: "loading" } as Column])) }));
-    for (const mode of modes) {
-      void runSearch(mode, q).then((col) => {
-        if (run === latest.current) setColumns((cur) => ({ ...cur, [mode]: col }));
-      });
-    }
+    startSearches(q, modes);
   }
+
+  useEffect(() => {
+    if (!restored) return;
+    startSearches(
+      restored,
+      MODES.map((m) => m.mode).filter((m) => client.getQueryData(compareKey(m, restored)) === undefined),
+    );
+  }, [client, restored, startSearches]);
 
   function submit(raw: string) {
     const q = raw.trim();
     if (!q) return;
+    writeStored(COMPARE_QUERY_STORAGE, q);
     setQuery(q);
     setSubmitted(q);
     setColumns({});

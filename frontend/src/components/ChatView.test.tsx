@@ -290,6 +290,7 @@ test("a cited document that is no longer listed keeps its title and says so; a f
   expect(await screen.findByText(/no longer in your library/)).toBeInTheDocument();
   first.unmount();
   resetSessionCache(); // the first render cached its documents list
+  sessionStorage.clear(); // and stored its conversation id
 
   routeFetch({
     "POST /api/chat/stream": answerWithSource,

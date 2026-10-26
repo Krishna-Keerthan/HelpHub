@@ -1,11 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { ApiError, useConversationMessages } from "@/lib/query/hooks";
+import { useIsClient } from "@/lib/session/use-is-client";
+import { clearStored, CONVERSATION_STORAGE, readStored, writeStored } from "@/lib/session/storage";
 import { ChatHttpError, streamChat } from "@/lib/api/client";
 import {
   applyEvent,
   CONNECTION_LOST_MESSAGE,
   chatHttpMessage,
+  messagesToTurns,
   newTurn,
   REFUSAL_MESSAGE,
   STREAM_CUT_OFF,
@@ -73,15 +77,47 @@ function Answer({ turn }: { turn: Turn }) {
   );
 }
 
+/** The restore reads sessionStorage, so the real view mounts only on the client (no hydration mismatch). */
 export function ChatView() {
+  return useIsClient() ? (
+    <ChatSession />
+  ) : (
+    <section className="flex flex-col gap-4">
+      <h1 className="text-xl font-semibold">Chat</h1>
+    </section>
+  );
+}
+
+function ChatSession() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [busy, setBusy] = useState(false);
-  const conversationId = useRef<string | null>(null);
+  // A stored conversation id (kept across a page change or refresh) is read once; its history is fetched
+  // and hydrated into the turns once, after which local state is authoritative as before.
+  const [restoreId] = useState(() => readStored(CONVERSATION_STORAGE));
+  const conversationId = useRef<string | null>(restoreId);
   const abort = useRef<AbortController | null>(null);
-  const nextId = useRef(1);
+  const [nextId, setNextId] = useState(1);
   const input = useRef<HTMLInputElement>(null);
+  const [hydrated, setHydrated] = useState(false);
+  const history = useConversationMessages(restoreId);
+  const gone = history.error instanceof ApiError && history.error.status === 404;
+  const restoring = restoreId !== null && !hydrated && !history.isError;
+
+  if (restoreId !== null && !hydrated && history.data && !history.isFetching && !history.isError) {
+    const restored = messagesToTurns(history.data);
+    setHydrated(true);
+    setTurns(restored.turns);
+    setNextId(restored.nextId);
+  }
 
   useEffect(() => () => abort.current?.abort(), []);
+
+  // The conversation is gone (or not ours): forget it, the next question starts a new one.
+  useEffect(() => {
+    if (!gone) return;
+    conversationId.current = null;
+    clearStored(CONVERSATION_STORAGE);
+  }, [gone]);
 
   const update = (id: number, fn: (t: Turn) => Turn) =>
     setTurns((cur) => cur.map((t) => (t.id === id ? fn(t) : t)));
@@ -90,7 +126,7 @@ export function ChatView() {
     e.preventDefault();
     const form = e.currentTarget;
     const message = String(new FormData(form).get("message") ?? "").trim();
-    if (!message || busy) return;
+    if (!message || busy || restoring) return;
     // Keep focus only if it was already in the form; never pull it from elsewhere.
     const focusWasInForm = form.contains(document.activeElement);
     form.reset();
@@ -98,7 +134,8 @@ export function ChatView() {
   }
 
   async function send(message: string, focusWasInForm: boolean) {
-    const id = nextId.current++;
+    const id = nextId;
+    setNextId(id + 1);
     setTurns((cur) => [...cur, newTurn(id, message)]);
     setBusy(true);
     abort.current = new AbortController();
@@ -109,6 +146,7 @@ export function ChatView() {
       )) {
         if ("conversation_id" in ev.data && ev.data.conversation_id) {
           conversationId.current = ev.data.conversation_id;
+          writeStored(CONVERSATION_STORAGE, ev.data.conversation_id);
         }
         update(id, (t) => applyEvent(t, ev));
       }
@@ -118,7 +156,10 @@ export function ChatView() {
       );
     } catch (err) {
       if (abort.current?.signal.aborted) return;
-      if (err instanceof ChatHttpError && err.status === 404) conversationId.current = null;
+      if (err instanceof ChatHttpError && err.status === 404) {
+        conversationId.current = null;
+        clearStored(CONVERSATION_STORAGE);
+      }
       const text = err instanceof ChatHttpError ? chatHttpMessage(err.status, err.retryAfter) : CONNECTION_LOST_MESSAGE;
       update(id, (t) => ({ ...t, status: "error", errorText: text }));
     } finally {
@@ -134,7 +175,15 @@ export function ChatView() {
   return (
     <section className="flex flex-col gap-4">
       <h1 className="text-xl font-semibold">Chat</h1>
-      {turns.length === 0 && (
+      {restoring && <Notice className="rounded">Loading conversation…</Notice>}
+      {history.isError && !gone && (
+        <p role="alert" className="text-sm text-danger">
+          {history.error instanceof ApiError
+            ? chatHttpMessage(history.error.status, history.error.retryAfter)
+            : CONNECTION_LOST_MESSAGE}
+        </p>
+      )}
+      {turns.length === 0 && !restoring && (
         <div className="rounded border border-dashed border-line p-6">
           <p className="text-center text-muted">
             Ask a question about your documents. HelpHub searches them and answers with citations to the documents it used.
@@ -145,7 +194,7 @@ export function ChatView() {
               <li key={q}>
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={busy || restoring}
                   onClick={() => void send(q, false)}
                   className="min-h-10 w-full rounded border border-control-border px-3 py-2 text-left text-sm disabled:opacity-50"
                 >
@@ -172,11 +221,12 @@ export function ChatView() {
           name="message"
           required
           maxLength={MAX_MESSAGE_CHARS}
+          disabled={restoring}
           aria-label="Your question"
           placeholder="Ask about your documents"
           className="min-h-10 flex-1 rounded border border-control-border bg-surface px-3 py-2 text-fg"
         />
-        <button type="submit" disabled={busy} className="min-h-10 rounded bg-accent px-4 py-2 text-accent-fg disabled:opacity-50">
+        <button type="submit" disabled={busy || restoring} className="min-h-10 rounded bg-accent px-4 py-2 text-accent-fg disabled:opacity-50">
           {busy ? "Answering…" : "Ask"}
         </button>
       </form>
