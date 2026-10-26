@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { chatHttpMessage, streamErrorMessage } from "./chat-state";
+import { chatHttpMessage, STREAM_CUT_OFF, STREAM_CUT_OFF_MESSAGE, streamErrorMessage } from "./chat-state";
 
 test("HTTP failures get a plain-language message and never expose backend text or status codes", () => {
   const cases: [number, number | null, RegExp][] = [
@@ -44,4 +44,10 @@ test("embedding_unavailable says the search service is down; unknown or missing 
   expect(streamErrorMessage("internal_error")).toBe(GENERIC);
   expect(streamErrorMessage("totally_new")).toBe(GENERIC);
   expect(streamErrorMessage(undefined)).toBe(GENERIC);
+});
+
+test("the client-side cut-off state has its own message and is not a documented backend code", () => {
+  expect(streamErrorMessage(STREAM_CUT_OFF)).toBe(STREAM_CUT_OFF_MESSAGE);
+  expect(DOCUMENTED_CODES).not.toContain(STREAM_CUT_OFF);
+  expect(STREAM_CUT_OFF_MESSAGE).not.toBe(GENERIC);
 });

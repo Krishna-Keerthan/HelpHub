@@ -8,6 +8,7 @@ import {
   chatHttpMessage,
   newTurn,
   REFUSAL_MESSAGE,
+  STREAM_CUT_OFF,
   streamErrorMessage,
   type Turn,
 } from "@/lib/ui/chat-state";
@@ -114,7 +115,7 @@ export function ChatView() {
       }
       // A stream that ends without done/error was cut off.
       update(id, (t) =>
-        t.status === "streaming" ? { ...t, status: "error", errorCode: "interrupted" } : t,
+        t.status === "streaming" ? { ...t, status: "error", errorCode: STREAM_CUT_OFF } : t,
       );
     } catch (err) {
       if (abort.current?.signal.aborted) return;

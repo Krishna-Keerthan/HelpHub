@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import { DEMO_QUERIES } from "@/lib/demo-queries";
+import { STREAM_CUT_OFF_MESSAGE, streamErrorMessage } from "@/lib/ui/chat-state";
 import { routeFetch, sse } from "@/test/fetch-mock";
 import { ChatView } from "./ChatView";
 
@@ -107,7 +108,7 @@ test("a stream that ends without done is reported, and the conversation id is re
   });
   render(<ChatView />);
   ask("one");
-  expect(await screen.findByRole("alert")).toHaveTextContent("Something went wrong");
+  expect(await screen.findByRole("alert")).toHaveTextContent(STREAM_CUT_OFF_MESSAGE);
   await waitFor(() => expect(screen.getByRole("button", { name: "Ask" })).toBeEnabled());
   ask("two");
   await waitFor(() => expect(f.calls).toHaveLength(2));
@@ -400,4 +401,17 @@ test("a network failure before any answer says the server could not be reached",
   const alert = await screen.findByRole("alert");
   expect(alert).toHaveTextContent("Could not reach the server");
   expect(alert).not.toHaveTextContent("Failed to fetch");
+});
+
+test("a stream that ends without done or error shows the cut-off message, not the generic one", async () => {
+  routeFetch({
+    "POST /api/chat/stream": () =>
+      sse(["sources", { conversation_id: "c1", sources: [] }], ["token", { text: "half an ans" }]),
+  });
+  render(<ChatView />);
+  ask("hello");
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent(STREAM_CUT_OFF_MESSAGE);
+  expect(alert.textContent).not.toBe(streamErrorMessage("internal_error"));
+  expect(screen.getByText("half an ans")).toBeInTheDocument();
 });

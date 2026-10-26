@@ -41,7 +41,16 @@ const IN_STREAM_ERRORS: Record<string, string> = {
   llm_empty_response: "The assistant did not produce an answer. Try rephrasing your question.",
 };
 
+/**
+ * Client-side state, not a backend error.code: the stream ended without a done or error event.
+ * Kept out of IN_STREAM_ERRORS, which maps only codes documented in docs/api/chat-stream.md.
+ */
+export const STREAM_CUT_OFF = "stream_cut_off";
+export const STREAM_CUT_OFF_MESSAGE =
+  "Something went wrong while answering: the connection dropped before the answer finished. Please ask again.";
+
 export function streamErrorMessage(code: string | undefined): string {
+  if (code === STREAM_CUT_OFF) return STREAM_CUT_OFF_MESSAGE;
   return (code && IN_STREAM_ERRORS[code]) || "Something went wrong while answering. Please try again.";
 }
 
