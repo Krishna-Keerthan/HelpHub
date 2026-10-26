@@ -81,17 +81,21 @@ From `backend/`, with `DATABASE_URL` (app role, session pooler), `MIGRATION_DATA
 `SEED_ADMIN_PASSWORD=... uv run python scripts/seed_tenant.py --name "Acme" --slug acme --email admin@acme.test`
 (omit the variable to be prompted). `scripts/` is not in the image; run it from a checkout.
 
+**Stale shell variables win.** An exported `DATABASE_URL`, `JWT_SECRET` or `MIGRATION_DATABASE_URL` left over from an earlier shell overrides the env file and `backend/.env` (exported variables take precedence). Re-export the values you mean, or open a fresh shell, before running this script, so it cannot hit the wrong database.
+
 ## Seeding the hosted demo tenant
 Prerequisite: the hosted tenant and its admin already exist (see "Creating tenants"). Run this in a SEPARATE terminal opened only for this job, from `backend/`.
 
-**How it works.** `scripts/create_viewer.py` and `scripts/load_demo_corpus.py` are plain HTTP clients (httpx). They log in with `POST /auth/login` and then call `POST /users` (create_viewer) or `GET /documents`, `POST /documents/upload`, `GET /documents/{id}` (load_demo_corpus). They never touch the database. So a locally running app, started with the hosted `DATABASE_URL`, is required: the app embeds the uploads and writes to the hosted database. (Alternative not covered here: point `BASE_URL` at the Render service and skip the local app. Embedding then runs on the 0.1 CPU instance.)
+**How it works.** `scripts/create_viewer.py` and `scripts/load_demo_corpus.py` are plain HTTP clients (httpx). They log in with `POST /auth/login` and then call `POST /users` (create_viewer) or `GET /documents`, `POST /documents/upload`, `GET /documents/{id}` (load_demo_corpus). They never touch the database. So a locally running app, started with the hosted `DATABASE_URL`, is required for the corpus: the app embeds the uploads and writes to the hosted database. The viewer alone can instead be created through the hosted API: see "Creating the viewer through the hosted API" below. (Pointing `load_demo_corpus.py` at Render too would run embedding on the 0.1 CPU instance; not covered here.)
+
+**Stale shell variables.** Exported `DATABASE_URL` / `JWT_SECRET` (and `MIGRATION_DATABASE_URL`, `BASE_URL`, `TENANT_SLUG`, `EMAIL`, `PASSWORD`) from an earlier shell override the env file and `backend/.env`. The steps below start by unsetting them and re-exporting from the files, but the safest course is a fresh terminal. If a value is not what you expect, stop: step 3 shows where the database variables point.
 
 | Variable | Used by | Source |
 |---|---|---|
 | `DATABASE_URL` (app role, `helphub_app`) | the local app | `~/.helphub-supabase.env` |
 | `JWT_SECRET` | the local app | `~/.helphub-supabase.env` |
 | `BASE_URL` (`http://127.0.0.1:8001`), `TENANT_SLUG`, `EMAIL`, `PASSWORD` (hosted tenant admin) | both scripts | `~/.helphub-hosted-creds` (below) |
-| `VIEWER_EMAIL`, `VIEWER_PASSWORD` | create_viewer only | typed into the shell, environment only |
+| `VIEWER_EMAIL`, `VIEWER_PASSWORD` | create_viewer only | typed into the shell, environment only. The email must differ from the admin's `EMAIL`. The password must be 12 to 128 characters (below) |
 
 `MIGRATION_DATABASE_URL` is never exported here. The app does not need it at runtime.
 
@@ -102,24 +106,28 @@ Prerequisite: the hosted tenant and its admin already exist (see "Creating tenan
 ```bash
 cd ~/projects/helphub/backend
 
+# 0. Drop anything left over from an earlier shell. A fresh terminal is safer still.
+#    (exit 1 in the checks below closes this throwaway terminal on purpose.)
+unset DATABASE_URL JWT_SECRET MIGRATION_DATABASE_URL BASE_URL TENANT_SLUG EMAIL PASSWORD VIEWER_EMAIL VIEWER_PASSWORD
+
 # 1. Export only DATABASE_URL and JWT_SECRET (nothing else from the file).
 for k in DATABASE_URL JWT_SECRET; do
   v=$(grep -E "^(export +)?$k=" ~/.helphub-supabase.env | tail -1 \
       | sed -E "s/^(export +)?$k=//; s/^['\"]//; s/['\"]$//")
-  [ -n "$v" ] || { echo "missing $k in ~/.helphub-supabase.env"; return 1 2>/dev/null; }
+  [ -n "$v" ] || { echo "missing $k in ~/.helphub-supabase.env"; exit 1; }
   export "$k=$v"
 done
-unset v MIGRATION_DATABASE_URL
+unset v
 
 # 2. Hosted tenant admin (all four keys, so ~/.helphub-local-creds is not used).
 for k in BASE_URL TENANT_SLUG EMAIL PASSWORD; do
   v=$(grep -E "^$k=" ~/.helphub-hosted-creds | tail -1 \
       | sed -E "s/^$k=//; s/^['\"]//; s/['\"]$//")
-  [ -n "$v" ] || { echo "missing $k in ~/.helphub-hosted-creds"; return 1 2>/dev/null; }
+  [ -n "$v" ] || { echo "missing $k in ~/.helphub-hosted-creds"; exit 1; }
   export "$k=$v"
 done
 unset v
-case "$BASE_URL" in http://127.0.0.1:8001|http://localhost:8001) ;; *) echo "BASE_URL must be the local app on :8001" ;; esac
+case "$BASE_URL" in http://127.0.0.1:8001|http://localhost:8001) ;; *) echo "BASE_URL must be the local app on :8001"; exit 1 ;; esac
 
 # 3. Check where the database variables point. Expected in THIS terminal only:
 #    DATABASE_URL (environment): hosted; MIGRATION_DATABASE_URL (environment): unset;
@@ -130,7 +138,12 @@ uv run python scripts/check_local_db.py
 # 4. Start the app on a port (no reload) and wait until it is ready.
 uv run fastapi run app/main.py --host 127.0.0.1 --port 8001 &
 APP_PID=$!
-until curl -fsS http://127.0.0.1:8001/health/ready >/dev/null 2>&1; do sleep 2; done
+ready=0
+for _ in $(seq 1 90); do                      # at most 90 x 2 s = 180 s
+  if curl -fsS http://127.0.0.1:8001/health/ready >/dev/null 2>&1; then ready=1; break; fi
+  sleep 2
+done
+[ "$ready" = 1 ] || { echo "app not ready after 180 s; stopping"; kill "$APP_PID"; exit 1; }
 
 # 5. Viewer, then corpus. Both are idempotent (existing viewer / existing titles are skipped).
 read -r -p "viewer email: " VIEWER_EMAIL; read -r -s -p "viewer password: " VIEWER_PASSWORD; echo
@@ -139,7 +152,44 @@ uv run python scripts/create_viewer.py       # prints created=N existing=N confl
 uv run python scripts/load_demo_corpus.py    # prints files= uploaded= skipped= failed= not_ready=
 ```
 
+**Viewer password rule.** `POST /users` takes `UserCreate` (`backend/app/schemas/user.py:14`, `password: NewPassword`), and `NewPassword` is a string of **12 to 128 characters** (`backend/app/schemas/types.py:13`, `min_length=12, max_length=128`). That schema has no other rule (no digit or symbol requirement); this was checked in the schema only, not in every service. `create_viewer.py` does not pre-check the length: a shorter password makes the API reject the request and the script prints `create failed: HTTP <status>` and exits 1 (`backend/scripts/create_viewer.py`). The email is lowercased by the script and the schema.
+
 Expect `conflicts=0` and `failed=0 not_ready=0`. Exit 0 from both scripts means success; a rerun should show `created=0 existing=1` and `uploaded=0 skipped=<files>`.
+
+### Creating the viewer through the hosted API
+`create_viewer.py` only needs an HTTP endpoint, so it can run against the Render service with no local app and no `DATABASE_URL` / `JWT_SECRET`. Use a fresh terminal (stale-variable warning above) and keep the hosted admin credentials in `~/.helphub-hosted-creds`, with `BASE_URL` set to the Render URL (`https://<service>.onrender.com`; the real URL is not recorded in the repo).
+
+**The viewer email must differ from the admin's `EMAIL`.** If the email already belongs to a user whose role is not `viewer`, the script reports `conflicts=1` and exits 1 without creating anything (`find_role` in `create_viewer.py`).
+
+```bash
+cd ~/projects/helphub/backend
+unset DATABASE_URL JWT_SECRET MIGRATION_DATABASE_URL BASE_URL TENANT_SLUG EMAIL PASSWORD VIEWER_EMAIL VIEWER_PASSWORD
+
+for k in BASE_URL TENANT_SLUG EMAIL PASSWORD; do
+  v=$(grep -E "^$k=" ~/.helphub-hosted-creds | tail -1 \
+      | sed -E "s/^$k=//; s/^['\"]//; s/['\"]$//")
+  [ -n "$v" ] || { echo "missing $k in ~/.helphub-hosted-creds"; exit 1; }
+  export "$k=$v"
+done
+unset v
+case "$BASE_URL" in https://*.onrender.com) ;; *) echo "BASE_URL is not the Render URL"; exit 1 ;; esac
+
+# Free-tier cold start is about a minute (Render's figure). Wake it first, bounded.
+ready=0
+for _ in $(seq 1 30); do                      # at most 30 x 5 s = 150 s
+  if curl -fsS "$BASE_URL/health" >/dev/null 2>&1; then ready=1; break; fi
+  sleep 5
+done
+[ "$ready" = 1 ] || { echo "service not up after 150 s; stopping"; exit 1; }
+
+read -r -p "viewer email (not the admin's): " VIEWER_EMAIL
+[ "$VIEWER_EMAIL" != "$EMAIL" ] || { echo "viewer email must differ from the admin email"; exit 1; }
+read -r -s -p "viewer password (12-128 chars): " VIEWER_PASSWORD; echo
+export VIEWER_EMAIL VIEWER_PASSWORD
+uv run python scripts/create_viewer.py        # created=1 existing=0 conflicts=0; a rerun: created=0 existing=1
+unset BASE_URL TENANT_SLUG EMAIL PASSWORD VIEWER_EMAIL VIEWER_PASSWORD
+```
+Login is rate limited per account (5 per 60 s, AR-19), so do not loop the script. Nothing here has been run against Render.
 
 **Closing the terminal.** Never run `pytest`, `scripts/gate.sh` or `scripts/flake_hunt.sh` in this terminal: this shell holds the hosted `DATABASE_URL`. When done:
 
