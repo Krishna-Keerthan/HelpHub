@@ -19,7 +19,7 @@ import {
 import { displayCitations } from "@/lib/ui/citation-display";
 import { Notice } from "./Notice";
 import { SourceChips } from "./SourceChips";
-import { buttonClass, emptyClass, inputClass, titleClass } from "./ui/styles";
+import { buttonClass, emptyClass, headingClass, inputClass, titleClass } from "./ui/styles";
 import { DEMO_QUERIES } from "@/lib/demo-queries";
 
 const MAX_MESSAGE_CHARS = 2000;
@@ -191,15 +191,15 @@ function ChatSession() {
           <p className="text-center text-muted">
             Ask a question about your documents. HelpHub searches them and answers with citations to the documents it used.
           </p>
-          <p className="mt-4 text-sm font-medium">Try one of these:</p>
-          <ul aria-label="Suggested questions" className="mt-2 flex flex-col gap-2">
+          <p className="mt-6 text-sm font-medium">Try one of these:</p>
+          <ul aria-label="Suggested questions" className="mt-2 grid gap-2 sm:grid-cols-2">
             {DEMO_QUERIES.map((q) => (
               <li key={q}>
                 <button
                   type="button"
                   disabled={busy || restoring}
                   onClick={() => void send(q, false)}
-                  className={`${buttonClass({ variant: "secondary", block: true })} justify-start text-left`}
+                  className={`${buttonClass({ variant: "secondary", block: true })} h-full justify-start py-2 text-left`}
                 >
                   {q}
                 </button>
@@ -208,11 +208,11 @@ function ChatSession() {
           </ul>
         </div>
       )}
-      <ol aria-label="Conversation" className="space-y-6">
+      <ol aria-label="Conversation" className="divide-y divide-line">
         {turns.map((t) => (
-          <li key={t.id}>
-            <p className="break-words font-medium">{t.question}</p>
-            <div className="mt-1 text-fg" aria-live="polite" aria-busy={t.status === "streaming"}>
+          <li key={t.id} className="py-6 first:pt-0 last:pb-0">
+            <p className={`break-words ${headingClass}`}>{t.question}</p>
+            <div className="mt-2 text-fg" aria-live="polite" aria-busy={t.status === "streaming"}>
               <Answer turn={t} />
             </div>
           </li>

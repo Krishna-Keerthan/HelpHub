@@ -13,7 +13,7 @@ const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
   primary: "bg-accent text-accent-fg not-disabled:hover:bg-accent-hover",
   secondary: "border border-control-border bg-surface text-fg not-disabled:hover:bg-chip",
   ghost: "text-fg not-disabled:hover:bg-chip",
-  danger: "text-danger not-disabled:hover:bg-chip",
+  danger: "text-danger not-disabled:hover:bg-bad-bg",
 };
 
 type ButtonOptions = {
@@ -45,8 +45,9 @@ export function chipClass(size: "sm" | "md" = "md"): string {
   return `inline-flex items-center rounded-full border border-line bg-chip text-left text-fg motion-safe:transition-colors hover:border-control-border ${sizes[size]}`;
 }
 
-/** Raised panel: source panel, compare hit. */
-export const cardClass = "rounded-lg border border-line bg-surface-raised p-4";
+/** Raised surface without padding (login card, document list), and the padded card used for source panel and compare hits. */
+export const panelClass = "rounded-lg border border-line bg-surface-raised";
+export const cardClass = `${panelClass} p-4`;
 
 /** Dashed placeholder for "nothing here yet". */
 export const emptyClass = "rounded-lg border border-dashed border-line p-6";

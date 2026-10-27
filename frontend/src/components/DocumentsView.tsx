@@ -7,7 +7,7 @@ import { afterDocumentsChanged } from "@/lib/query/invalidate";
 import { ApiError, queryKeys, useDocuments, useMe, type Doc } from "@/lib/query/hooks";
 import { Notice } from "./Notice";
 import { StatusPill } from "./ui/StatusPill";
-import { buttonClass, captionClass, emptyClass, titleClass } from "./ui/styles";
+import { buttonClass, captionClass, emptyClass, panelClass, titleClass } from "./ui/styles";
 import { failureMessage, MAX_UPLOAD_BYTES, uploadTooLargeMessage } from "@/lib/ui/failure";
 
 
@@ -100,11 +100,11 @@ export function DocumentsView() {
 
   return (
     <section>
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <h1 className={titleClass}>Documents</h1>
-        {readOnly && <span className="ml-auto text-sm text-muted">Read-only account: uploads are disabled.</span>}
+      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <h1 className={`mr-auto ${titleClass}`}>Documents</h1>
+        {readOnly && <span className="order-last basis-full text-sm text-muted">Read-only account: uploads are disabled.</span>}
         {canWrite && (
-        <label className={`ml-auto ${buttonClass({ variant: "primary", label: true })}`}>
+        <label className={buttonClass({ variant: "primary", label: true })}>
           {uploading ? "Uploading…" : "Upload"}
           <input
             ref={fileInput}
@@ -120,7 +120,7 @@ export function DocumentsView() {
           />
         </label>
         )}
-        <button type="button" className={`${buttonClass({ variant: "ghost" })}${canWrite ? "" : " ml-3"}`} onClick={reload}>
+        <button type="button" className={buttonClass({ variant: "ghost" })} onClick={reload}>
           Refresh
         </button>
       </div>
@@ -145,9 +145,9 @@ export function DocumentsView() {
           <p className="mt-1 text-sm text-muted">Upload a file up to 4 MB and it becomes searchable in chat.</p>
         </div>
       ) : (
-        <ul aria-label="Documents" className="divide-y divide-line">
+        <ul aria-label="Documents" className={`divide-y divide-line px-4 ${panelClass}`}>
           {docs.map((d) => (
-            <li key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+            <li key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3">
               <span className="min-w-0 flex-1 basis-40 truncate">{d.title}</span>
               <StatusPill status={d.status} />
               {canDelete && (

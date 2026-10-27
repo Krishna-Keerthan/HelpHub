@@ -226,16 +226,29 @@ function CompareSession() {
         <p className="text-sm text-muted">Enter a question to see what each retrieval mode returns.</p>
       ) : (
         <>
-        <p className="mb-3 text-sm">{compareIntro(submitted)}</p>
-        <div className="grid gap-6 sm:grid-cols-3">
+        <p className={`mb-4 ${captionClass}`}>{compareIntro(submitted)}</p>
+        {/* sm and up: each column spans three shared rows (heading, notes, results) so the first cards line up. */}
+        <div className="grid gap-y-8 sm:grid-cols-3 sm:gap-x-6 sm:gap-y-0">
           {MODES.map(({ mode, label }, i) => {
             const col = visible[i] ? columns[mode] : undefined;
             const headingId = `compare-${mode}`;
+            const hasHits = col !== undefined && col.state !== "loading" && col.state !== "error" && col.hits.length > 0;
             return (
-              <section key={mode} aria-labelledby={headingId} className="min-w-0">
+              <section key={mode} aria-labelledby={headingId} className="min-w-0 sm:row-span-3 sm:grid sm:grid-rows-subgrid">
                 <h2 id={headingId} className={`mb-2 ${headingClass}`}>
                   {label}
                 </h2>
+                {/* Reserved height keeps the cards from jumping when a later column's notes appear during the reveal. */}
+                <div className="sm:min-h-24">
+                  {hasHits && (
+                    <>
+                      <p className={`mb-2 ${captionClass}`}>{columnCaption(mode)}</p>
+                      {mode === "keyword" && <p className={`mb-2 ${captionClass}`}>{RANK_ONLY_NOTE}</p>}
+                      {mode === "hybrid" && <p className={`mb-2 ${captionClass}`}>{HYBRID_NOTE}</p>}
+                    </>
+                  )}
+                </div>
+                <div>
                 {!col || col.state === "loading" ? (
                   <Notice>Searching…</Notice>
                 ) : col.state === "error" ? (
@@ -260,9 +273,6 @@ function CompareSession() {
                   <p className={`${emptyClass} text-sm text-muted`}>No results.</p>
                 ) : (
                   <>
-                  <p className={`mb-2 ${captionClass}`}>{columnCaption(mode)}</p>
-                  {mode === "keyword" && <p className={`mb-2 ${captionClass}`}>{RANK_ONLY_NOTE}</p>}
-                  {mode === "hybrid" && <p className={`mb-2 ${captionClass}`}>{HYBRID_NOTE}</p>}
                   <ol aria-label={`${label} results`} className="space-y-3">
                     {col.hits.map((h, n) => (
                       <li key={h.chunk_id} className={`${cardClass} text-sm`}>
@@ -290,6 +300,7 @@ function CompareSession() {
                   </ol>
                   </>
                 )}
+                </div>
               </section>
             );
           })}

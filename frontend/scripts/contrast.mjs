@@ -33,7 +33,7 @@ const PAIRS = [
   ["accent-fg", "accent-hover", 4.5, "primary button hover"],
   ["danger", "surface", 4.5, "error text, delete button"],
   ["danger", "surface-raised", 4.5, "error text inside cards"],
-  ["danger", "chip", 4.5, "delete button hover"],
+  ["danger", "bad-bg", 4.5, "delete button hover"],
   ["ok", "ok-bg", 4.5, "READY pill"],
   ["warn", "warn-bg", 4.5, "PENDING pill"],
   ["bad", "bad-bg", 4.5, "FAILED pill"],
