@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 import AppLayout from "./layout";
 
@@ -25,4 +25,17 @@ test("main is widened only for pages that mark themselves wide", () => {
   render(<AppLayout><p>content</p></AppLayout>);
   expect(screen.getByRole("main").className).toContain("max-w-3xl");
   expect(screen.getByRole("main").className).toContain("has-[[data-wide]]:max-w-5xl");
+});
+
+test("header renders all three section links in order, each inside the labelled navigation", () => {
+  render(<AppLayout><p>content</p></AppLayout>);
+  const links = within(screen.getByRole("navigation", { name: "Main" })).getAllByRole("link");
+  expect(links.map((l) => l.textContent)).toEqual(["Documents", "Chat", "Compare"]);
+  expect(links.map((l) => l.getAttribute("href"))).toEqual(["/documents", "/chat", "/compare"]);
+});
+
+test("the nav is not a scroll container, so focus rings cannot be clipped", () => {
+  render(<AppLayout><p>content</p></AppLayout>);
+  expect(screen.getByRole("navigation", { name: "Main" }).className).not.toMatch(/overflow/);
+  expect(screen.getByRole("banner").innerHTML).not.toMatch(/overflow/);
 });
