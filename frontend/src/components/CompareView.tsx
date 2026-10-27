@@ -27,6 +27,7 @@ import { COMPARE_KEY } from "@/lib/query/invalidate";
 import { useIsClient } from "@/lib/session/use-is-client";
 import { COMPARE_QUERY_STORAGE, readStored, writeStored } from "@/lib/session/storage";
 import { Notice } from "./Notice";
+import { buttonClass, cardClass, captionClass, chipClass, emptyClass, headingClass, inputClass, titleClass } from "./ui/styles";
 
 const RESULTS_PER_MODE = 5; // same as the backend default; the generated type requires it
 /** How long one mode's results for one query are reused from the in-memory cache (a choice, see D15). */
@@ -84,7 +85,7 @@ export function CompareView() {
     <CompareSession />
   ) : (
     <section data-wide>
-      <h1 className="mb-4 text-xl font-semibold">Compare retrieval</h1>
+      <h1 className={`mb-4 ${titleClass}`}>Compare retrieval</h1>
     </section>
   );
 }
@@ -185,7 +186,7 @@ function CompareSession() {
 
   return (
     <section data-wide>
-      <h1 className="mb-4 text-xl font-semibold">Compare retrieval</h1>
+      <h1 className={`mb-4 ${titleClass}`}>Compare retrieval</h1>
       <p className="mb-4 max-w-prose text-sm text-muted">
         Each column shows the passages (pieces of your documents) that one retrieval mode returns for the same question.
         Vector compares meaning: it returns the passages closest to the question. Keyword matches the words and codes
@@ -206,16 +207,16 @@ function CompareSession() {
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="min-h-10 min-w-0 flex-1 basis-60 rounded border border-control-border bg-surface px-3"
+          className={`min-w-0 flex-1 basis-60 ${inputClass}`}
         />
-        <button type="submit" className="min-h-10 rounded bg-accent px-4 text-sm text-accent-fg">
+        <button type="submit" className={buttonClass({ variant: "primary" })}>
           Compare
         </button>
       </form>
       <ul aria-label="Suggested queries" className="mb-4 flex flex-wrap gap-2">
         {DEMO_QUERIES.map((q) => (
           <li key={q}>
-            <button type="button" className="min-h-10 rounded-full bg-chip px-3 text-sm" onClick={() => submit(q)}>
+            <button type="button" className={chipClass("md")} onClick={() => submit(q)}>
               {q}
             </button>
           </li>
@@ -232,11 +233,11 @@ function CompareSession() {
             const headingId = `compare-${mode}`;
             return (
               <section key={mode} aria-labelledby={headingId} className="min-w-0">
-                <h2 id={headingId} className="mb-2 font-semibold">
+                <h2 id={headingId} className={`mb-2 ${headingClass}`}>
                   {label}
                 </h2>
                 {!col || col.state === "loading" ? (
-                  <Notice className="rounded">Searching…</Notice>
+                  <Notice>Searching…</Notice>
                 ) : col.state === "error" ? (
                   <div>
                     <p role="alert" className="mb-2 text-sm text-danger">
@@ -245,7 +246,7 @@ function CompareSession() {
                     <button
                       type="button"
                       aria-label={`Retry ${label}`}
-                      className="min-h-10 rounded border border-control-border px-3 text-sm"
+                      className={buttonClass({ variant: "secondary" })}
                       onClick={() => {
                         setFloor(revealed);
                         setRetried((cur) => new Set(cur).add(mode));
@@ -256,15 +257,15 @@ function CompareSession() {
                     </button>
                   </div>
                 ) : col.hits.length === 0 ? (
-                  <p className="rounded border border-dashed border-line p-4 text-sm text-muted">No results.</p>
+                  <p className={`${emptyClass} text-sm text-muted`}>No results.</p>
                 ) : (
                   <>
-                  <p className="mb-2 text-xs text-muted">{columnCaption(mode)}</p>
-                  {mode === "keyword" && <p className="mb-2 text-xs text-muted">{RANK_ONLY_NOTE}</p>}
-                  {mode === "hybrid" && <p className="mb-2 text-xs text-muted">{HYBRID_NOTE}</p>}
+                  <p className={`mb-2 ${captionClass}`}>{columnCaption(mode)}</p>
+                  {mode === "keyword" && <p className={`mb-2 ${captionClass}`}>{RANK_ONLY_NOTE}</p>}
+                  {mode === "hybrid" && <p className={`mb-2 ${captionClass}`}>{HYBRID_NOTE}</p>}
                   <ol aria-label={`${label} results`} className="space-y-3">
                     {col.hits.map((h, n) => (
-                      <li key={h.chunk_id} className="rounded border border-line p-3 text-sm">
+                      <li key={h.chunk_id} className={`${cardClass} text-sm`}>
                         <p className="text-xs font-medium" title={RANK_HELP}>
                           {whyListed(h, mode)}
                         </p>
@@ -273,13 +274,13 @@ function CompareSession() {
                           <span className="min-w-0 break-words font-medium">{h.document_title}</span>
                         </div>
                         {showsSimilarity(mode) && h.score !== null && (
-                          <p className="text-xs text-muted" title={SIMILARITY_HELP}>
+                          <p className={captionClass} title={SIMILARITY_HELP}>
                             Similarity {h.score.toFixed(3)}
                             <span className="sr-only"> ({SIMILARITY_HELP})</span>
                           </p>
                         )}
                         {unique.get(mode)?.has(h.document_id) && (
-                          <p className="mt-1 inline-block rounded bg-info px-2 py-0.5 text-xs text-info-fg">
+                          <p className="mt-1 inline-block rounded-md bg-info px-2 py-0.5 text-xs text-info-fg">
                             Only in this list
                           </p>
                         )}

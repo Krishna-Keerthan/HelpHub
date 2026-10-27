@@ -24,13 +24,24 @@ const ratio = (a, b) => {
 // [foreground token, background token, minimum ratio, where it is used]
 const PAIRS = [
   ["fg", "surface", 4.5, "body text"],
-  ["fg", "chip", 4.5, "citation chips"],
+  ["fg", "surface-raised", 4.5, "cards, panels"],
+  ["fg", "chip", 4.5, "citation chips, ghost hover"],
   ["muted", "surface", 4.5, "hints, empty states"],
+  ["muted", "surface-raised", 4.5, "hints inside cards"],
+  ["muted", "chip", 4.5, "nav links on hover, neutral status pill"],
   ["accent-fg", "accent", 4.5, "primary buttons, skip link"],
-  ["danger", "surface", 4.5, "error text"],
+  ["accent-fg", "accent-hover", 4.5, "primary button hover"],
+  ["danger", "surface", 4.5, "error text, delete button"],
+  ["danger", "surface-raised", 4.5, "error text inside cards"],
+  ["danger", "chip", 4.5, "delete button hover"],
+  ["ok", "ok-bg", 4.5, "READY pill"],
+  ["warn", "warn-bg", 4.5, "PENDING pill"],
+  ["bad", "bad-bg", 4.5, "FAILED pill"],
   ["info-fg", "info", 4.5, "status notices"],
   ["accent", "surface", 3, "focus ring (non-text, 3:1)"],
+  ["accent", "surface-raised", 3, "focus ring inside cards (non-text, 3:1)"],
   ["control-border", "surface", 3, "input/button borders (non-text, 3:1)"],
+  ["control-border", "surface-raised", 3, "controls inside cards (non-text, 3:1)"],
 ];
 // Reported but not enforced: --line is decorative only (dividers, dashed placeholders), not a control border.
 const INFO_PAIRS = [["line", "surface", 3, "decorative dividers"]];

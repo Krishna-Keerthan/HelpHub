@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { NavLink } from "@/components/ui/NavLink";
 import { LogoutButton } from "@/components/LogoutButton";
 import { WakingBanner } from "@/components/WakingBanner";
 
@@ -8,23 +8,25 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <>
       <a
         href="#content"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:rounded focus:bg-accent focus:px-3 focus:py-2 focus:text-accent-fg"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:rounded-md focus:bg-accent focus:px-3 focus:py-2 focus:text-accent-fg"
       >
         Skip to content
       </a>
       <WakingBanner />
-      <header className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-line px-4 py-3">
-        <span className="font-semibold">HelpHub</span>
-        <nav aria-label="Main" className="flex gap-4 text-sm">
-          <Link href="/documents">Documents</Link>
-          <Link href="/chat">Chat</Link>
-          <Link href="/compare">Compare</Link>
-        </nav>
-        <div className="ml-auto">
-          <LogoutButton />
+      <header className="border-b border-line bg-surface-raised">
+        <div className="mx-auto flex max-w-5xl items-center gap-x-2 px-4 py-2 sm:gap-x-4">
+          <span className="shrink-0 font-semibold tracking-tight">HelpHub</span>
+          <nav aria-label="Main" className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
+            <NavLink href="/documents">Documents</NavLink>
+            <NavLink href="/chat">Chat</NavLink>
+            <NavLink href="/compare">Compare</NavLink>
+          </nav>
+          <div className="shrink-0">
+            <LogoutButton />
+          </div>
         </div>
       </header>
-      <main id="content" tabIndex={-1} className="mx-auto max-w-3xl p-4 focus:outline-none has-[[data-wide]]:max-w-5xl">{children}</main>
+      <main id="content" tabIndex={-1} className="mx-auto max-w-3xl p-4 sm:py-6 focus:outline-none has-[[data-wide]]:max-w-5xl">{children}</main>
     </>
   );
 }

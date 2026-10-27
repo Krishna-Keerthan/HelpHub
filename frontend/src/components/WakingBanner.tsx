@@ -8,5 +8,5 @@ export function WakingBanner() {
   const [waking, setWaking] = useState(false);
   useEffect(() => onServiceWaking(setWaking), []);
   if (!waking) return null;
-  return <Notice>The service is waking up. This can take up to a minute.</Notice>;
+  return <Notice square>The service is waking up. This can take up to a minute.</Notice>;
 }

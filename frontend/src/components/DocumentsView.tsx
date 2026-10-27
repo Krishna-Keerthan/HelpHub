@@ -6,6 +6,8 @@ import { api, retryAfterSeconds } from "@/lib/api/client";
 import { afterDocumentsChanged } from "@/lib/query/invalidate";
 import { ApiError, queryKeys, useDocuments, useMe, type Doc } from "@/lib/query/hooks";
 import { Notice } from "./Notice";
+import { StatusPill } from "./ui/StatusPill";
+import { buttonClass, captionClass, emptyClass, titleClass } from "./ui/styles";
 import { failureMessage, MAX_UPLOAD_BYTES, uploadTooLargeMessage } from "@/lib/ui/failure";
 
 
@@ -99,10 +101,10 @@ export function DocumentsView() {
   return (
     <section>
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-semibold">Documents</h1>
+        <h1 className={titleClass}>Documents</h1>
         {readOnly && <span className="ml-auto text-sm text-muted">Read-only account: uploads are disabled.</span>}
         {canWrite && (
-        <label className="ml-auto inline-flex min-h-10 cursor-pointer items-center rounded bg-accent px-3 text-sm text-accent-fg focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent">
+        <label className={`ml-auto ${buttonClass({ variant: "primary", label: true })}`}>
           {uploading ? "Uploading…" : "Upload"}
           <input
             ref={fileInput}
@@ -118,12 +120,12 @@ export function DocumentsView() {
           />
         </label>
         )}
-        <button type="button" className={`min-h-10 px-1 text-sm underline${canWrite ? "" : " ml-3"}`} onClick={reload}>
+        <button type="button" className={`${buttonClass({ variant: "ghost" })}${canWrite ? "" : " ml-3"}`} onClick={reload}>
           Refresh
         </button>
       </div>
       {canWrite && (
-        <p id="upload-hint" className="mb-3 text-xs text-muted">Files up to 4 MB. Plain-text documents are also capped at about 500,000 extracted characters.</p>
+        <p id="upload-hint" className={`mb-3 ${captionClass}`}>Files up to 4 MB. Plain-text documents are also capped at about 500,000 extracted characters.</p>
       )}
       {message && (
         <p role="alert" className="mb-3 text-sm text-danger">
@@ -131,14 +133,14 @@ export function DocumentsView() {
         </p>
       )}
       {loadFailed && (
-        <button type="button" className="mb-3 min-h-10 rounded border border-control-border px-3 text-sm" onClick={reload}>
+        <button type="button" className={`mb-3 ${buttonClass({ variant: "secondary" })}`} onClick={reload}>
           Try again
         </button>
       )}
       {docs === null ? (
-        !message && <Notice className="rounded">Loading documents…</Notice>
+        !message && <Notice>Loading documents…</Notice>
       ) : docs.length === 0 ? (
-        <div className="rounded border border-dashed border-line p-6 text-center">
+        <div className={`${emptyClass} text-center`}>
           <p>No documents yet.</p>
           <p className="mt-1 text-sm text-muted">Upload a file up to 4 MB and it becomes searchable in chat.</p>
         </div>
@@ -147,12 +149,12 @@ export function DocumentsView() {
           {docs.map((d) => (
             <li key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
               <span className="min-w-0 flex-1 basis-40 truncate">{d.title}</span>
-              <span className="text-xs text-muted">{d.status}</span>
+              <StatusPill status={d.status} />
               {canDelete && (
                 <button
                   type="button"
                   aria-label={`Delete ${d.title}`}
-                  className="min-h-10 px-1 text-sm text-danger underline"
+                  className={buttonClass({ variant: "danger" })}
                   onClick={() => void onDelete(d)}
                 >
                   Delete
