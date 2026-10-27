@@ -1,4 +1,6 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { render } from "@/test/render";
+import { resetSessionCache } from "@/lib/query/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { routeFetch } from "@/test/fetch-mock";
 import { DEMO_QUERIES } from "@/lib/demo-queries";
@@ -482,6 +484,7 @@ test("unmounting mid-reveal leaves no pending timers", async () => {
   await search();
   await tick(50);
   unmount();
+  resetSessionCache(); // the query cache's own garbage-collection timers are not the component's
   expect(vi.getTimerCount()).toBe(0);
 });
 

@@ -10,7 +10,11 @@ export type Doc = components["schemas"]["DocumentRead"];
 export const queryKeys = {
   documents: ["documents"] as const,
   me: ["me"] as const,
+  conversation: (id: string) => ["conversation", id] as const,
 };
+
+/** The server returns at most this many messages per read; a longer conversation shows its first ones (D15). */
+export const HISTORY_LIMIT = 200;
 
 const POLL_MS = 4000;
 
@@ -51,6 +55,27 @@ export function useMe() {
       if (!data) throw new ApiError(response.status, retryAfterSeconds(response));
       if (typeof role !== "string") throw new ApiError(response.status, null);
       return { role };
+    },
+  });
+}
+
+/**
+ * GET /conversations/{id}/messages for a chat that is being restored. Always refetched on mount: the server
+ * is the source of truth until the page hydrates once; after that local state is authoritative.
+ */
+export function useConversationMessages(id: string | null) {
+  return useQuery({
+    queryKey: queryKeys.conversation(id ?? ""),
+    enabled: id !== null,
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      const { data, response } = await api.GET("/conversations/{conversation_id}/messages", {
+        params: { path: { conversation_id: id! }, query: { limit: HISTORY_LIMIT } },
+      });
+      if (!data) throw new ApiError(response.status, retryAfterSeconds(response));
+      return data;
     },
   });
 }
