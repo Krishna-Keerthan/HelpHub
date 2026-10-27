@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { logout } from "@/lib/api/client";
+import { buttonClass } from "@/components/ui/styles";
 
 export function LogoutButton() {
   const [busy, setBusy] = useState(false);
@@ -9,7 +10,7 @@ export function LogoutButton() {
     <button
       type="button"
       disabled={busy}
-      className="min-h-10 px-1 text-sm underline disabled:opacity-50"
+      className={buttonClass({ variant: "ghost" })}
       onClick={async () => {
         setBusy(true);
         try {

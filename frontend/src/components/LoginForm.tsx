@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { demoLogin, login } from "@/lib/api/client";
 import { failureMessage, safeNext } from "@/lib/ui/failure";
+import { buttonClass, captionClass, inputClass } from "./ui/styles";
 
 export function LoginForm({ demoAvailable = false }: { demoAvailable?: boolean }) {
   const router = useRouter();
@@ -61,7 +62,7 @@ export function LoginForm({ demoAvailable = false }: { demoAvailable?: boolean }
     }
   }
 
-  const input = "mt-1 min-h-10 w-full rounded border border-control-border bg-surface px-3 py-2 text-fg";
+  const input = `mt-1 w-full ${inputClass}`;
   return (
     <>
     <form onSubmit={onSubmit} className="space-y-4" aria-label="Log in">
@@ -85,7 +86,7 @@ export function LoginForm({ demoAvailable = false }: { demoAvailable?: boolean }
       <button
         type="submit"
         disabled={busy}
-        className="min-h-10 w-full rounded bg-accent px-3 py-2 text-accent-fg disabled:opacity-50"
+        className={buttonClass({ variant: "primary", block: true })}
       >
         {busy ? "Logging in…" : "Log in"}
       </button>
@@ -95,11 +96,11 @@ export function LoginForm({ demoAvailable = false }: { demoAvailable?: boolean }
         type="button"
         onClick={() => void onDemo()}
         disabled={busy || !demoAvailable}
-        className="min-h-10 w-full rounded border border-control-border px-3 py-2 disabled:opacity-50"
+        className={buttonClass({ variant: "secondary", block: true })}
       >
         Try the demo
       </button>
-      <p className="mt-2 text-xs text-muted">
+      <p className={`mt-2 ${captionClass}`}>
         {demoAvailable
           ? "The demo is a shared, read-only account. Other visitors may see your conversations, so do not enter personal information."
           : "The demo is not configured on this server."}

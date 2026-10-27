@@ -19,6 +19,7 @@ import {
 import { displayCitations } from "@/lib/ui/citation-display";
 import { Notice } from "./Notice";
 import { SourceChips } from "./SourceChips";
+import { buttonClass, emptyClass, headingClass, inputClass, titleClass } from "./ui/styles";
 import { DEMO_QUERIES } from "@/lib/demo-queries";
 
 const MAX_MESSAGE_CHARS = 2000;
@@ -33,7 +34,7 @@ function Searching() {
     return () => clearTimeout(t);
   }, []);
   return (
-    <Notice className="mt-1 rounded">
+    <Notice className="mt-2">
       {slow ? "Waking the server, this can take about a minute…" : "Searching your documents…"}
     </Notice>
   );
@@ -67,7 +68,7 @@ function Answer({ turn }: { turn: Turn }) {
       )}
       {turn.status === "streaming" && !turn.answer && turn.sources.length === 0 && <Searching />}
       {turn.status === "streaming" && !turn.answer && turn.sources.length > 0 && (
-        <Notice className="mt-1 rounded">Found {turn.sources.length} matching {turn.sources.length === 1 ? "passage" : "passages"}. Writing the answer…</Notice>
+        <Notice className="mt-2">Found {turn.sources.length} matching {turn.sources.length === 1 ? "passage" : "passages"}. Writing the answer…</Notice>
       )}
       {turn.status === "streaming" && turn.answer && (
         <span aria-hidden="true" data-testid="streaming-indicator" className="inline-block motion-safe:animate-pulse">▍</span>
@@ -83,7 +84,7 @@ export function ChatView() {
     <ChatSession />
   ) : (
     <section className="flex flex-col gap-4">
-      <h1 className="text-xl font-semibold">Chat</h1>
+      <h1 className={titleClass}>Chat</h1>
     </section>
   );
 }
@@ -176,8 +177,8 @@ function ChatSession() {
 
   return (
     <section className="flex flex-col gap-4">
-      <h1 className="text-xl font-semibold">Chat</h1>
-      {restoring && <Notice className="rounded">Loading conversation…</Notice>}
+      <h1 className={titleClass}>Chat</h1>
+      {restoring && <Notice>Loading conversation…</Notice>}
       {history.isError && !gone && !alertDismissed && (
         <p role="alert" className="text-sm text-danger">
           {history.error instanceof ApiError
@@ -186,19 +187,19 @@ function ChatSession() {
         </p>
       )}
       {turns.length === 0 && !restoring && (
-        <div className="rounded border border-dashed border-line p-6">
+        <div className={emptyClass}>
           <p className="text-center text-muted">
             Ask a question about your documents. HelpHub searches them and answers with citations to the documents it used.
           </p>
-          <p className="mt-4 text-sm font-medium">Try one of these:</p>
-          <ul aria-label="Suggested questions" className="mt-2 flex flex-col gap-2">
+          <p className="mt-6 text-sm font-medium">Try one of these:</p>
+          <ul aria-label="Suggested questions" className="mt-2 grid gap-2 sm:grid-cols-2">
             {DEMO_QUERIES.map((q) => (
               <li key={q}>
                 <button
                   type="button"
                   disabled={busy || restoring}
                   onClick={() => void send(q, false)}
-                  className="min-h-10 w-full rounded border border-control-border px-3 py-2 text-left text-sm disabled:opacity-50"
+                  className={`${buttonClass({ variant: "secondary", block: true })} h-full justify-start py-2 text-left`}
                 >
                   {q}
                 </button>
@@ -207,11 +208,11 @@ function ChatSession() {
           </ul>
         </div>
       )}
-      <ol aria-label="Conversation" className="space-y-6">
+      <ol aria-label="Conversation" className="divide-y divide-line">
         {turns.map((t) => (
-          <li key={t.id}>
-            <p className="break-words font-medium">{t.question}</p>
-            <div className="mt-1 text-fg" aria-live="polite" aria-busy={t.status === "streaming"}>
+          <li key={t.id} className="py-6 first:pt-0 last:pb-0">
+            <p className={`break-words ${headingClass}`}>{t.question}</p>
+            <div className="mt-2 text-fg" aria-live="polite" aria-busy={t.status === "streaming"}>
               <Answer turn={t} />
             </div>
           </li>
@@ -226,9 +227,9 @@ function ChatSession() {
           disabled={restoring}
           aria-label="Your question"
           placeholder="Ask about your documents"
-          className="min-h-10 flex-1 rounded border border-control-border bg-surface px-3 py-2 text-fg"
+          className={`flex-1 ${inputClass}`}
         />
-        <button type="submit" disabled={busy || restoring} className="min-h-10 rounded bg-accent px-4 py-2 text-accent-fg disabled:opacity-50">
+        <button type="submit" disabled={busy || restoring} className={buttonClass({ variant: "primary" })}>
           {busy ? "Answering…" : "Ask"}
         </button>
       </form>

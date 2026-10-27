@@ -4,46 +4,72 @@
 :root {
   color-scheme: light dark;
   --surface: #ffffff;
+  --surface-raised: #fafafa;
   --fg: #18181b;
   --muted: #52525b;
-  --line: #d4d4d8;
+  --line: #c4c4cb;
   --control-border: #71717a;
   --chip: #f4f4f5;
   --accent: #1d4ed8;
+  --accent-hover: #1e40af;
   --accent-fg: #ffffff;
   --danger: #b91c1c;
   --info: #fef3c7;
   --info-fg: #78350f;
+  --ok: #166534;
+  --ok-bg: #dcfce7;
+  --warn: #92400e;
+  --warn-bg: #fef3c7;
+  --bad: #991b1b;
+  --bad-bg: #fee2e2;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --surface: #111113;
+    --surface-raised: #18181b;
     --fg: #f4f4f5;
     --muted: #a1a1aa;
     --line: #3f3f46;
     --control-border: #71717a;
     --chip: #27272a;
     --accent: #60a5fa;
+    --accent-hover: #93c5fd;
     --accent-fg: #0b1220;
     --danger: #f87171;
     --info: #422006;
     --info-fg: #fde68a;
+    --ok: #86efac;
+    --ok-bg: #052e16;
+    --warn: #fcd34d;
+    --warn-bg: #422006;
+    --bad: #fca5a5;
+    --bad-bg: #450a0a;
   }
 }
 
 @theme inline {
   --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
   --color-fg: var(--fg);
   --color-muted: var(--muted);
   --color-line: var(--line);
   --color-control-border: var(--control-border);
   --color-chip: var(--chip);
   --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
   --color-accent-fg: var(--accent-fg);
   --color-danger: var(--danger);
   --color-info: var(--info);
   --color-info-fg: var(--info-fg);
+  --color-ok: var(--ok);
+  --color-ok-bg: var(--ok-bg);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  --color-bad: var(--bad);
+  --color-bad-bg: var(--bad-bg);
+  /* --font-inter is set on <html> by next/font in app/layout.tsx. */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
 /* Visible keyboard focus everywhere; components never remove it. */

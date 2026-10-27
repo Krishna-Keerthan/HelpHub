@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { NavLink } from "@/components/ui/NavLink";
 import { LogoutButton } from "@/components/LogoutButton";
 import { WakingBanner } from "@/components/WakingBanner";
 
@@ -8,23 +8,29 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <>
       <a
         href="#content"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:rounded focus:bg-accent focus:px-3 focus:py-2 focus:text-accent-fg"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:rounded-md focus:bg-accent focus:px-3 focus:py-2 focus:text-accent-fg"
       >
         Skip to content
       </a>
+      {/* Named group: the header's inner width follows main (max-w-3xl, or 5xl when a page has [data-wide]). */}
+      <div className="group/shell">
       <WakingBanner />
-      <header className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-line px-4 py-3">
-        <span className="font-semibold">HelpHub</span>
-        <nav aria-label="Main" className="flex gap-4 text-sm">
-          <Link href="/documents">Documents</Link>
-          <Link href="/chat">Chat</Link>
-          <Link href="/compare">Compare</Link>
-        </nav>
-        <div className="ml-auto">
-          <LogoutButton />
+      <header className="border-b border-line bg-surface-raised">
+        {/* Phone: brand and Log out on row one, the nav wraps below. sm and up: one row. No overflow, so focus rings are never clipped. */}
+        <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 group-has-[[data-wide]]/shell:max-w-5xl sm:gap-x-4">
+          <span className="order-1 shrink-0 font-semibold tracking-tight">HelpHub</span>
+          <nav aria-label="Main" className="order-3 flex basis-full flex-wrap gap-1 sm:order-2 sm:basis-auto sm:flex-1">
+            <NavLink href="/documents">Documents</NavLink>
+            <NavLink href="/chat">Chat</NavLink>
+            <NavLink href="/compare">Compare</NavLink>
+          </nav>
+          <div className="order-2 ml-auto shrink-0 sm:order-3 sm:ml-0">
+            <LogoutButton />
+          </div>
         </div>
       </header>
-      <main id="content" tabIndex={-1} className="mx-auto max-w-3xl p-4 focus:outline-none has-[[data-wide]]:max-w-5xl">{children}</main>
+      <main id="content" tabIndex={-1} className="mx-auto max-w-3xl p-4 sm:py-6 focus:outline-none has-[[data-wide]]:max-w-5xl">{children}</main>
+      </div>
     </>
   );
 }

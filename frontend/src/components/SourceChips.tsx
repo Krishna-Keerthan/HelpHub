@@ -3,6 +3,7 @@
 import { useId, useState } from "react";
 import { useDocuments } from "@/lib/query/hooks";
 import type { ChatSource } from "@/lib/api/sse";
+import { cardClass, captionClass, chipClass } from "@/components/ui/styles";
 
 /**
  * Titles come from the shared documents query. It is not requested until a chip is used, but a list
@@ -31,7 +32,7 @@ export function SourceChips({ sources }: { sources: ChatSource[] }) {
                 setUsed(true);
                 setOpenIndex((cur) => (cur === s.index ? null : s.index));
               }}
-              className="min-h-8 rounded-full bg-chip px-3 py-0.5 text-left text-xs"
+              className={chipClass("sm")}
             >
               [{s.index}] {titleOf(s)}
             </button>
@@ -39,12 +40,12 @@ export function SourceChips({ sources }: { sources: ChatSource[] }) {
         ))}
       </ul>
       {open && (
-        <div id={panelId} role="region" aria-label={`Source ${open.index}`} className="mt-2 rounded border border-line p-3 text-sm">
+        <div id={panelId} role="region" aria-label={`Source ${open.index}`} className={`mt-2 text-sm ${cardClass}`}>
           <p className="font-medium">{titleOf(open)}</p>
           {gone(open) && (
-            <p className="mt-1 text-xs text-muted">This document is no longer in your library.</p>
+            <p className={`mt-1 ${captionClass}`}>This document is no longer in your library.</p>
           )}
-          <p className="mt-2 text-xs text-muted">
+          <p className={`mt-2 ${captionClass}`}>
             The answer does not include the cited passage, so only the document is shown.
           </p>
         </div>
