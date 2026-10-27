@@ -23,13 +23,13 @@ The backend runs on a free hosting tier and sleeps after a period without traffi
 
 ## Screenshots
 
-![Chat in dark theme: an answer with numbered citation chips](docs/images/chat-dark.png)
+![Chat in dark theme: an answer with a citation chip and its source](docs/images/chat-dark.png)
 
 ![Compare page in light theme: vector, keyword and hybrid results side by side](docs/images/compare-light.png)
 
 ![Documents page in dark theme](docs/images/documents-dark.png)
 
-![The light/dark theme toggle](docs/images/theme-toggle.png)
+![Header in light theme with the theme toggle button next to Log out](docs/images/toggle-light.png)
 
 ## What it does
 
