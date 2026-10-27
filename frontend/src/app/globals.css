@@ -1,51 +1,39 @@
 @import "tailwindcss";
 
-/* Semantic colour tokens. Components use these names, never raw palette colours. */
+/*
+ * Semantic colour tokens. Components use these names, never raw palette colours.
+ * Each token is defined once as light-dark(<light>, <dark>); color-scheme picks the side.
+ * Default follows the OS; the hh_theme cookie (see app/layout.tsx) sets data-theme to force one.
+ */
 :root {
   color-scheme: light dark;
-  --surface: #ffffff;
-  --surface-raised: #fafafa;
-  --fg: #18181b;
-  --muted: #52525b;
-  --line: #c4c4cb;
-  --control-border: #71717a;
-  --chip: #f4f4f5;
-  --accent: #1d4ed8;
-  --accent-hover: #1e40af;
-  --accent-fg: #ffffff;
-  --danger: #b91c1c;
-  --info: #fef3c7;
-  --info-fg: #78350f;
-  --ok: #166534;
-  --ok-bg: #dcfce7;
-  --warn: #92400e;
-  --warn-bg: #fef3c7;
-  --bad: #991b1b;
-  --bad-bg: #fee2e2;
+  --surface: light-dark(#ffffff, #111113);
+  --surface-raised: light-dark(#fafafa, #18181b);
+  --fg: light-dark(#18181b, #f4f4f5);
+  --muted: light-dark(#52525b, #a1a1aa);
+  --line: light-dark(#c4c4cb, #3f3f46);
+  --control-border: light-dark(#71717a, #71717a);
+  --chip: light-dark(#f4f4f5, #27272a);
+  --accent: light-dark(#1d4ed8, #60a5fa);
+  --accent-hover: light-dark(#1e40af, #93c5fd);
+  --accent-fg: light-dark(#ffffff, #0b1220);
+  --danger: light-dark(#b91c1c, #f87171);
+  --info: light-dark(#fef3c7, #422006);
+  --info-fg: light-dark(#78350f, #fde68a);
+  --ok: light-dark(#166534, #86efac);
+  --ok-bg: light-dark(#dcfce7, #052e16);
+  --warn: light-dark(#92400e, #fcd34d);
+  --warn-bg: light-dark(#fef3c7, #422006);
+  --bad: light-dark(#991b1b, #fca5a5);
+  --bad-bg: light-dark(#fee2e2, #450a0a);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --surface: #111113;
-    --surface-raised: #18181b;
-    --fg: #f4f4f5;
-    --muted: #a1a1aa;
-    --line: #3f3f46;
-    --control-border: #71717a;
-    --chip: #27272a;
-    --accent: #60a5fa;
-    --accent-hover: #93c5fd;
-    --accent-fg: #0b1220;
-    --danger: #f87171;
-    --info: #422006;
-    --info-fg: #fde68a;
-    --ok: #86efac;
-    --ok-bg: #052e16;
-    --warn: #fcd34d;
-    --warn-bg: #422006;
-    --bad: #fca5a5;
-    --bad-bg: #450a0a;
-  }
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 @theme inline {

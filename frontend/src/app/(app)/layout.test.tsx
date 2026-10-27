@@ -39,3 +39,9 @@ test("the nav is not a scroll container, so focus rings cannot be clipped", () =
   expect(screen.getByRole("navigation", { name: "Main" }).className).not.toMatch(/overflow/);
   expect(screen.getByRole("banner").innerHTML).not.toMatch(/overflow/);
 });
+
+test("header order: skip link first, then the nav links, then the theme toggle, then Log out", () => {
+  render(<AppLayout><p>content</p></AppLayout>);
+  const order = Array.from(document.body.querySelectorAll("a, button")).map((el) => el.getAttribute("aria-label") ?? el.textContent);
+  expect(order).toEqual(["Skip to content", "Documents", "Chat", "Compare", "Switch to dark theme", "Log out"]);
+});
