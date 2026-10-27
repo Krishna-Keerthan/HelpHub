@@ -20,14 +20,16 @@ type ButtonOptions = {
   variant?: ButtonVariant;
   /** Stretch to the container width (login form). */
   block?: boolean;
+  /** Square icon-only button (40 px wide), no horizontal padding. */
+  icon?: boolean;
   /** For a <label> that wraps a visually hidden file input: pointer cursor and a ring when the input has focus. */
   label?: boolean;
 };
 
-export function buttonClass({ variant = "secondary", block = false, label = false }: ButtonOptions = {}): string {
+export function buttonClass({ variant = "secondary", block = false, label = false, icon = false }: ButtonOptions = {}): string {
   return [
     BUTTON_BASE,
-    "min-h-10 px-4",
+    icon ? "min-h-10 min-w-10 px-0" : "min-h-10 px-4",
     BUTTON_VARIANTS[variant],
     block && "w-full",
     label && "cursor-pointer focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent",

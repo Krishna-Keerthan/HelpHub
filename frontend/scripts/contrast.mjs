@@ -1,16 +1,32 @@
-// WCAG 2.x contrast of the token pairs in src/app/globals.css (light and dark).
-// Checks token pairs only, not the rendered page. Usage: node scripts/contrast.mjs
+// WCAG 2.x contrast of the token pairs in src/app/globals.css (light and dark sides of light-dark()).
+// Checks token pairs only, not the rendered page. Usage: node scripts/contrast.mjs [css file]
 import { readFileSync } from "node:fs";
 
-const css = readFileSync(new URL("../src/app/globals.css", import.meta.url), "utf8");
+// Optional first argument: another CSS file to check (the tests use it for a negative control).
+const cssPath = process.argv[2] ?? new URL("../src/app/globals.css", import.meta.url);
+const css = readFileSync(cssPath, "utf8");
 
-function vars(block) {
-  return Object.fromEntries([...block.matchAll(/--([\w-]+):\s*(#[0-9a-fA-F]{6})\s*;/g)].map((m) => [m[1], m[2]]));
-}
+// Each token is `--name: light-dark(<light hex>, <dark hex>);` in the first `:root { }` block.
 const rootBlock = css.match(/:root\s*{([^}]*)}/)[1];
-const darkBlock = css.match(/prefers-color-scheme:\s*dark\)\s*{\s*:root\s*{([^}]*)}/)[1];
-const light = vars(rootBlock);
-const dark = { ...light, ...vars(darkBlock) };
+const light = {};
+const dark = {};
+for (const m of rootBlock.matchAll(/--([\w-]+):\s*light-dark\(\s*(#[0-9a-fA-F]{6})\s*,\s*(#[0-9a-fA-F]{6})\s*\)\s*;/g)) {
+  light[m[1]] = m[2];
+  dark[m[1]] = m[3];
+}
+// A token that is not in light-dark() form would be skipped silently, so count declarations too.
+const declared = [...rootBlock.matchAll(/--[\w-]+:/g)].length;
+if (declared !== Object.keys(light).length || declared === 0) {
+  console.error(`${declared} tokens declared in :root but ${Object.keys(light).length} parsed as light-dark(#hex, #hex)`);
+  process.exit(1);
+}
+// The theme switch itself: an explicit data-theme must pin color-scheme to one side.
+for (const t of ["light", "dark"]) {
+  if (!new RegExp(`:root\\[data-theme="${t}"\\]\\s*{[^}]*color-scheme:\\s*${t}\\s*;`).test(css)) {
+    console.error(`missing :root[data-theme="${t}"] { color-scheme: ${t} }`);
+    process.exit(1);
+  }
+}
 
 const lum = (hex) => {
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
