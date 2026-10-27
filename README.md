@@ -29,8 +29,6 @@ The backend runs on a free hosting tier and sleeps after a period without traffi
 
 ![Documents page in dark theme](docs/images/documents-dark.png)
 
-![Header in light theme with the theme toggle button next to Log out](docs/images/toggle-light.png)
-
 ## What it does
 
 - Accepts `.txt`, `.md` and `.pdf` uploads, splits them into chunks and embeds each chunk.
