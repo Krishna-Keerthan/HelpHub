@@ -1,6 +1,7 @@
 import { NavLink } from "@/components/ui/NavLink";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { LogoutButton } from "@/components/LogoutButton";
+import { UsersNavLink } from "@/components/UsersNavLink";
 import { WakingBanner } from "@/components/WakingBanner";
 
 /** Server-rendered shell only: it never calls the backend. Data loads in client components. */
@@ -24,6 +25,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <NavLink href="/documents">Documents</NavLink>
             <NavLink href="/chat">Chat</NavLink>
             <NavLink href="/compare">Compare</NavLink>
+            <UsersNavLink />
           </nav>
           <div className="order-2 ml-auto flex shrink-0 items-center gap-1 sm:order-3 sm:ml-0">
             <ThemeToggle />

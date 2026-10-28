@@ -84,6 +84,14 @@ From `backend/`, with `DATABASE_URL` (app role, session pooler), `MIGRATION_DATA
 
 **Stale shell variables win.** An exported `DATABASE_URL`, `JWT_SECRET` or `MIGRATION_DATABASE_URL` left over from an earlier shell overrides the env file and `backend/.env` (exported variables take precedence). Re-export the values you mean, or open a fresh shell, before running this script, so it cannot hit the wrong database.
 
+## Onboarding a closed-beta workspace
+Registration is closed (no `/register` page). Steps:
+1. A request arrives by email from the home page's "Request access" link: workspace name, workspace slug and admin email. It must never contain a password; if one is sent, treat it as exposed.
+2. Check the slug is lowercase letters, digits and hyphens and is not taken, then create the tenant and its admin with `scripts/seed_tenant.py` as in "Creating tenants" above.
+3. Send the workspace slug, admin email and initial password to the requester outside email (a channel they already use with you; not the request thread).
+4. The admin signs in and adds the rest of the team at `/users` (roles admin, agent, viewer; the page can generate a password, shown once). Those passwords are also shared outside email.
+5. There is no password reset or deactivate endpoint yet (decisions.md D17): a forgotten password means creating a new user with a different email, and a user cannot be removed from the UI.
+
 ## Seeding the hosted demo tenant
 Prerequisite: the hosted tenant and its admin already exist (see "Creating tenants"). Run this in a SEPARATE terminal opened only for this job, from `backend/`.
 
