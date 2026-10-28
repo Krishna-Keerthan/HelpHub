@@ -14,3 +14,9 @@ export function requestAccessHref(contactEmail: string | undefined): string | nu
   if (!to) return null;
   return `mailto:${encodeURIComponent(to).replace(/%40/g, "@")}?subject=${encodeURIComponent(ACCESS_SUBJECT)}&body=${encodeURIComponent(BODY)}`;
 }
+
+/** Plain mailto link to the contact address, or null when it is not configured. */
+export function contactHref(contactEmail: string | undefined): string | null {
+  const to = contactEmail?.trim();
+  return to ? `mailto:${encodeURIComponent(to).replace(/%40/g, "@")}` : null;
+}

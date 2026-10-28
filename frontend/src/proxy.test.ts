@@ -26,10 +26,11 @@ test("only the exact home path is public", () => {
   }
 });
 
-test("the public image path is excluded by the matcher, similar paths are not", () => {
+test("the matcher covers the home page and protected pages, and leaves static assets and the API alone", () => {
   const re = new RegExp(`^${config.matcher[0]}$`);
-  expect(re.test("/home/chat-dark.png")).toBe(false);
   expect(re.test("/")).toBe(true);
-  expect(re.test("/homefoo/x.png")).toBe(true);
   expect(re.test("/documents")).toBe(true);
+  expect(re.test("/home/chat-dark.png")).toBe(true); // no public image path any more: it is protected like any page
+  expect(re.test("/_next/static/x.js")).toBe(false);
+  expect(re.test("/api/documents")).toBe(false);
 });
