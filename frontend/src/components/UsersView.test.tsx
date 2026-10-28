@@ -49,7 +49,7 @@ test("admin sees the list with email, role and status", async () => {
   expect(items[1]).toHaveTextContent(/v@x\.co.*viewer.*Inactive/);
 });
 
-async function fillAndSubmit(password = "correct-horse-battery") {
+async function fillAndSubmit(password = "twelve-plus-chars") {
   await screen.findByRole("form", { name: "Add a user" });
   fireEvent.change(screen.getByLabelText("Email"), { target: { value: "new@x.co" } });
   fireEvent.change(screen.getByLabelText("Role"), { target: { value: "viewer" } });
@@ -71,12 +71,12 @@ test("add success posts the body, refetches the list and clears the form", async
   await fillAndSubmit();
   expect(await screen.findByText("new@x.co", { selector: "span" })).toBeInTheDocument();
   expect(await f.calls.find((c) => c.key === "POST /api/users")!.req.json()).toEqual({
-    email: "new@x.co", role: "viewer", password: "correct-horse-battery",
+    email: "new@x.co", role: "viewer", password: "twelve-plus-chars",
   });
   expect(f.keys().filter((k) => k === "GET /api/users")).toHaveLength(2);
   expect(screen.getByLabelText("Password")).toHaveValue("");
   expect(screen.getByRole("status")).toHaveTextContent("Added new@x.co");
-  expect(document.body.textContent).not.toContain("correct-horse-battery");
+  expect(document.body.textContent).not.toContain("twelve-plus-chars");
 });
 
 test.each([

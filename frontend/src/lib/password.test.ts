@@ -1,12 +1,12 @@
 import { expect, test, vi } from "vitest";
-import { generatePassword, GENERATED_LENGTH, PASSWORD_CHARSET, passwordLengthOk } from "./password";
+import { generatePassword, GENERATED_LENGTH, GENERATED_ALPHABET, passwordLengthOk } from "./password";
 
 test("is 16 characters from the charset only", () => {
   for (let i = 0; i < 200; i++) {
     const p = generatePassword();
     expect(p).toHaveLength(16);
     expect(GENERATED_LENGTH).toBe(16);
-    for (const c of p) expect(PASSWORD_CHARSET).toContain(c);
+    for (const c of p) expect(GENERATED_ALPHABET).toContain(c);
   }
 });
 
@@ -19,7 +19,7 @@ test("uses crypto.getRandomValues and differs between calls", () => {
 });
 
 test("rejects bytes that would bias the choice", () => {
-  const n = PASSWORD_CHARSET.length;
+  const n = GENERATED_ALPHABET.length;
   const limit = 256 - (256 % n);
   let first = true;
   const spy = vi.spyOn(crypto, "getRandomValues").mockImplementation(((a: Uint8Array) => {
@@ -27,7 +27,7 @@ test("rejects bytes that would bias the choice", () => {
     first = false;
     return a;
   }) as typeof crypto.getRandomValues);
-  expect(generatePassword(4)).toBe(PASSWORD_CHARSET[0]!.repeat(4));
+  expect(generatePassword(4)).toBe(GENERATED_ALPHABET[0]!.repeat(4));
   spy.mockRestore();
 });
 

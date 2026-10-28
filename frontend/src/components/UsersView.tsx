@@ -13,7 +13,7 @@ import { buttonClass, captionClass, cardClass, headingClass, inputClass, panelCl
 type Role = UserRow["role"];
 
 const NOT_ADMIN_MESSAGE = "Only workspace admins can manage users.";
-const PASSWORD_HELP = `Use ${PASSWORD_MIN} to ${PASSWORD_MAX} characters.`;
+const LENGTH_HINT = `Use ${PASSWORD_MIN} to ${PASSWORD_MAX} characters.`;
 
 function addErrorMessage(status: number, retryAfter: number | null): string {
   if (status === 409) return "A user with this email already exists in this workspace.";
@@ -147,7 +147,7 @@ function AdminUsers() {
               className={`mt-1 w-full ${inputClass}`}
             />
           </label>
-          <p id="password-help" className={`mt-1 ${captionClass}`}>{PASSWORD_HELP} Share it outside email.</p>
+          <p id="password-help" className={`mt-1 ${captionClass}`}>{LENGTH_HINT} Share it outside email.</p>
           <button type="button" onClick={onGenerate} className={`mt-2 ${buttonClass({ variant: "secondary" })}`}>
             Generate password
           </button>
