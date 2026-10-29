@@ -3,7 +3,7 @@ import { cardClass, headingClass } from "@/components/ui/styles";
 // Each entry is something the code does today (evidence is in the PR notes).
 export const FEATURES = [
   { title: "Cited answers", text: "Chat answers point to the passages and documents they came from, shown as source chips." },
-  { title: "Honest “not found”", text: "When nothing in your documents answers the question, HelpHub says so instead of guessing." },
+  { title: "Honest “not found”", text: "Unrelated questions are refused. Close-but-unanswered questions can still get an answer built from the nearest passages, so check the cited sources." },
   { title: "Compare search modes", text: "Run the same query through vector, keyword and hybrid search and see the results side by side." },
   { title: "Document upload", text: "Upload .txt, .md and .pdf files; each shows its processing status (pending, ready or failed)." },
   { title: "Separate workspaces", text: "Every workspace is its own tenant: its data is filtered by tenant and protected by row-level security in the database." },

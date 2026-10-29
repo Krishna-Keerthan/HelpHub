@@ -39,6 +39,19 @@ test("hero: badge, headline, both actions, demo caption, cold-start line, mock c
   expect(screen.queryAllByRole("img")).toHaveLength(0);
 });
 
+test("not-found claims are no stronger than the measured gate behaviour", async () => {
+  await page();
+  const claim = /Unrelated questions are refused/;
+  const near = /answer built from the nearest passages/;
+  expect(screen.getByRole("heading", { level: 1 }).parentElement).toHaveTextContent(claim);
+  expect(screen.getByRole("heading", { level: 1 }).parentElement).toHaveTextContent(near);
+  expect(document.getElementById("features")).toHaveTextContent(claim);
+  expect(document.getElementById("features")).toHaveTextContent(near);
+  expect(document.getElementById("faq")).toHaveTextContent(claim);
+  expect(document.getElementById("faq")).toHaveTextContent(near);
+  expect(document.body).not.toHaveTextContent(/instead of guessing/);
+});
+
 test("navbar: wordmark, anchors to the sections, theme toggle, Sign in and Request access", async () => {
   await page();
   const header = screen.getByRole("banner");

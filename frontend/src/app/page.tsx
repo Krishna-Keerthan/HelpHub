@@ -35,8 +35,8 @@ export default async function Home() {
             <span className={chipClass("sm")}>Closed beta</span>
             <h1 className="mt-5 text-4xl font-semibold tracking-tight sm:text-5xl lg:text-6xl">Answers from your own support documents</h1>
             <p className="mt-5 max-w-xl text-lg text-muted">
-              Ask in plain language. Every answer cites the passages it came from, or HelpHub honestly says it found nothing
-              instead of guessing.
+              Ask in plain language. Answers cite the passages they came from. Unrelated questions are refused; close-but-unanswered
+              questions can still get an answer built from the nearest passages.
             </p>
             <div className="mt-8">
               <HomeActions demoAvailable={missingDemoVars().length === 0}>

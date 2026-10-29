@@ -2,7 +2,7 @@ import { panelClass } from "@/components/ui/styles";
 
 export const FAQ = [
   { q: "How do I get access?", a: "HelpHub is in closed beta and has no public sign-up. Request access by email; the operator creates your workspace and its first admin, and that admin then adds teammates." },
-  { q: "What happens when my documents do not contain the answer?", a: "HelpHub replies that it couldn’t find anything in your knowledge base that answers the question, instead of guessing." },
+  { q: "What happens when my documents do not contain the answer?", a: "Unrelated questions are refused with a not-found reply. Close-but-unanswered questions can still get an answer built from the nearest passages, so check the cited sources." },
   { q: "Are workspaces isolated from each other?", a: "Yes in design: every record belongs to a tenant, queries filter by tenant, and the database enforces row-level security on top." },
   { q: "Which files can I upload, and how big?", a: "Plain text (.txt), Markdown (.md) and PDF (.pdf). In this app a file can be up to 4 MB, and the extracted text is limited to about 500,000 characters." },
   { q: "What can each role do?", a: "Admins add users and can upload and delete documents. Agents can upload documents. Viewers are read-only: they can read documents, chat and search." },
