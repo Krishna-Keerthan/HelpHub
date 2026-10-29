@@ -109,6 +109,8 @@ Guard: `tests/security/test_route_auth_coverage.py` enforces auth on every route
 - **Overall coverage:** not measured (no DB). `pytest-cov` is installed (commit 6f2e2db).
 
 ### AR entries marked pre-deploy
+_Snapshot of 2026-10-17, not kept up to date. The live register is [`docs/review/accepted-risks.md`](../review/accepted-risks.md); where the two differ, the register wins._
+
 | ID | Condition | Status |
 |---|---|---|
 | AR-07 | login rate limit, "Before public deploy (Day 12)" | Open: no limiter in `app/` |

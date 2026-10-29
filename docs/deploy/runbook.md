@@ -104,6 +104,7 @@ Prerequisite: the hosted tenant and its admin already exist (see "Creating tenan
 | `DATABASE_URL` (app role, `helphub_app`) | the local app | `~/.helphub-supabase.env` |
 | `JWT_SECRET` | the local app | `~/.helphub-supabase.env` |
 | `BASE_URL` (`http://127.0.0.1:8001`), `TENANT_SLUG`, `EMAIL`, `PASSWORD` (hosted tenant admin) | both scripts | `~/.helphub-hosted-creds` (below) |
+| `BASE_URL`, `SMOKE_TENANT_SLUG`, `SMOKE_EMAIL`, `SMOKE_PASSWORD` | `scripts/smoke_live.py` only (it does NOT read `TENANT_SLUG`, `EMAIL`, `PASSWORD` or the creds-file fallback) | map them from the hosted creds file, see "Live smoke test" below |
 | `VIEWER_EMAIL`, `VIEWER_PASSWORD` | create_viewer only | typed into the shell, environment only. The email must differ from the admin's `EMAIL`. The password must be 12 to 128 characters (below) |
 
 `MIGRATION_DATABASE_URL` is never exported here. The app does not need it at runtime.
@@ -199,6 +200,17 @@ uv run python scripts/create_viewer.py        # created=1 existing=0 conflicts=0
 unset BASE_URL TENANT_SLUG EMAIL PASSWORD VIEWER_EMAIL VIEWER_PASSWORD
 ```
 Login is rate limited per account (5 per 60 s, AR-19), so do not loop the script. Nothing here has been run against Render.
+
+**Live smoke test.** `scripts/smoke_live.py` reads `BASE_URL`, `SMOKE_TENANT_SLUG`, `SMOKE_EMAIL` and `SMOKE_PASSWORD`, so map the hosted creds file onto them in a subshell (nothing stays exported; `BASE_URL` must be the Render URL, not a local one). It does real writes: it uploads a document, then deletes it.
+
+```bash
+( set -a; . ~/.helphub-hosted-creds; set +a
+  BASE_URL="https://<service>.onrender.com" \
+  SMOKE_TENANT_SLUG="$TENANT_SLUG" SMOKE_EMAIL="$EMAIL" SMOKE_PASSWORD="$PASSWORD" \
+  uv run python scripts/smoke_live.py )
+echo "exit=$?"
+```
+Expected: one line per step (login, upload, wait_ready, search, chat_stream, delete, logout) and `SMOKE OK`. Run 2026-10-29: all steps ok, exit 0.
 
 **Closing the terminal.** Never run `pytest`, `scripts/gate.sh` or `scripts/flake_hunt.sh` in this terminal: this shell holds the hosted `DATABASE_URL`. When done:
 
