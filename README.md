@@ -9,7 +9,7 @@ A multi-tenant support knowledge engine: each company uploads its documents to a
 
 **<https://frontend-two-blush-lan0ovha4l.vercel.app>**
 
-Open the login page and press **Try the demo**. It signs you in to a shared, read-only demo workspace; no account is needed. Sign-up is closed: new workspaces are created by the operator, not through the UI (`docs/deploy/runbook.md`, "Creating tenants").
+Open the login page and press **Try the demo**. It signs you in to a shared, read-only demo workspace; no account is needed. **Closed beta.** Sign-up is closed: new workspaces are created by the operator, not through the UI (`docs/deploy/runbook.md`, "Creating tenants").
 
 Questions worth trying in Chat (the same five appear as buttons on the Compare page; they are chosen to show where keyword, vector and hybrid search differ):
 
