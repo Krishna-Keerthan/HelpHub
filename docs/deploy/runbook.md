@@ -199,7 +199,7 @@ export VIEWER_EMAIL VIEWER_PASSWORD
 uv run python scripts/create_viewer.py        # created=1 existing=0 conflicts=0; a rerun: created=0 existing=1
 unset BASE_URL TENANT_SLUG EMAIL PASSWORD VIEWER_EMAIL VIEWER_PASSWORD
 ```
-Login is rate limited per account (5 per 60 s, AR-19), so do not loop the script. Nothing here has been run against Render.
+Login is rate limited per account (5 per 60 s, AR-19), so do not loop the script. These scripts were run on 2026-10-24 against the hosted Supabase database through a local app on :8001 (owner-reported); they have not been run against the Render service.
 
 **Live smoke test.** `scripts/smoke_live.py` reads `BASE_URL`, `SMOKE_TENANT_SLUG`, `SMOKE_EMAIL` and `SMOKE_PASSWORD`, so map the hosted creds file onto them in a subshell (nothing stays exported; `BASE_URL` must be the Render URL, not a local one). It does real writes: it uploads a document, then deletes it.
 
