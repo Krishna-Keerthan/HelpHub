@@ -46,7 +46,8 @@ Types are generated from `docs/api/openapi.json` once the backend shell commits 
 ## D5. Uploads: known limitation
 - Vercel caps a function request body at 4.5 MB (D1 sources). The backend's own limit is `max_upload_bytes = 5 * 1024 * 1024` (5 MiB) in `backend/app/core/config.py:70`. The Vercel cap is the tighter one.
 - The UI rejects files over **4 MB** (4 * 1024 * 1024 bytes) before sending, with a clear message; that leaves room for multipart overhead under 4.5 MB. No second upload path is built.
-- Whether a 4 MB file plus multipart overhead really passes Vercel's limit is unverified (not deployed).
+- The frontend is now deployed on Vercel, but no upload of a 4 MB file through the deployed site is recorded in the repo, so whether it passes Vercel's limit is still unverified. The only 4 MiB `.txt` upload on record went through a local dev server and was **rejected** with 413 `Document is too large` (`integration-checklist.md`, observed run 3, item 4.1); a 4 MiB PDF was accepted there, which says nothing about Vercel's limit.
+- The backend also limits extracted text to `max_document_chars = 500_000` (`backend/app/core/config.py:69`), checked in `backend/app/services/documents.py:75`. That is a count of characters, not bytes, and the repo records no byte equivalent for English text; the only byte statement in the code is that a character is at most 4 UTF-8 bytes (`backend/app/api/documents.py:29`). The 4 MiB UI cap is therefore not the effective limit for plain text, which is much lower. The 4.5 MB Vercel cap and the 5 MiB `max_upload_bytes` apply to the file, this limit to its extracted text.
 
 ## D6. Tooling notes
 - `openapi-typescript@7.13.0` declares `typescript@^5.x` as a peer; the project uses 6.0.3 (typescript-eslint requires `<6.1.0`, so 7.x is not usable). An npm `overrides` entry forces the peer to the project TypeScript. Generation and `tsc` both succeed with it; no deeper compatibility check was done.

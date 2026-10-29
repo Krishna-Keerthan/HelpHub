@@ -1,6 +1,6 @@
 # Deploying the frontend to Vercel
 
-**Status: not deployed. Nothing below has been verified on a real Vercel project.** Facts marked with a source were read from the official page on 2026-10-20; anything else is marked "unverified".
+**Status: deployed (Vercel project `frontend`; its `/login` page answers 200 and Vercel checks pass on pull requests). The settings below were not re-checked against the project's dashboard; anything not confirmed is marked "unverified".** Facts marked with a source were read from the official page on 2026-10-20; anything else is marked "unverified".
 
 ## Project settings (Project Settings -> Build and Deployment)
 | Setting | Value | Source / status |
@@ -45,5 +45,5 @@
 - Whether this project counts as non-commercial use is your call; I have not assessed it.
 
 ## Known gaps before relying on a deployment
-- CI workflow (`.github/workflows/frontend.yml`) has never run on GitHub: unverified.
+- CI workflow (`.github/workflows/frontend.yml`) runs on GitHub: `gh run list --workflow frontend.yml` showed successful runs on pull requests and on `main` (latest 2026-10-27, run 40512245380). It only runs when `frontend/`, `docs/api/` or the workflow changes.
 - Not measured: cold start through a deployed route, SSE buffering, 4 MB upload through Vercel. All listed in `integration-checklist.md`.

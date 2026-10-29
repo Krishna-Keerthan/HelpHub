@@ -36,7 +36,7 @@ All must hold, each checked by a command and recorded in `docs/cleanup/gate0.md`
 
 `POST /auth/register`, `POST /auth/login`, `GET /auth/me`, `GET /users`, `POST /users`, `GET /users/{id}`, `POST /documents`, `POST /documents/upload`, `GET /documents`, `GET /documents/{id}`, `DELETE /documents/{id}`, `POST /search`, `POST /chat/stream`, `GET /conversations`, `GET /conversations/{id}/messages`, `GET /health`. That is 16 of the current 20 routes. Session C adds `GET /health/ready` (replacing `/health/db`), `POST /auth/refresh` and `POST /auth/logout`, for 19 in total.
 
-**Registration default:** `allow_public_registration` defaults to `False` from Session C onward and is switched to `True` as the very last step of the whole project, after Gate 0, the soak and the frontend. Until then, tenants are created by a seed script run by the owner. **VERIFY** in Session A that no test depends on the current default of `True` (tests that need registration must set it explicitly).
+**Registration default:** `allow_public_registration` defaults to `False` from Session C onward and stays off for the closed beta; tenants are created by the operator with `scripts/seed_tenant.py`. **VERIFY** in Session A that no test depends on the current default of `True` (tests that need registration must set it explicitly).
 
 ## 4. Session A: baseline, spikes, and the cut
 
@@ -85,7 +85,7 @@ Goal: everything that weighs the project down is gone, tests green.
 ## 6. Session C: container, hardening, CI, deploy
 
 1. **Dockerfile** (none today): multi-stage, non-root, fastembed model cache baked in, one process. Apply the memory limit found in spike 6. PDF workers: re-check the per-worker memory cap and concurrency against the host RAM, since each worker caps at 512 MB of address space and two can run.
-2. **Config for production:** make `app_env` actually branch (nothing does today). Set the default of `allow_public_registration` to `False` (see section 3; it is flipped to `True` only at the very end of the project, and the abuse risk is recorded in `accepted-risks.md` at that point). Add CORS for the frontend origin. Keep secrets as `SecretStr`.
+2. **Config for production:** make `app_env` actually branch (nothing does today). Set the default of `allow_public_registration` to `False` (see section 3; it stays off for the closed beta and tenants are created by the operator with `scripts/seed_tenant.py`). Add CORS for the frontend origin. Keep secrets as `SecretStr`.
 3. **Rate limiting** on login, search and chat (closes AR-07 and the rate-limit half of AR-13). Refresh tokens (closes AR-08): implemented, with rotation and reuse detection (owner decision; not documented as an accepted risk).
 4. **`GET /health/ready`:** runs `SELECT 1` through the app role; replaces `/health/db` and removes AR-12 (no untenanted session in `api/`).
 5. **CI** (`.github/workflows`): `gate.sh --full` against a `pgvector/pgvector:pg16` service container; dependency audit; build the image.

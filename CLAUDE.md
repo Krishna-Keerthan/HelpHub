@@ -37,4 +37,4 @@ New tests go in the matching domain directory under tests/; helpers live in test
 - Agents are read-only and print at most 12 findings; the skill prints one report of at most 40 lines.
 - Context for reviewers: docs/review/context.md. Accepted risks (stable IDs AR-nn): docs/review/accepted-risks.md; add an entry instead of re-explaining a known risk.
 - `.claude/hooks/guard_bash.py` blocks destructive commands (best-effort); do not work around it.
-- CI exists (.github/workflows/ci.yml: gate, audit and image jobs) but has never run on GitHub. Not done yet (Day 12): Render deploy and smoke checks, soak, other production-readiness checks.
+- CI runs on GitHub: ci.yml (gate, audit, image, secrets) and frontend.yml on pull requests and main; db-ops.yml is manual. Render and Vercel are deployed. Still open (Day 12): the soak (ends about 16:58 IST on Oct 28) and other production-readiness checks (docs/deploy/render-checklist.md).
