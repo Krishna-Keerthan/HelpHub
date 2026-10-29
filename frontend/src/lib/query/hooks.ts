@@ -6,10 +6,12 @@ import type { components } from "@/lib/api/schema";
 import { DOCUMENTS_STALE_MS, ME_STALE_MS } from "./client";
 
 export type Doc = components["schemas"]["DocumentRead"];
+export type UserRow = components["schemas"]["UserRead"];
 
 export const queryKeys = {
   documents: ["documents"] as const,
   me: ["me"] as const,
+  users: ["users"] as const,
   conversation: (id: string) => ["conversation", id] as const,
 };
 
@@ -74,6 +76,20 @@ export function useConversationMessages(id: string | null) {
       const { data, response } = await api.GET("/conversations/{conversation_id}/messages", {
         params: { path: { conversation_id: id! }, query: { limit: HISTORY_LIMIT } },
       });
+      if (!data) throw new ApiError(response.status, retryAfterSeconds(response));
+      return data;
+    },
+  });
+}
+
+/** GET /users (admin page only; the first 100 users, the server maximum). */
+export function useUsers({ enabled }: { enabled: boolean }) {
+  return useQuery({
+    queryKey: queryKeys.users,
+    enabled,
+    staleTime: 0,
+    queryFn: async (): Promise<UserRow[]> => {
+      const { data, response } = await api.GET("/users", { params: { query: { limit: 100 } } });
       if (!data) throw new ApiError(response.status, retryAfterSeconds(response));
       return data;
     },

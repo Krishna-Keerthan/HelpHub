@@ -13,3 +13,8 @@ export function afterDocumentsChanged(client: QueryClient): Promise<void> {
   client.removeQueries({ queryKey: COMPARE_KEY });
   return client.invalidateQueries({ queryKey: queryKeys.documents });
 }
+
+/** Call after a user was added: the users list is refetched. */
+export function afterUserAdded(client: QueryClient): Promise<void> {
+  return client.invalidateQueries({ queryKey: queryKeys.users });
+}

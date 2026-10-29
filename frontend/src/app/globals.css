@@ -65,3 +65,10 @@
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* Smooth in-page anchors (home page nav), only for visitors who have not asked for reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}

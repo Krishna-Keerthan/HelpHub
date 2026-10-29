@@ -2,21 +2,25 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { demoLogin, login } from "@/lib/api/client";
+import { login } from "@/lib/api/client";
 import { failureMessage, safeNext } from "@/lib/ui/failure";
+import { useDemoLogin } from "@/lib/ui/use-demo-login";
 import { buttonClass, captionClass, inputClass } from "./ui/styles";
 
 export function LoginForm({ demoAvailable = false }: { demoAvailable?: boolean }) {
   const router = useRouter();
   const next = safeNext(useSearchParams().get("next"));
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const demo = useDemoLogin(next);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [formBusy, setFormBusy] = useState(false);
+  const error = formError ?? demo.error;
+  const busy = formBusy || demo.busy;
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
-    setBusy(true);
-    setError(null);
+    setFormBusy(true);
+    setFormError(null);
     try {
       const result = await login({
         email: String(f.get("email")),
@@ -27,7 +31,7 @@ export function LoginForm({ demoAvailable = false }: { demoAvailable?: boolean }
         router.replace(next);
         return;
       }
-      setError(
+      setFormError(
         result.code === "invalid_credentials"
           ? "Email, password or workspace is wrong."
           : result.status === 422
@@ -35,30 +39,9 @@ export function LoginForm({ demoAvailable = false }: { demoAvailable?: boolean }
             : failureMessage(result.status, result.code, result.retryAfter),
       );
     } catch {
-      setError("Could not reach the service. Check your connection and try again.");
+      setFormError("Could not reach the service. Check your connection and try again.");
     } finally {
-      setBusy(false);
-    }
-  }
-
-  async function onDemo() {
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await demoLogin();
-      if (result.ok) {
-        router.replace(next);
-        return;
-      }
-      setError(
-        result.code === "demo_unavailable"
-          ? "The demo is not available right now."
-          : failureMessage(result.status, result.code, result.retryAfter),
-      );
-    } catch {
-      setError("Could not reach the service. Check your connection and try again.");
-    } finally {
-      setBusy(false);
+      setFormBusy(false);
     }
   }
 
@@ -94,7 +77,7 @@ export function LoginForm({ demoAvailable = false }: { demoAvailable?: boolean }
     <div className="mt-6 border-t border-line pt-4">
       <button
         type="button"
-        onClick={() => void onDemo()}
+        onClick={() => { setFormError(null); void demo.start(); }}
         disabled={busy || !demoAvailable}
         className={buttonClass({ variant: "secondary", block: true })}
       >
