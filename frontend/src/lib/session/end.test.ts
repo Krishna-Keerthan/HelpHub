@@ -64,5 +64,5 @@ test("an expired session ends the session state before the redirect", () => {
   const loc = { pathname: "/chat", search: "", set href(v: string) { order.push(`redirect ${v}`); } };
   vi.stubGlobal("location", loc);
   defaultAuthedDeps.endSession();
-  expect(order).toEqual(["end", "redirect /login?next=%2Fchat"]);
+  expect(order).toEqual(["end", "redirect /login?next=%2Fchat&reason=expired"]);
 });
