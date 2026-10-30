@@ -12,6 +12,7 @@ import { metadata as compare } from "./(app)/compare/page";
 import { metadata as documents } from "./(app)/documents/page";
 import { metadata as users } from "./(app)/users/page";
 import { metadata as login } from "./login/page";
+import { metadata as notFound } from "./not-found";
 import { metadata as home } from "./page";
 import { metadata as homeRoute } from "./home/page";
 
@@ -54,4 +55,10 @@ test("viewport sets a light and a dark theme colour", () => {
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
     { media: "(prefers-color-scheme: dark)", color: "#111113" },
   ]);
+});
+
+test("the 404 page is titled 'Page not found' (the template makes the tab 'Page not found · HelpHub')", () => {
+  expect(notFound.title).toBe("Page not found");
+  const tpl = (root.title as { template: string }).template;
+  expect(tpl.replace("%s", notFound.title as string)).toBe("Page not found · HelpHub");
 });

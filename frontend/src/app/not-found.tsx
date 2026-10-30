@@ -1,5 +1,9 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { buttonClass } from "@/components/ui/styles";
+
+// The root title template turns this into "Page not found · HelpHub".
+export const metadata: Metadata = { title: "Page not found" };
 
 export default function NotFound() {
   return (
