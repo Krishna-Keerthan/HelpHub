@@ -200,17 +200,31 @@ async def upload_document(
     return await _create_and_ingest(principal, title, content, provider, response)
 
 
-@router.get("", response_model=list[DocumentRead])
+_TOTAL_COUNT_HEADER = {
+    "X-Total-Count": {
+        "description": "Number of documents in the workspace, ignoring limit/offset.",
+        "schema": {"type": "integer"},
+    }
+}
+
+
+@router.get(
+    "",
+    response_model=list[DocumentRead],
+    responses={200: {"headers": _TOTAL_COUNT_HEADER}},
+)
 async def list_documents(
     principal: CurrentPrincipal,
+    response: Response,
     limit: Annotated[
         int, Query(ge=1, le=documents_service.MAX_LIMIT)
     ] = documents_service.DEFAULT_LIMIT,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[DocumentRead]:
-    documents = await documents_service.list_documents(
+    documents, total = await documents_service.list_documents_with_total(
         principal.tenant_id, limit=limit, offset=offset
     )
+    response.headers["X-Total-Count"] = str(total)
     return [DocumentRead.model_validate(d) for d in documents]
 
 

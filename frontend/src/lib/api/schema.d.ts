@@ -818,6 +818,8 @@ export interface operations {
             /** @description Successful Response */
             200: {
                 headers: {
+                    /** @description Number of documents in the workspace, ignoring limit/offset. */
+                    "X-Total-Count"?: number;
                     [name: string]: unknown;
                 };
                 content: {

@@ -1017,7 +1017,15 @@
                 }
               }
             },
-            "description": "Successful Response"
+            "description": "Successful Response",
+            "headers": {
+              "X-Total-Count": {
+                "description": "Number of documents in the workspace, ignoring limit/offset.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
           },
           "422": {
             "content": {

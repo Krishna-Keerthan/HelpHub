@@ -276,6 +276,21 @@ async def list_documents(
         )
 
 
+async def list_documents_with_total(
+    tenant_id: uuid.UUID, *, limit: int = DEFAULT_LIMIT, offset: int = 0
+) -> tuple[list[Document], int]:
+    """One page plus the tenant's total, read in a single transaction."""
+    async with tenant_transaction(tenant_id) as session:
+        page = await documents_repo.list_for_tenant(
+            session,
+            tenant_id,
+            limit=max(1, min(limit, MAX_LIMIT)),
+            offset=max(0, offset),
+        )
+        total = await documents_repo.count_for_tenant(session, tenant_id)
+    return page, total
+
+
 async def get_document(tenant_id: uuid.UUID, document_id: uuid.UUID) -> Document:
     async with tenant_transaction(tenant_id) as session:
         document = await documents_repo.get_metadata(session, tenant_id, document_id)

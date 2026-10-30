@@ -117,6 +117,15 @@ async def list_for_tenant(
     return list(result)
 
 
+async def count_for_tenant(session: AsyncSession, tenant_id: uuid.UUID) -> int:
+    result = await session.scalar(
+        select(func.count())
+        .select_from(Document)
+        .where(Document.tenant_id == tenant_id)
+    )
+    return result or 0
+
+
 def titles_statement(
     tenant_id: uuid.UUID, document_ids: Sequence[uuid.UUID]
 ) -> Select[tuple[uuid.UUID, str]]:
