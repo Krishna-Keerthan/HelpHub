@@ -16,7 +16,7 @@ import {
   streamErrorMessage,
   type Turn,
 } from "@/lib/ui/chat-state";
-import { displayCitations } from "@/lib/ui/citation-display";
+import { AnswerMarkdown } from "./AnswerMarkdown";
 import { Notice } from "./Notice";
 import { SourceChips } from "./SourceChips";
 import { buttonClass, emptyClass, headingClass, inputClass, titleClass } from "./ui/styles";
@@ -59,7 +59,7 @@ function Answer({ turn }: { turn: Turn }) {
       {turn.status === "no_answer" ? (
         <p>{REFUSAL_MESSAGE}</p>
       ) : (
-        <p className="whitespace-pre-wrap break-words">{displayCitations(turn.answer)}</p>
+        <AnswerMarkdown text={turn.answer} />
       )}
       {turn.status === "error" && (
         <p role="alert" className="mt-1 text-sm text-danger">
