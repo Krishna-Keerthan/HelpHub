@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import { STREAM_CUT_OFF_MESSAGE } from "@/lib/ui/chat-state";
 import { CONVERSATION_STORAGE } from "@/lib/session/storage";
@@ -64,7 +64,8 @@ test("the restored chat continues the same conversation with the next turn id", 
   await screen.findByText("a2");
   expect(bodies[0]).toMatchObject({ conversation_id: ID, message: "q2" });
   expect(screen.getByText("q1")).toBeInTheDocument();
-  expect(screen.getAllByRole("listitem").filter((li) => li.textContent?.startsWith("q"))).toHaveLength(2);
+  // One list item per exchange (each now opens with its "You" label, so count the conversation list's children).
+  expect(within(screen.getByRole("list", { name: "Conversation" })).getAllByText(/^q[12]$/)).toHaveLength(2);
 });
 
 test("a 404 clears the stored id and shows the normal empty state", async () => {

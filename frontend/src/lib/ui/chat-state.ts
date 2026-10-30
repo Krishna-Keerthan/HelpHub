@@ -7,7 +7,8 @@ export type Turn = {
   answer: string;
   sources: ChatSource[];
   cited: number[];
-  status: "streaming" | "complete" | "no_answer" | "error";
+  /** "stopped" is client-side only: the reader pressed Stop. The server never sends it and a restore never produces it. */
+  status: "streaming" | "complete" | "no_answer" | "error" | "stopped";
   /** Backend error code (in-stream) or a client label for HTTP failures. */
   errorCode?: string;
   /** Plain-language failure text for HTTP failures (429, waking, ...). */

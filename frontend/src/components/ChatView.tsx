@@ -11,72 +11,17 @@ import {
   chatHttpMessage,
   messagesToTurns,
   newTurn,
-  REFUSAL_MESSAGE,
   STREAM_CUT_OFF,
-  streamErrorMessage,
   type Turn,
 } from "@/lib/ui/chat-state";
-import { AnswerMarkdown } from "./AnswerMarkdown";
+import { useStickToBottom } from "@/lib/ui/use-stick-to-bottom";
+import { ChatComposer } from "./ChatComposer";
+import { ChatMessages } from "./ChatMessages";
 import { Notice } from "./Notice";
-import { SourceChips } from "./SourceChips";
-import { buttonClass, emptyClass, headingClass, inputClass, titleClass } from "./ui/styles";
+import { buttonClass, emptyClass, titleClass } from "./ui/styles";
 import { DEMO_QUERIES } from "@/lib/demo-queries";
 
-const MAX_MESSAGE_CHARS = 2000;
-/** No first event after this long: the backend is probably cold-starting. */
-export const SLOW_FIRST_EVENT_MS = 8000;
-
-/** Shown from sending until the first event; switches to the cold-start message when that takes long. */
-function Searching() {
-  const [slow, setSlow] = useState(false);
-  useEffect(() => {
-    const t = setTimeout(() => setSlow(true), SLOW_FIRST_EVENT_MS);
-    return () => clearTimeout(t);
-  }, []);
-  return (
-    <Notice className="mt-2">
-      {slow ? "Waking the server, this can take about a minute…" : "Searching your documents…"}
-    </Notice>
-  );
-}
-
-function Citations({ turn }: { turn: Turn }) {
-  const cited = turn.sources.filter((s) => turn.cited.includes(s.index));
-  if (cited.length === 0) return null;
-  return <SourceChips sources={cited} />;
-}
-
-function Answer({ turn }: { turn: Turn }) {
-  if (turn.errorText) {
-    return (
-      <p role="alert" className="text-sm text-danger">
-        {turn.errorText}
-      </p>
-    );
-  }
-  return (
-    <>
-      {turn.status === "no_answer" ? (
-        <p>{REFUSAL_MESSAGE}</p>
-      ) : (
-        <AnswerMarkdown text={turn.answer} />
-      )}
-      {turn.status === "error" && (
-        <p role="alert" className="mt-1 text-sm text-danger">
-          {streamErrorMessage(turn.errorCode)}
-        </p>
-      )}
-      {turn.status === "streaming" && !turn.answer && turn.sources.length === 0 && <Searching />}
-      {turn.status === "streaming" && !turn.answer && turn.sources.length > 0 && (
-        <Notice className="mt-2">Found {turn.sources.length} matching {turn.sources.length === 1 ? "passage" : "passages"}. Writing the answer…</Notice>
-      )}
-      {turn.status === "streaming" && turn.answer && (
-        <span aria-hidden="true" data-testid="streaming-indicator" className="inline-block motion-safe:animate-pulse">▍</span>
-      )}
-      <Citations turn={turn} />
-    </>
-  );
-}
+export { SLOW_FIRST_EVENT_MS } from "./ChatMessage";
 
 /** The restore reads sessionStorage, so the real view mounts only on the client (no hydration mismatch). */
 export function ChatView() {
@@ -98,7 +43,9 @@ function ChatSession() {
   const conversationId = useRef<string | null>(restoreId);
   const abort = useRef<AbortController | null>(null);
   const [nextId, setNextId] = useState(1);
-  const input = useRef<HTMLInputElement>(null);
+  const input = useRef<HTMLTextAreaElement>(null);
+  // The turn being answered, so Stop can mark it.
+  const activeId = useRef<number | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [alertDismissed, setAlertDismissed] = useState(false);
   const history = useConversationMessages(restoreId);
@@ -114,12 +61,19 @@ function ChatSession() {
 
   useEffect(() => () => abort.current?.abort(), []);
 
-  // The conversation is gone (or not ours): forget it, the next question starts a new one.
-  useEffect(() => {
-    if (!gone) return;
+  // Forget the current conversation: the next question starts a new one. The server's history is untouched.
+  const forgetConversation = () => {
     conversationId.current = null;
     clearStored(CONVERSATION_STORAGE);
+  };
+
+  // The conversation is gone (or not ours): forget it.
+  useEffect(() => {
+    if (gone) forgetConversation();
   }, [gone]);
+
+  // After a restore or a new message, keep the latest in view; while streaming, only if already near the bottom.
+  const { endRef, follow } = useStickToBottom(turns, turns.length > 0);
 
   const update = (id: number, fn: (t: Turn) => Turn) =>
     setTurns((cur) => cur.map((t) => (t.id === id ? fn(t) : t)));
@@ -140,13 +94,13 @@ function ChatSession() {
     setNextId(id + 1);
     setAlertDismissed(true); // a failed history read no longer applies once a question has been sent
     setTurns((cur) => [...cur, newTurn(id, message)]);
+    follow(); // their own question and the answer should be in view
     setBusy(true);
-    abort.current = new AbortController();
+    const controller = new AbortController();
+    abort.current = controller;
+    activeId.current = id;
     try {
-      for await (const ev of streamChat(
-        { message, conversation_id: conversationId.current },
-        abort.current.signal,
-      )) {
+      for await (const ev of streamChat({ message, conversation_id: conversationId.current }, controller.signal)) {
         if ("conversation_id" in ev.data && ev.data.conversation_id) {
           conversationId.current = ev.data.conversation_id;
           writeStored(CONVERSATION_STORAGE, ev.data.conversation_id);
@@ -158,14 +112,13 @@ function ChatSession() {
         t.status === "streaming" ? { ...t, status: "error", errorCode: STREAM_CUT_OFF } : t,
       );
     } catch (err) {
-      if (abort.current?.signal.aborted) return;
-      if (err instanceof ChatHttpError && err.status === 404) {
-        conversationId.current = null;
-        clearStored(CONVERSATION_STORAGE);
-      }
+      if (controller.signal.aborted) return; // Stop, New chat or leaving the page
+      if (err instanceof ChatHttpError && err.status === 404) forgetConversation();
       const text = err instanceof ChatHttpError ? chatHttpMessage(err.status, err.retryAfter) : CONNECTION_LOST_MESSAGE;
       update(id, (t) => ({ ...t, status: "error", errorText: text }));
     } finally {
+      // A newer question may already be streaming (New chat, then ask): only the latest request resets the state.
+      if (abort.current !== controller) return;
       setBusy(false);
       const a = document.activeElement;
       if (focusWasInForm && (a === document.body || a === null)) {
@@ -175,9 +128,38 @@ function ChatSession() {
     }
   }
 
+  /** Stop: end the stream and keep what has arrived. */
+  function onStop() {
+    abort.current?.abort();
+    const id = activeId.current;
+    if (id !== null) update(id, (t) => (t.status === "streaming" ? { ...t, status: "stopped" } : t));
+    setBusy(false);
+    setTimeout(() => input.current?.focus(), 0);
+  }
+
+  /** New chat: end any answer in progress, forget the conversation and show the empty state again. */
+  function onNewChat() {
+    abort.current?.abort();
+    abort.current = null;
+    activeId.current = null;
+    forgetConversation();
+    setTurns([]);
+    setNextId(1);
+    setBusy(false);
+    setAlertDismissed(true);
+    setTimeout(() => input.current?.focus(), 0);
+  }
+
   return (
     <section className="flex flex-col gap-4">
-      <h1 className={titleClass}>Chat</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className={titleClass}>Chat</h1>
+        {turns.length > 0 && !restoring && (
+          <button type="button" onClick={onNewChat} className={buttonClass({ variant: "secondary" })}>
+            New chat
+          </button>
+        )}
+      </div>
       {restoring && <Notice>Loading conversation…</Notice>}
       {history.isError && !gone && !alertDismissed && (
         <p role="alert" className="text-sm text-danger">
@@ -208,31 +190,9 @@ function ChatSession() {
           </ul>
         </div>
       )}
-      <ol aria-label="Conversation" className="divide-y divide-line">
-        {turns.map((t) => (
-          <li key={t.id} className="py-6 first:pt-0 last:pb-0">
-            <p className={`break-words ${headingClass}`}>{t.question}</p>
-            <div className="mt-2 text-fg" aria-live="polite" aria-busy={t.status === "streaming"}>
-              <Answer turn={t} />
-            </div>
-          </li>
-        ))}
-      </ol>
-      <form onSubmit={onSubmit} className="flex flex-col gap-2 sm:flex-row" aria-label="Ask a question">
-        <input
-          ref={input}
-          name="message"
-          required
-          maxLength={MAX_MESSAGE_CHARS}
-          disabled={restoring}
-          aria-label="Your question"
-          placeholder="Ask about your documents"
-          className={`flex-1 ${inputClass}`}
-        />
-        <button type="submit" disabled={busy || restoring} className={buttonClass({ variant: "primary" })}>
-          {busy ? "Answering…" : "Ask"}
-        </button>
-      </form>
+      <ChatMessages turns={turns} />
+      <div ref={endRef} aria-hidden="true" />
+      <ChatComposer inputRef={input} busy={busy} restoring={restoring} onSubmit={onSubmit} onStop={onStop} />
     </section>
   );
 }
