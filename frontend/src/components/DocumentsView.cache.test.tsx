@@ -8,6 +8,13 @@ import { render } from "@/test/render";
 import { CompareView } from "./CompareView";
 import { DocumentsView } from "./DocumentsView";
 
+const nav = vi.hoisted(() => ({ search: "", push: vi.fn(), replace: vi.fn() }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: nav.push, replace: nav.replace }),
+  usePathname: () => "/documents",
+  useSearchParams: () => new URLSearchParams(nav.search),
+}));
+
 const doc = (id: string, title: string) => ({
   id, title, status: "READY", error: null, created_by: null,
   created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
@@ -147,7 +154,7 @@ test("login clears the cache: a viewer's cached role and list never appear in a 
   title = "Admin's list";
   await login({ email: "a@x.co", password: "pw", tenant_slug: "t" });
   expect(getQueryClient().getQueryData(queryKeys.me)).toBeUndefined();
-  expect(getQueryClient().getQueryData(queryKeys.documents)).toBeUndefined();
+  expect(getQueryClient().getQueriesData({ queryKey: queryKeys.documents })).toEqual([]);
 
   render(<DocumentsView />);
   expect(screen.queryByText("Viewer's list")).toBeNull();
@@ -170,7 +177,7 @@ test("logout clears the cache, even when the logout request fails", async () => 
   first.unmount();
   await expect(logout()).rejects.toThrow();
   expect(getQueryClient().getQueryData(queryKeys.me)).toBeUndefined();
-  expect(getQueryClient().getQueryData(queryKeys.documents)).toBeUndefined();
+  expect(getQueryClient().getQueriesData({ queryKey: queryKeys.documents })).toEqual([]);
 });
 
 test("a login that races an in-flight old-session request is not repopulated by it", async () => {

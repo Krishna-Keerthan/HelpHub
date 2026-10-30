@@ -2,11 +2,11 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { expect, test, vi } from "vitest";
 import { DEMO_QUERIES } from "@/lib/demo-queries";
 import { STREAM_CUT_OFF_MESSAGE, streamErrorMessage } from "@/lib/ui/chat-state";
-import { resetSessionCache } from "@/lib/query/client";
+import { getQueryClient, resetSessionCache } from "@/lib/query/client";
+import { queryKeys } from "@/lib/query/hooks";
 import { render } from "@/test/render";
 import { routeFetch, sse } from "@/test/fetch-mock";
 import { ChatView } from "./ChatView";
-import { DocumentsView } from "./DocumentsView";
 
 const source = (index: number, title: string) => ({
   index,
@@ -255,70 +255,96 @@ const answerWithSource = () =>
     ["done", { conversation_id: "c1", status: "complete", cited: [1] }],
   );
 
-test("a citation chip is a button; opening it resolves the title from the documents list and says the passage is not available", async () => {
+test("a citation chip is a button; its title is the cited one, and opening it checks the one document and says the passage is not available", async () => {
   const f = routeFetch({
     "POST /api/chat/stream": answerWithSource,
-    "GET /api/documents": () => Response.json([docRow("d1", "Refund policy v2")]),
+    "GET /api/documents/d1": () => Response.json(docRow("d1", "Refund policy v2")),
   });
   render(<ChatView />);
   ask("refunds?");
   const chip = await screen.findByRole("button", { name: /\[1\] Stale title/ });
   expect(chip).toHaveAttribute("aria-expanded", "false");
-  expect(f.keys()).not.toContain("GET /api/documents"); // nothing is fetched until a chip is used
+  expect(f.keys()).not.toContain("GET /api/documents/d1"); // nothing is requested until a chip is opened
 
   fireEvent.click(chip);
-  expect(await screen.findByRole("button", { name: /\[1\] Refund policy v2/ })).toHaveAttribute("aria-expanded", "true");
-  const panel = screen.getByRole("region", { name: "Source 1" });
-  expect(panel).toHaveTextContent("Refund policy v2");
+  expect(chip).toHaveAttribute("aria-expanded", "true");
+  const panel = await screen.findByRole("region", { name: "Source 1" });
+  expect(panel).toHaveTextContent("Stale title");
   expect(panel).not.toHaveTextContent(/section/i);
   expect(panel).toHaveTextContent("does not include the cited passage");
   expect(within(panel).queryByRole("link")).toBeNull();
+  await waitFor(() => expect(f.keys()).toContain("GET /api/documents/d1"));
 
-  fireEvent.click(screen.getByRole("button", { name: /\[1\]/ }));
+  fireEvent.click(chip);
   expect(screen.queryByRole("region", { name: "Source 1" })).toBeNull();
-  expect(f.keys().filter((k) => k === "GET /api/documents")).toHaveLength(1);
+  fireEvent.click(chip);
+  await screen.findByRole("region", { name: "Source 1" });
+  expect(f.keys().filter((k) => k === "GET /api/documents/d1")).toHaveLength(1); // cached
+  expect(f.keys()).not.toContain("GET /api/documents"); // the list is never needed
+  expect(panel).not.toHaveTextContent("no longer in your library");
 });
 
-test("expanding a chip does not navigate and its panel has no link, also for a document that is still listed", async () => {
+test("expanding a chip does not navigate and its panel has no link", async () => {
   const before = location.href;
   routeFetch({
     "POST /api/chat/stream": answerWithSource,
-    "GET /api/documents": () => Response.json([docRow("d1", "Refund policy v2")]),
+    "GET /api/documents/d1": () => Response.json(docRow("d1", "Refund policy v2")),
   });
   render(<ChatView />);
   ask("refunds?");
   fireEvent.click(await screen.findByRole("button", { name: /\[1\] Stale title/ }));
   const panel = await screen.findByRole("region", { name: "Source 1" });
-  await screen.findByRole("button", { name: /\[1\] Refund policy v2/ });
   expect(panel.querySelector("a")).toBeNull();
-  expect(within(panel).queryByRole("link")).toBeNull();
   expect(screen.queryByText("Open the documents list")).toBeNull();
   expect(location.href).toBe(before);
 });
 
-test("a cited document that is no longer listed keeps its title and says so; a failed list falls back to the cited title", async () => {
+test("only a 404 for the cited document says it is no longer in the library", async () => {
   routeFetch({
     "POST /api/chat/stream": answerWithSource,
-    "GET /api/documents": () => Response.json([docRow("other", "Something else")]),
+    "GET /api/documents/d1": () => Response.json({ detail: "Not found" }, { status: 404 }),
   });
   const first = render(<ChatView />);
   ask("q");
   fireEvent.click(await screen.findByRole("button", { name: /\[1\] Stale title/ }));
   expect(await screen.findByText(/no longer in your library/)).toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "Source 1" })).toHaveTextContent("Stale title");
   first.unmount();
-  resetSessionCache(); // the first render cached its documents list
-  sessionStorage.clear(); // and stored its conversation id
+  resetSessionCache();
+  sessionStorage.clear();
 
-  routeFetch({
+  for (const status of [500, 503, 403]) {
+    routeFetch({
+      "POST /api/chat/stream": answerWithSource,
+      "GET /api/documents/d1": () => Response.json({ detail: "x" }, { status }),
+    });
+    const r = render(<ChatView />);
+    ask("q");
+    fireEvent.click(await screen.findByRole("button", { name: /\[1\] Stale title/ }));
+    const panel = await screen.findByRole("region", { name: "Source 1" });
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith(expect.objectContaining({ url: expect.stringContaining("/api/documents/d1") })));
+    expect(panel).toHaveTextContent("Stale title");
+    expect(panel).not.toHaveTextContent("no longer in your library");
+    r.unmount();
+    resetSessionCache();
+    sessionStorage.clear();
+  }
+});
+
+test("a cited document that is not on page 1 of the list is not called gone", async () => {
+  const f = routeFetch({
     "POST /api/chat/stream": answerWithSource,
-    "GET /api/documents": () => Response.json({ detail: "x" }, { status: 500 }),
+    "GET /api/documents/d1": () => Response.json(docRow("d1", "Refund policy v2")),
   });
+  // Page 1 of the Documents list is cached and does not contain d1 (it is on a later page).
+  getQueryClient().setQueryData(queryKeys.documentsPage(1, 10), { items: [docRow("other", "Something else")], total: 24 });
   render(<ChatView />);
-  ask("q");
+  ask("refunds?");
   fireEvent.click(await screen.findByRole("button", { name: /\[1\] Stale title/ }));
   const panel = await screen.findByRole("region", { name: "Source 1" });
-  expect(panel).toHaveTextContent("Stale title");
+  await waitFor(() => expect(f.keys()).toContain("GET /api/documents/d1"));
   expect(panel).not.toHaveTextContent("no longer in your library");
+  expect(f.keys()).not.toContain("GET /api/documents");
 });
 
 test("waiting states: searching, then cold-start message when the first event is slow, then writing, then a streaming indicator until done", async () => {
@@ -436,23 +462,4 @@ test("a stream that ends without done or error shows the cut-off message, not th
   expect(alert).toHaveTextContent(STREAM_CUT_OFF_MESSAGE);
   expect(alert.textContent).not.toBe(streamErrorMessage("internal_error"));
   expect(screen.getByText("half an ans")).toBeInTheDocument();
-});
-
-test("a documents list already cached (e.g. from the Documents page) is reused by the chips without a new request", async () => {
-  const f = routeFetch({
-    "POST /api/chat/stream": answerWithSource,
-    "GET /api/documents": () => Response.json([docRow("d1", "Refund policy v2")]),
-    "GET /api/auth/me": () => Response.json({ id: "u", email: "u@x.co", role: "viewer" }),
-  });
-  const docs = render(<DocumentsView />);
-  await screen.findByText("Refund policy v2");
-  docs.unmount();
-
-  render(<ChatView />);
-  ask("refunds?");
-  // the cached title is used even before the chip is clicked
-  const chip = await screen.findByRole("button", { name: /\[1\] Refund policy v2/ });
-  fireEvent.click(chip);
-  expect(await screen.findByRole("region", { name: "Source 1" })).toHaveTextContent("Refund policy v2");
-  expect(f.keys().filter((k) => k === "GET /api/documents")).toHaveLength(1);
 });

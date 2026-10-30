@@ -5,6 +5,13 @@ import { render } from "@/test/render";
 import { routeFetch } from "@/test/fetch-mock";
 import { DocumentsView } from "./DocumentsView";
 
+const nav = vi.hoisted(() => ({ search: "", push: vi.fn(), replace: vi.fn() }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: nav.push, replace: nav.replace }),
+  usePathname: () => "/documents",
+  useSearchParams: () => new URLSearchParams(nav.search),
+}));
+
 const doc = (id: string, title: string, status = "READY") => ({
   id,
   title,
@@ -121,7 +128,7 @@ test("loading state is announced politely, then replaced by the list", async () 
   render(<DocumentsView />);
   expect(screen.getByRole("status")).toHaveTextContent("Loading documents");
   expect(await screen.findByText("A")).toBeInTheDocument();
-  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  expect(screen.queryByText(/Loading documents/)).not.toBeInTheDocument();
 });
 
 test("empty state explains what to do", async () => {

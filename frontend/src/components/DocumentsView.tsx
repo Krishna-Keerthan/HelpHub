@@ -1,14 +1,17 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { api, retryAfterSeconds } from "@/lib/api/client";
 import { afterDocumentsChanged } from "@/lib/query/invalidate";
-import { ApiError, queryKeys, useDocuments, useMe, type Doc } from "@/lib/query/hooks";
+import { ApiError, queryKeys, useDocuments, useMe, type Doc, type DocumentsPage } from "@/lib/query/hooks";
 import { Notice } from "./Notice";
+import { Pagination } from "./ui/Pagination";
 import { StatusPill } from "./ui/StatusPill";
 import { buttonClass, captionClass, emptyClass, panelClass, titleClass } from "./ui/styles";
 import { failureMessage, MAX_UPLOAD_BYTES, uploadTooLargeMessage } from "@/lib/ui/failure";
+import { clampedPage, pagingQuery, parsePaging } from "@/lib/ui/paging";
 
 
 const READ_ONLY_MESSAGE = "This account is read-only, so it cannot upload documents.";
@@ -22,7 +25,11 @@ function tooLargeMessage(error: unknown): string {
 
 export function DocumentsView() {
   const queryClient = useQueryClient();
-  const documents = useDocuments();
+  const router = useRouter();
+  const pathname = usePathname();
+  // The page and page size live in the URL (?page=2&size=25) so reload, back and shared links keep them.
+  const { page, size } = parsePaging(useSearchParams() ?? new URLSearchParams());
+  const documents = useDocuments({ page, size });
   const me = useMe();
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -37,7 +44,21 @@ export function DocumentsView() {
   const canDelete = role === "admin"; // Delete: admin only (the backend uses require_admin)
   const readOnly = settled && !canWrite;
 
-  const docs = documents.data ?? null;
+  const docs = documents.data?.items ?? null;
+  const total = documents.data?.total ?? null;
+  const goTo = (nextPage: number, nextSize: number, replace = false) => {
+    const url = `${pathname}${pagingQuery(nextPage, nextSize)}`;
+    if (replace) router.replace(url, { scroll: false });
+    else router.push(url, { scroll: false });
+  };
+
+  // A page past the end (rows deleted, a typed URL) moves to the last page, or back one page when no total is known.
+  // Only acts on settled data, never on a cached answer that is still being revalidated.
+  const settledData = documents.data && !documents.isFetching ? documents.data : null;
+  const target = settledData ? clampedPage(page, size, settledData.total, settledData.items.length) : page;
+  useEffect(() => {
+    if (target !== page) router.replace(`${pathname}${pagingQuery(target, size)}`, { scroll: false });
+  }, [target, page, size, pathname, router]);
   const loadFailed = documents.isError;
   // A failed revalidation keeps the last list on screen, and says so.
   const loadMessage = !loadFailed
@@ -90,7 +111,12 @@ export function DocumentsView() {
         params: { path: { document_id: doc.id } },
       });
       if (response.ok) {
-        queryClient.setQueryData<Doc[]>(queryKeys.documents, (cur) => cur?.filter((d) => d.id !== doc.id));
+        // Drop the row (and one from the total) from every cached page that held it, then refetch.
+        queryClient.setQueriesData<DocumentsPage>({ queryKey: [...queryKeys.documents, "list"] }, (cur) =>
+          cur?.items.some((d) => d.id === doc.id)
+            ? { items: cur.items.filter((d) => d.id !== doc.id), total: cur.total === null ? null : Math.max(0, cur.total - 1) }
+            : cur,
+        );
         await afterDocumentsChanged(queryClient);
       } else setActionMessage(failureMessage(response.status, null, retryAfterSeconds(response)));
     } catch {
@@ -101,7 +127,10 @@ export function DocumentsView() {
   return (
     <section>
       <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <h1 className={`mr-auto ${titleClass}`}>Documents</h1>
+        <div className="mr-auto">
+          <h1 className={titleClass}>Documents</h1>
+          <p className="mt-1 text-sm text-muted">The files your chat answers are built from.</p>
+        </div>
         {readOnly && <span className="order-last basis-full text-sm text-muted">Read-only account: uploads are disabled.</span>}
         {canWrite && (
         <label className={buttonClass({ variant: "primary", label: true })}>
@@ -139,6 +168,8 @@ export function DocumentsView() {
       )}
       {docs === null ? (
         !message && <Notice>Loading documents…</Notice>
+      ) : docs.length === 0 && page > 1 ? (
+        <Notice>No documents on this page.</Notice>
       ) : docs.length === 0 ? (
         <div className={`${emptyClass} text-center`}>
           <p>No documents yet.</p>
@@ -163,6 +194,16 @@ export function DocumentsView() {
             </li>
           ))}
         </ul>
+      )}
+      {docs !== null && (docs.length > 0 || page > 1) && (
+        <Pagination
+          page={page}
+          size={size}
+          count={docs.length}
+          total={total}
+          onPage={(p) => goTo(p, size)}
+          onSize={(n) => goTo(1, n)}
+        />
       )}
     </section>
   );
