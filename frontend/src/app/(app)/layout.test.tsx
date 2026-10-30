@@ -1,6 +1,8 @@
 import { screen, within } from "@testing-library/react";
 import { render } from "@/test/render";
 import { afterEach, expect, test, vi } from "vitest";
+import { getQueryClient } from "@/lib/query/client";
+import { queryKeys } from "@/lib/query/hooks";
 import AppLayout from "./layout";
 
 test("shell has a skip link first, then banner, labelled navigation and a focusable main", () => {
@@ -76,4 +78,29 @@ test("the footer is a column bottom (min-height layout) and follows the same wid
   const box = screen.getByRole("contentinfo").parentElement!;
   expect(box.className).toContain("max-w-3xl");
   expect(box.className).toContain("group-has-[[data-wide]]/shell:max-w-5xl");
+});
+
+test("phone header is two rows: brand and the actions (chip, theme, Log out) on row one, the full-width nav on row two", () => {
+  getQueryClient().setQueryData(queryKeys.me, { role: "agent", email: "ada@example.test" });
+  render(<AppLayout><p>content</p></AppLayout>);
+  const nav = screen.getByRole("navigation", { name: "Main" });
+  expect(nav.className).toContain("basis-full"); // its own row
+  const actions = screen.getByRole("button", { name: "Log out" }).parentElement!;
+  expect(actions).toContainElement(screen.getByText("agent")); // the chip is beside the toggle and Log out
+  expect(actions).toContainElement(screen.getByRole("button", { name: /theme/i }));
+  expect(actions.className).toContain("ml-auto");
+  expect(actions.className).toContain("min-w-0"); // may shrink, so a long email truncates instead of wrapping to a third row
+  expect(nav.className).toContain("order-3");
+  expect(actions.className).toContain("order-2");
+  // Nothing else in the header is placed on its own full-width row.
+  const fullRow = Array.from(screen.getByRole("banner").querySelectorAll("*")).filter((e) => e.className.toString().split(" ").includes("basis-full"));
+  expect(fullRow).toEqual([nav]);
+});
+
+test("tap targets: brand, nav links and Log out are at least 40 px tall (min-h-10)", () => {
+  render(<AppLayout><p>content</p></AppLayout>);
+  const header = within(screen.getByRole("banner"));
+  for (const el of [header.getByRole("link", { name: "HelpHub" }), header.getByRole("link", { name: "Home" }), header.getByRole("button", { name: "Log out" })]) {
+    expect(el.className).toContain("min-h-10");
+  }
 });

@@ -21,18 +21,20 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="group/shell flex min-h-screen flex-col">
       <WakingBanner />
       <header className="border-b border-line bg-surface-raised">
-        {/* Phone: brand and Log out on row one, the nav wraps below. sm and up: one row. No overflow, so focus rings are never clipped. */}
+        {/* Two rows at every width: brand on the left of row one with the account chip, theme toggle and Log out on
+            the right, the nav on row two. DOM order is brand, nav, actions (the tab order); `order` places the actions
+            beside the brand. No overflow, so focus rings are never clipped. */}
         <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 group-has-[[data-wide]]/shell:max-w-5xl sm:gap-x-4">
-          <Link href="/documents" className="order-1 shrink-0 rounded-md font-semibold tracking-tight">HelpHub</Link>
-          <nav aria-label="Main" className="order-3 flex basis-full flex-wrap gap-1 sm:order-2 sm:basis-auto sm:flex-1">
+          <Link href="/documents" className="order-1 inline-flex min-h-10 shrink-0 items-center rounded-md font-semibold tracking-tight">HelpHub</Link>
+          <nav aria-label="Main" className="order-3 flex basis-full flex-wrap gap-1">
             <NavLink href="/home">Home</NavLink>
             <NavLink href="/documents">Documents</NavLink>
             <NavLink href="/chat">Chat</NavLink>
             <NavLink href="/compare">Compare</NavLink>
             <UsersNavLink />
           </nav>
-          <AccountChip />
-          <div className="order-2 ml-auto flex shrink-0 items-center gap-1 sm:order-4 sm:ml-0">
+          <div className="order-2 ml-auto flex min-w-0 items-center gap-1 sm:gap-2">
+            <AccountChip />
             <ThemeToggle />
             <LogoutButton />
           </div>

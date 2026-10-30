@@ -38,3 +38,13 @@ test("no extra request when /auth/me is already cached", () => {
   expect(screen.getByText("admin")).toBeInTheDocument();
   expect(f.calls).toHaveLength(0);
 });
+
+test("phone: the email is visually hidden but stays for screen readers, the badge carries it in its title; from sm it is shown truncated", () => {
+  getQueryClient().setQueryData(queryKeys.me, { role: "viewer", email: "a.very.long.address@example.test" });
+  render(<AccountChip />);
+  const email = screen.getByText("a.very.long.address@example.test");
+  expect(email.className).toContain("max-sm:sr-only");
+  expect(email.className).toContain("truncate");
+  expect(email.className).toContain("sm:max-w-[10rem]");
+  expect(screen.getByText("viewer")).toHaveAttribute("title", "a.very.long.address@example.test");
+});
