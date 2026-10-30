@@ -44,3 +44,13 @@ test("the active link looks different from an inactive one", () => {
   );
   expect(screen.getByRole("link", { name: "Chat" }).className).not.toBe(screen.getByRole("link", { name: "Compare" }).className);
 });
+
+test("NavLink is tighter below sm (px-2) so five items fit one row at 390 px, and keeps a 40 px tap height", () => {
+  pathname.value = "/";
+  render(<NavLink href="/chat">Chat</NavLink>);
+  const cls = screen.getByRole("link", { name: "Chat" }).className.split(" ");
+  expect(cls).toContain("px-2");
+  expect(cls).toContain("sm:px-3");
+  expect(cls).not.toContain("px-3");
+  expect(cls).toContain("min-h-10");
+});
