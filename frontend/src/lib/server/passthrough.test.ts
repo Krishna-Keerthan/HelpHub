@@ -26,6 +26,28 @@ describe("passthrough", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  test("forwards X-Total-Count from the documents list, and no other backend header", async () => {
+    const fetchImpl = spy(
+      () => new Response("[]", { headers: { "content-type": "application/json", "x-total-count": "24", "x-internal": "secret", "set-cookie": "a=b" } }),
+    );
+    const res = await passthrough(req("/api/documents?limit=10", { method: "GET", cookies: valid() }), ["documents"], {
+      fetch: fetchImpl as unknown as typeof fetch,
+      sleep: noSleep,
+    });
+    expect(res.headers.get("x-total-count")).toBe("24");
+    expect(res.headers.get("x-internal")).toBeNull();
+    expect(res.headers.get("set-cookie")).toBeNull();
+  });
+
+  test("no X-Total-Count header is invented when the backend sends none", async () => {
+    const fetchImpl = spy(() => Response.json([]));
+    const res = await passthrough(req("/api/documents", { method: "GET", cookies: valid() }), ["documents"], {
+      fetch: fetchImpl as unknown as typeof fetch,
+      sleep: noSleep,
+    });
+    expect(res.headers.has("x-total-count")).toBe(false);
+  });
+
   test("missing or expired access cookie -> token_expired without calling upstream", async () => {
     const fetchImpl = spy(() => Response.json({}));
     const deps = { fetch: fetchImpl as unknown as typeof fetch, sleep: noSleep };

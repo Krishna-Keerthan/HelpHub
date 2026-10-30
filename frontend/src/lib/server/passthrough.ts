@@ -9,7 +9,7 @@ const ALLOWED = ["documents", "conversations", "chat", "search", "users", "auth/
 const HEADER_TIMEOUT_MS = 90_000;
 // Allow-list. Never copy content-length, content-encoding or transfer-encoding: fetch() has already
 // decoded the body, so they describe bytes we no longer have. The runtime computes them.
-const COPY_RESPONSE_HEADERS = ["content-type", "retry-after", "content-disposition"];
+const COPY_RESPONSE_HEADERS = ["content-type", "retry-after", "content-disposition", "x-total-count"];
 
 export const tokenExpired = () => NextResponse.json({ code: "token_expired" }, { status: 401 });
 
