@@ -154,3 +154,57 @@ test("blocked storage does not break compare", async () => {
   expect(await screen.findByRole("list", { name: "Vector results" })).toBeInTheDocument();
   vi.restoreAllMocks();
 });
+
+// ---- G1: the top-result takeaway after a restore ------------------------------------------------------------
+
+test("page change: the takeaway is there after remounting from the cache, as in a fresh run", async () => {
+  motion(false);
+  const f = routeFetch(answers());
+  const first = render(<CompareView />);
+  submit("refunds");
+  await screen.findByRole("list", { name: "Hybrid results" }, { timeout: 4000 });
+  expect(await screen.findByText(/The top result differs/, undefined, { timeout: 4000 })).toBeInTheDocument(); // fresh run
+  first.unmount();
+  f.calls.length = 0;
+
+  render(<CompareView />);
+  await screen.findByText("Title hybrid");
+  expect(screen.getByText(/The top result differs/)).toHaveTextContent("meaning gives “Title vector”");
+  expect(f.calls).toHaveLength(0); // from the cache
+});
+
+test("reload: with an empty cache the three searches re-run and the takeaway appears once they are in", async () => {
+  motion(false);
+  sessionStorage.setItem(COMPARE_QUERY_STORAGE, "refunds");
+  routeFetch(answers());
+  render(<CompareView />);
+  await screen.findByRole("list", { name: "Hybrid results" });
+  expect(await screen.findByText(/The top result differs/)).toBeInTheDocument();
+  expect(screen.getByText(/cosine similarity/i)).toBeInTheDocument(); // the legend too
+});
+
+test("reload, with the preference for reduced motion: same", async () => {
+  motion(true);
+  sessionStorage.setItem(COMPARE_QUERY_STORAGE, "refunds");
+  routeFetch(answers());
+  render(<CompareView />);
+  expect(await screen.findByText(/The top result differs/)).toBeInTheDocument();
+});
+
+test("a restore with only some columns cached: the takeaway waits for the rest, then appears", async () => {
+  motion(false);
+  const f = routeFetch(answers());
+  const first = render(<CompareView />);
+  submit("refunds");
+  await screen.findByRole("list", { name: "Hybrid results" }, { timeout: 4000 });
+  first.unmount();
+  // Drop one mode from the cache, as an expiry would.
+  const { getQueryClient } = await import("@/lib/query/client");
+  getQueryClient().removeQueries({ queryKey: ["compare", "keyword", "refunds"] });
+  f.calls.length = 0;
+
+  render(<CompareView />);
+  await screen.findByRole("list", { name: "Keyword results" });
+  expect(await screen.findByText(/The top result differs/)).toBeInTheDocument();
+  expect(f.calls).toHaveLength(1); // only the missing column was fetched
+});
