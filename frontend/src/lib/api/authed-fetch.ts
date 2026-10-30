@@ -34,9 +34,9 @@ export const defaultAuthedDeps: AuthedFetchDeps = {
   endSession: () => {
     endSessionState(); // the redirect drops memory but not sessionStorage
     const next = location.pathname + location.search;
+    // reason=expired lets the login page say why; a user-initiated Log out never sets it.
     // Full navigation on purpose: it drops all in-memory client state.
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-    // reason=expired lets the login page say why; a user-initiated Log out never sets it.
     location.href = `/login?next=${encodeURIComponent(next)}&reason=expired`;
   },
 };
