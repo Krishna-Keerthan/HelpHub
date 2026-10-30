@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { canRevealNext, compareIntro, snippet, uniqueDocumentIds, type SearchHit } from "./compare";
+import { canRevealNext, compareIntro, MODES, repeatNotes, snippet, topResultTakeaway, uniqueDocumentIds, type SearchHit } from "./compare";
 
 const hit = (document_id: string): SearchHit => ({
   char_end: 1, char_start: 0, chunk_id: `c-${document_id}`, chunk_index: 0, content: "x",
@@ -48,4 +48,82 @@ test("canRevealNext: first column and errors go at once; a finished column waits
 
 test("compareIntro quotes the query verbatim", () => {
   expect(compareIntro("<b>x</b>")).toBe("Comparing Vector, Keyword and Hybrid for \u201c<b>x</b>\u201d.");
+});
+
+// ---- column titles ----------------------------------------------------------------------------------------
+
+test("column titles and switcher labels", () => {
+  expect(MODES.map((m) => m.title)).toEqual(["Meaning (vector)", "Exact words (keyword)", "Combined (hybrid)"]);
+  expect(MODES.map((m) => m.tab)).toEqual(["Meaning", "Exact words", "Combined"]);
+  expect(MODES.map((m) => m.mode)).toEqual(["vector", "keyword", "hybrid"]);
+});
+
+// ---- takeaway ---------------------------------------------------------------------------------------------
+
+const titled = (id: string, title: string): SearchHit => ({ ...hit(id), document_title: title });
+
+test("takeaway: all three lists start with the same document", () => {
+  const l = [titled("a", "Refund policy"), titled("b", "Other")];
+  expect(topResultTakeaway({ vector: l, keyword: [titled("a", "Refund policy")], hybrid: [titled("a", "Refund policy")] })).toBe(
+    "All three lists agree on the top result: \u201cRefund policy\u201d.",
+  );
+});
+
+test("takeaway: the top result differs, naming each list's top document", () => {
+  expect(
+    topResultTakeaway({ vector: [titled("a", "A doc")], keyword: [titled("b", "B doc")], hybrid: [titled("c", "C doc")] }),
+  ).toBe("The top result differs: meaning gives \u201cA doc\u201d, exact words give \u201cB doc\u201d, combined gives \u201cC doc\u201d.");
+});
+
+test("takeaway: two agreeing and one different is still reported as differing, truthfully", () => {
+  const t = topResultTakeaway({ vector: [titled("a", "A doc")], keyword: [titled("b", "B doc")], hybrid: [titled("a", "A doc")] });
+  expect(t).toBe("The top result differs: meaning gives \u201cA doc\u201d, exact words give \u201cB doc\u201d, combined gives \u201cA doc\u201d.");
+});
+
+test("takeaway compares document ids, not titles or passages", () => {
+  // Same title on two different documents: not an agreement. Same document, different passage: agreement.
+  expect(topResultTakeaway({ vector: [titled("a", "Same")], keyword: [titled("b", "Same")], hybrid: [titled("a", "Same")] })).toMatch(/differs/);
+  const other = { ...titled("a", "Same"), chunk_id: "other", chunk_index: 7 };
+  expect(topResultTakeaway({ vector: [titled("a", "Same")], keyword: [other], hybrid: [titled("a", "Same")] })).toMatch(/agree/);
+});
+
+test("takeaway uses only each list's first entry", () => {
+  const t = topResultTakeaway({
+    vector: [titled("a", "A"), titled("z", "Z")], keyword: [titled("a", "A"), titled("y", "Y")], hybrid: [titled("a", "A")],
+  });
+  expect(t).toMatch(/agree/);
+});
+
+test("takeaway is null unless all three lists are loaded and non-empty", () => {
+  const one = [titled("a", "A")];
+  expect(topResultTakeaway({})).toBeNull();
+  expect(topResultTakeaway({ vector: one, keyword: one })).toBeNull();
+  expect(topResultTakeaway({ vector: one, keyword: one, hybrid: [] })).toBeNull();
+  expect(topResultTakeaway({ vector: [], keyword: [], hybrid: [] })).toBeNull();
+});
+
+test("takeaway never ranks the modes", () => {
+  const same = topResultTakeaway({ vector: [hit("a")], keyword: [hit("a")], hybrid: [hit("a")] })!;
+  const diff = topResultTakeaway({ vector: [hit("a")], keyword: [hit("b")], hybrid: [hit("c")] })!;
+  for (const t of [same, diff]) expect(t).not.toMatch(/better|best|worse|worst|wins|winner|more accurate/i);
+});
+
+// ---- repeated documents -----------------------------------------------------------------------------------
+
+test("repeatNotes: a document with two passages in one list says so on both; single ones have no note", () => {
+  const hits = [
+    { ...hit("a"), chunk_id: "a0", chunk_index: 0 },
+    hit("b"),
+    { ...hit("a"), chunk_id: "a2", chunk_index: 2 },
+  ];
+  expect(repeatNotes(hits)).toEqual([
+    "Passage 1 of this document; 2 of its passages are in this list",
+    null,
+    "Passage 3 of this document; 2 of its passages are in this list",
+  ]);
+});
+
+test("repeatNotes: no repeats, no notes; empty list is fine", () => {
+  expect(repeatNotes([hit("a"), hit("b")])).toEqual([null, null]);
+  expect(repeatNotes([])).toEqual([]);
 });

@@ -112,7 +112,7 @@ test("columns are labelled and show a loading state while pending", async () => 
   routeFetch({ "POST /api/search": () => new Promise<Response>(() => {}) });
   render(<CompareView />);
   await search();
-  for (const name of ["Vector", "Keyword", "Hybrid"]) {
+  for (const name of ["Meaning (vector)", "Exact words (keyword)", "Combined (hybrid)"]) {
     expect(screen.getByRole("region", { name })).toHaveTextContent("Searching…");
   }
 });
@@ -148,7 +148,7 @@ test("no marker while a column is still loading", async () => {
   await search();
   await screen.findByRole("list", { name: "Vector results" });
   await screen.findByRole("list", { name: "Keyword results" });
-  expect(screen.getByRole("region", { name: "Hybrid" })).toHaveTextContent("Searching…");
+  expect(screen.getByRole("region", { name: "Combined (hybrid)" })).toHaveTextContent("Searching…");
   expect(markerCount()).toBe(0);
 });
 
@@ -206,9 +206,9 @@ test("labels per mode: similarity in vector and hybrid only, a rank and a note i
   });
   render(<CompareView />);
   await search();
-  const vector = await screen.findByRole("region", { name: "Vector" });
-  const keyword = await screen.findByRole("region", { name: "Keyword" });
-  const hybrid = await screen.findByRole("region", { name: "Hybrid" });
+  const vector = await screen.findByRole("region", { name: "Meaning (vector)" });
+  const keyword = await screen.findByRole("region", { name: "Exact words (keyword)" });
+  const hybrid = await screen.findByRole("region", { name: "Combined (hybrid)" });
   await within(hybrid).findByRole("list");
 
   expect(vector).toHaveTextContent("Similarity 0.900");
@@ -226,13 +226,35 @@ test("labels per mode: similarity in vector and hybrid only, a rank and a note i
   expect(within(keyword).queryByText(/order combines/)).toBeNull();
 });
 
-test("the similarity value has a tooltip and an accessible explanation", async () => {
-  routeFetch({ "POST /api/search": byMode({ vector: () => Response.json([hit("a")]), keyword: () => Response.json([]), hybrid: () => Response.json([]) }) });
-  render(<CompareView />);
+test("the cosine-similarity caveat is a legend shown once, not a tooltip or hidden text on every card", async () => {
+  routeFetch({
+    "POST /api/search": byMode({
+      vector: () => Response.json([hit("a"), hit("b", { score: 0.4 })]),
+      keyword: () => Response.json([hit("a", { score: null })]),
+      hybrid: () => Response.json([hit("a"), hit("b", { score: 0.3 })]),
+    }),
+  });
+  const { container } = render(<CompareView />);
   await search();
-  const sim = await screen.findByText(/Similarity 0\.500/);
-  expect(sim).toHaveAttribute("title", expect.stringContaining("Cosine similarity"));
-  expect(sim).toHaveTextContent("Only comparable within one column");
+  const sims = await screen.findAllByText(/^Similarity 0\.\d{3}$/);
+  expect(sims).toHaveLength(4);
+  for (const sim of sims) {
+    expect(sim).not.toHaveAttribute("title");
+    expect(sim).not.toHaveTextContent(/cosine|comparable/i);
+  }
+  const legend = screen.getAllByText(/Cosine similarity|cosine similarity/);
+  expect(legend).toHaveLength(1);
+  expect(legend[0]).toHaveTextContent("only comparable within one column");
+  expect(container.querySelectorAll("[title*='osine']")).toHaveLength(0);
+});
+
+test("the legend is absent before a query and when nothing came back", async () => {
+  routeFetch({ "POST /api/search": () => Response.json([]) });
+  render(<CompareView />);
+  expect(screen.queryByText(/cosine similarity/i)).toBeNull();
+  await search();
+  await screen.findAllByText("No results.");
+  expect(screen.queryByText(/cosine similarity/i)).toBeNull();
 });
 
 test("why-listed line: found by both, by one branch (hybrid vs single column), and with neither rank", async () => {
@@ -268,7 +290,9 @@ test("why-listed line: found by both, by one branch (hybrid vs single column), a
 
 const ok = (doc: string) => () => Response.json([hit(doc)]);
 const tick = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
-const shown = () => ["Vector", "Keyword", "Hybrid"].filter((n) => within(screen.getByRole("region", { name: n })).queryByRole("list"));
+// Column headings are "Meaning (vector)" etc.; the short names below are only the labels used in assertions.
+const REGION: Record<string, string> = { Vector: "Meaning (vector)", Keyword: "Exact words (keyword)", Hybrid: "Combined (hybrid)" };
+const shown = () => ["Vector", "Keyword", "Hybrid"].filter((n) => within(screen.getByRole("region", { name: REGION[n] })).queryByRole("list"));
 
 test("staged reveal: Vector, then Keyword, then Hybrid about 700 ms apart, each with its caption", async () => {
   motion(false);
@@ -278,15 +302,31 @@ test("staged reveal: Vector, then Keyword, then Hybrid about 700 ms apart, each 
   await search();
   await tick(50); // all three responses have arrived by now
   expect(shown()).toEqual(["Vector"]);
-  expect(screen.getByRole("region", { name: "Vector" })).toHaveTextContent("closest to the question");
-  expect(screen.getByRole("region", { name: "Keyword" })).toHaveTextContent("Searching…");
-  expect(screen.getByRole("region", { name: "Hybrid" })).toHaveTextContent("Searching…");
+  expect(screen.getByRole("region", { name: "Meaning (vector)" })).toHaveTextContent("closest to the question");
+  expect(screen.getByRole("region", { name: "Exact words (keyword)" })).toHaveTextContent("Searching…");
+  expect(screen.getByRole("region", { name: "Combined (hybrid)" })).toHaveTextContent("Searching…");
   await tick(700);
   expect(shown()).toEqual(["Vector", "Keyword"]);
-  expect(screen.getByRole("region", { name: "Keyword" })).toHaveTextContent("contain the question's words or codes");
+  expect(screen.getByRole("region", { name: "Exact words (keyword)" })).toHaveTextContent("contain the question's words or codes");
   await tick(700);
   expect(shown()).toEqual(["Vector", "Keyword", "Hybrid"]);
-  expect(screen.getByRole("region", { name: "Hybrid" })).toHaveTextContent("merged into one list");
+  expect(screen.getByRole("region", { name: "Combined (hybrid)" })).toHaveTextContent("merged into one list");
+});
+
+test("the takeaway and the legend do not spoil the staged reveal: the takeaway appears only once all three columns are shown", async () => {
+  motion(false);
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  routeFetch({ "POST /api/search": byMode({ vector: ok("a"), keyword: ok("b"), hybrid: ok("c") }) });
+  render(<CompareView />);
+  await search();
+  await tick(50);
+  expect(shown()).toEqual(["Vector"]);
+  expect(screen.queryByText(/top result/)).toBeNull();
+  expect(screen.getByText(/cosine similarity/i)).toBeInTheDocument(); // the legend only explains what is already on screen
+  await tick(700);
+  expect(screen.queryByText(/top result/)).toBeNull();
+  await tick(700);
+  expect(screen.getByText(/The top result differs/)).toBeInTheDocument();
 });
 
 test("a slow first column holds the rest; once it arrives the others follow one step apart", async () => {
@@ -305,7 +345,7 @@ test("a slow first column holds the rest; once it arrives the others follow one 
   await search();
   await tick(5000);
   expect(shown()).toEqual([]); // keyword and hybrid are ready but Vector goes first
-  expect(screen.getByRole("region", { name: "Keyword" })).toHaveTextContent("Searching…");
+  expect(screen.getByRole("region", { name: "Exact words (keyword)" })).toHaveTextContent("Searching…");
   releaseVector();
   await tick(50);
   expect(shown()).toEqual(["Vector"]);
@@ -445,7 +485,7 @@ test("a Keyword error shows with its Try again at once, and Hybrid follows it wi
   render(<CompareView />);
   await search();
   await tick(50);
-  const keyword = screen.getByRole("region", { name: "Keyword" });
+  const keyword = screen.getByRole("region", { name: "Exact words (keyword)" });
   expect(within(keyword).getByRole("alert")).toBeInTheDocument();
   expect(within(keyword).getByRole("button", { name: "Retry Keyword" })).toBeInTheDocument();
   expect(shown()).toEqual(["Vector", "Hybrid"]);
@@ -530,4 +570,121 @@ test("the 'Only in this list' badge waits for all three columns to load, not jus
   releaseHybrid();
   await tick(50);
   expect(markerCount()).toBe(1);
+});
+
+// ---- Batch E: titles, takeaway, repeated passages, phone switcher ----------------------------------------------
+
+test("column headings are Meaning (vector), Exact words (keyword) and Combined (hybrid)", async () => {
+  routeFetch({ "POST /api/search": () => Response.json([]) });
+  render(<CompareView />);
+  await search();
+  await screen.findAllByText("No results.");
+  const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+  expect(headings).toEqual(["Meaning (vector)", "Exact words (keyword)", "Combined (hybrid)"]);
+});
+
+test("takeaway: all three lists agree on the top result", async () => {
+  routeFetch({
+    "POST /api/search": byMode({
+      vector: () => Response.json([hit("a"), hit("b")]),
+      keyword: () => Response.json([hit("a", { score: null })]),
+      hybrid: () => Response.json([hit("a")]),
+    }),
+  });
+  render(<CompareView />);
+  await search();
+  expect(await screen.findByText(/All three lists agree on the top result/)).toHaveTextContent("\u201cTitle a\u201d");
+});
+
+test("takeaway: the top result differs", async () => {
+  routeFetch({
+    "POST /api/search": byMode({
+      vector: () => Response.json([hit("a")]),
+      keyword: () => Response.json([hit("b", { score: null })]),
+      hybrid: () => Response.json([hit("c")]),
+    }),
+  });
+  render(<CompareView />);
+  await search();
+  const line = await screen.findByText(/The top result differs/);
+  expect(line).toHaveTextContent("meaning gives \u201cTitle a\u201d, exact words give \u201cTitle b\u201d, combined gives \u201cTitle c\u201d");
+});
+
+test.each([
+  ["a column errors", { keyword: () => Response.json({}, { status: 500 }) }],
+  ["a column is empty", { keyword: () => Response.json([]) }],
+])("no takeaway when %s", async (_n, override) => {
+  const base = {
+    vector: () => Response.json([hit("a")]),
+    keyword: () => Response.json([hit("a", { score: null })]),
+    hybrid: () => Response.json([hit("a")]),
+  };
+  routeFetch({ "POST /api/search": byMode({ ...base, ...override }) });
+  render(<CompareView />);
+  await search();
+  await screen.findByRole("list", { name: "Vector results" });
+  await screen.findByRole("list", { name: "Hybrid results" });
+  expect(screen.queryByText(/top result/)).toBeNull();
+});
+
+test("takeaway waits for all three columns while one is still searching", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  routeFetch({
+    "POST /api/search": async (req) => {
+      const { mode } = (await req.json()) as { mode: string };
+      if (mode === "hybrid") await gate;
+      return Response.json([hit("a")]);
+    },
+  });
+  render(<CompareView />);
+  await search();
+  await screen.findByRole("list", { name: "Keyword results" });
+  expect(screen.queryByText(/top result/)).toBeNull();
+  release();
+  expect(await screen.findByText(/All three lists agree/)).toBeInTheDocument();
+});
+
+test("two passages of one document in a column are both shown and labelled, not hidden", async () => {
+  routeFetch({
+    "POST /api/search": byMode({
+      vector: () => Response.json([hit("a", { chunk_index: 0, chunk_id: "a0" }), hit("b"), hit("a", { chunk_index: 4, chunk_id: "a4" })]),
+      keyword: () => Response.json([hit("a", { score: null })]),
+      hybrid: () => Response.json([]),
+    }),
+  });
+  render(<CompareView />);
+  await search();
+  const items = within(await screen.findByRole("list", { name: "Vector results" })).getAllByRole("listitem");
+  expect(items).toHaveLength(3);
+  expect(items[0]).toHaveTextContent("Passage 1 of this document; 2 of its passages are in this list");
+  expect(items[1]).not.toHaveTextContent("of this document");
+  expect(items[2]).toHaveTextContent("Passage 5 of this document; 2 of its passages are in this list");
+  // A document that appears once in another column has no note there.
+  expect(within(screen.getByRole("list", { name: "Keyword results" })).getByRole("listitem")).not.toHaveTextContent("of this document");
+});
+
+test("phone: a three-way switcher shows one column at a time; lg and up show all three side by side", async () => {
+  routeFetch({ "POST /api/search": () => Response.json([hit("a")]) });
+  const { container } = render(<CompareView />);
+  await search();
+  await screen.findByRole("list", { name: "Hybrid results" });
+
+  const group = screen.getByRole("group", { name: "Show results for" });
+  expect(group.className).toContain("lg:hidden"); // only on phone and tablet
+  const tabs = within(group).getAllByRole("button");
+  expect(tabs.map((b) => b.textContent)).toEqual(["Meaning", "Exact words", "Combined"]);
+  expect(tabs.map((b) => b.getAttribute("aria-pressed"))).toEqual(["true", "false", "false"]);
+
+  const region = (name: string) => screen.getByRole("region", { name });
+  const hidden = (name: string) => region(name).className.includes("max-lg:hidden");
+  expect([hidden("Meaning (vector)"), hidden("Exact words (keyword)"), hidden("Combined (hybrid)")]).toEqual([false, true, true]);
+
+  fireEvent.click(tabs[2]!);
+  expect(tabs.map((b) => b.getAttribute("aria-pressed"))).toEqual(["false", "false", "true"]);
+  expect([hidden("Meaning (vector)"), hidden("Exact words (keyword)"), hidden("Combined (hybrid)")]).toEqual([true, true, false]);
+  // Nothing is removed from the page: hiding is by class only, and the side-by-side grid starts at lg.
+  expect(screen.getAllByRole("region")).toHaveLength(3);
+  expect(container.querySelector(".lg\\:grid-cols-3")).not.toBeNull();
+  expect(container.querySelector(".sm\\:grid-cols-3")).toBeNull();
 });

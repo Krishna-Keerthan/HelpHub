@@ -3,10 +3,14 @@ import type { components } from "@/lib/api/schema";
 export type SearchHit = components["schemas"]["SearchHitRead"];
 export type SearchMode = components["schemas"]["SearchRequest"]["mode"];
 
-export const MODES: readonly { mode: SearchMode; label: string }[] = [
-  { mode: "vector", label: "Vector" },
-  { mode: "keyword", label: "Keyword" },
-  { mode: "hybrid", label: "Hybrid" },
+/**
+ * `label` is the short mode name (list and button names); `title` is the column heading; `tab` is the
+ * short switcher label used below lg, where one column shows at a time.
+ */
+export const MODES: readonly { mode: SearchMode; label: string; title: string; tab: string }[] = [
+  { mode: "vector", label: "Vector", title: "Meaning (vector)", tab: "Meaning" },
+  { mode: "keyword", label: "Keyword", title: "Exact words (keyword)", tab: "Exact words" },
+  { mode: "hybrid", label: "Hybrid", title: "Combined (hybrid)", tab: "Combined" },
 ];
 
 /** One-line captions shown when a column is revealed. */
@@ -22,7 +26,8 @@ export function columnCaption(mode: SearchMode): string {
 }
 export const RANK_ONLY_NOTE = "The API returns no keyword score, only the rank.";
 export const HYBRID_NOTE = "The order combines the two ranks, which is why the similarity values are not descending.";
-export const SIMILARITY_HELP = "Cosine similarity between the question and this passage. Only comparable within one column.";
+/** Shown once above the columns, not on every card. */
+export const SIMILARITY_LEGEND = "Similarity is the cosine similarity between the question and a passage. It is only comparable within one column.";
 export const RANK_HELP = "Position among the passages this search found, 1 being first.";
 
 /** Minimum milliseconds between one column appearing and the next. */
@@ -85,4 +90,35 @@ export function uniqueDocumentIds(lists: Partial<Record<SearchMode, SearchHit[]>
     for (const h of hits) if (seenIn.get(h.document_id)?.size === 1) out.get(mode)?.add(h.document_id);
   }
   return out;
+}
+
+/**
+ * One line on whether the three lists start with the same document, from the order of each list and the
+ * document ids only. It says nothing about which list is better. Null unless all three lists are loaded and
+ * none is empty (there is nothing to compare otherwise).
+ */
+export function topResultTakeaway(lists: Partial<Record<SearchMode, SearchHit[]>>): string | null {
+  const top = (m: SearchMode): SearchHit | undefined => lists[m]?.[0];
+  const [vector, keyword, hybrid] = [top("vector"), top("keyword"), top("hybrid")];
+  if (!vector || !keyword || !hybrid) return null;
+  if (vector.document_id === keyword.document_id && keyword.document_id === hybrid.document_id) {
+    return `All three lists agree on the top result: \u201c${vector.document_title}\u201d.`;
+  }
+  return (
+    `The top result differs: meaning gives \u201c${vector.document_title}\u201d, ` +
+    `exact words give \u201c${keyword.document_title}\u201d, combined gives \u201c${hybrid.document_title}\u201d.`
+  );
+}
+
+/**
+ * A note for each hit whose document appears more than once in the same list. Results are passages, so this
+ * is two different passages (chunks) of one document, not a duplicate: say so instead of hiding either.
+ */
+export function repeatNotes(hits: readonly SearchHit[]): (string | null)[] {
+  const counts = new Map<string, number>();
+  for (const h of hits) counts.set(h.document_id, (counts.get(h.document_id) ?? 0) + 1);
+  return hits.map((h) => {
+    const n = counts.get(h.document_id) ?? 1;
+    return n > 1 ? `Passage ${h.chunk_index + 1} of this document; ${n} of its passages are in this list` : null;
+  });
 }

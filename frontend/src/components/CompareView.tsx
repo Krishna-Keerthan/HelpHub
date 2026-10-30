@@ -14,9 +14,11 @@ import {
   RANK_HELP,
   RANK_ONLY_NOTE,
   REVEAL_STEP_MS,
-  SIMILARITY_HELP,
+  SIMILARITY_LEGEND,
   showsSimilarity,
+  repeatNotes,
   snippet,
+  topResultTakeaway,
   uniqueDocumentIds,
   whyListed,
   type ColumnStatus,
@@ -113,6 +115,8 @@ function CompareSession() {
   const [cooledFor, setCooledFor] = useState(0);
   const [floor, setFloor] = useState(0);
   const [retried, setRetried] = useState<ReadonlySet<SearchMode>>(new Set());
+  // Below lg one column shows at a time; this is the one. From lg all three sit side by side.
+  const [active, setActive] = useState<SearchMode>("vector");
 
   const statuses: ColumnStatus[] = MODES.map(({ mode }) => {
     const state = columns[mode]?.state;
@@ -184,6 +188,11 @@ function CompareSession() {
     ({ mode }, i) => statuses[i] === "error" || (statuses[i] === "done" && (reduced || i < revealed || retried.has(mode))),
   );
 
+  // The takeaway waits until all three columns are on screen, so the staged reveal is not spoiled. The legend
+  // appears once a column that shows similarity values has results.
+  const takeaway = allLoaded && visible.every(Boolean) ? topResultTakeaway(loadedHits) : null;
+  const anyHits = MODES.some(({ mode }, i) => visible[i] && showsSimilarity(mode) && (loadedHits[mode]?.length ?? 0) > 0);
+
   return (
     <section data-wide>
       <h1 className={`mb-4 ${titleClass}`}>Compare retrieval</h1>
@@ -226,20 +235,40 @@ function CompareSession() {
         <p className="text-sm text-muted">Enter a question to see what each retrieval mode returns.</p>
       ) : (
         <>
-        <p className={`mb-4 ${captionClass}`}>{compareIntro(submitted)}</p>
-        {/* sm and up: each column spans three shared rows (heading, notes, results) so the first cards line up. */}
-        <div className="grid gap-y-8 sm:grid-cols-3 sm:gap-x-6 sm:gap-y-0">
-          {MODES.map(({ mode, label }, i) => {
+        <p className={`mb-2 ${captionClass}`}>{compareIntro(submitted)}</p>
+        {takeaway && <p role="status" className="mb-2 text-sm font-medium">{takeaway}</p>}
+        {anyHits && <p className={`mb-4 ${captionClass}`}>{SIMILARITY_LEGEND}</p>}
+        <div role="group" aria-label="Show results for" className="mb-4 flex gap-2 lg:hidden">
+          {MODES.map(({ mode, tab }) => (
+            <button
+              key={mode}
+              type="button"
+              aria-pressed={active === mode}
+              onClick={() => setActive(mode)}
+              className={`${buttonClass({ variant: active === mode ? "primary" : "secondary" })} min-w-0 flex-1 px-2`}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+        {/* lg and up: each column spans three shared rows (heading, notes, results) so the first cards line up. */}
+        <div className="grid gap-y-8 lg:grid-cols-3 lg:gap-x-6 lg:gap-y-0">
+          {MODES.map(({ mode, label, title }, i) => {
             const col = visible[i] ? columns[mode] : undefined;
             const headingId = `compare-${mode}`;
+            const repeats = col?.state === "done" ? repeatNotes(col.hits) : [];
             const hasHits = col !== undefined && col.state !== "loading" && col.state !== "error" && col.hits.length > 0;
             return (
-              <section key={mode} aria-labelledby={headingId} className="min-w-0 sm:row-span-3 sm:grid sm:grid-rows-subgrid">
+              <section
+                key={mode}
+                aria-labelledby={headingId}
+                className={`min-w-0 lg:row-span-3 lg:grid lg:grid-rows-subgrid ${active === mode ? "" : "max-lg:hidden"}`}
+              >
                 <h2 id={headingId} className={`mb-2 ${headingClass}`}>
-                  {label}
+                  {title}
                 </h2>
                 {/* Reserved height keeps the cards from jumping when a later column's notes appear during the reveal. */}
-                <div className="sm:min-h-24">
+                <div className="lg:min-h-24">
                   {hasHits && (
                     <>
                       <p className={`mb-2 ${captionClass}`}>{columnCaption(mode)}</p>
@@ -283,11 +312,9 @@ function CompareSession() {
                           <span className="text-muted">#{n + 1}</span>
                           <span className="min-w-0 break-words font-medium">{h.document_title}</span>
                         </div>
+                        {repeats[n] && <p className={`mt-1 ${captionClass}`}>{repeats[n]}</p>}
                         {showsSimilarity(mode) && h.score !== null && (
-                          <p className={captionClass} title={SIMILARITY_HELP}>
-                            Similarity {h.score.toFixed(3)}
-                            <span className="sr-only"> ({SIMILARITY_HELP})</span>
-                          </p>
+                          <p className={captionClass}>Similarity {h.score.toFixed(3)}</p>
                         )}
                         {unique.get(mode)?.has(h.document_id) && (
                           <p className="mt-1 inline-block rounded-md bg-info px-2 py-0.5 text-xs text-info-fg">

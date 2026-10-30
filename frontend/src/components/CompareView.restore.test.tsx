@@ -21,8 +21,10 @@ const answers = () => ({
   },
 });
 const tick = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+// Column headings are "Meaning (vector)" etc.; the short names below are only the labels used in assertions.
+const REGION: Record<string, string> = { Vector: "Meaning (vector)", Keyword: "Exact words (keyword)", Hybrid: "Combined (hybrid)" };
 const shown = () =>
-  ["Vector", "Keyword", "Hybrid"].filter((n) => within(screen.getByRole("region", { name: n })).queryByRole("list"));
+  ["Vector", "Keyword", "Hybrid"].filter((n) => within(screen.getByRole("region", { name: REGION[n] })).queryByRole("list"));
 
 afterEach(() => vi.useRealTimers());
 
