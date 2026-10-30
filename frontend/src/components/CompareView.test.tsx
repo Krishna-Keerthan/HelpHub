@@ -291,8 +291,9 @@ test("why-listed line: found by both, by one branch (hybrid vs single column), a
 const ok = (doc: string) => () => Response.json([hit(doc)]);
 const tick = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
 // Column headings are "Meaning (vector)" etc.; the short names below are only the labels used in assertions.
-const REGION: Record<string, string> = { Vector: "Meaning (vector)", Keyword: "Exact words (keyword)", Hybrid: "Combined (hybrid)" };
-const shown = () => ["Vector", "Keyword", "Hybrid"].filter((n) => within(screen.getByRole("region", { name: REGION[n] })).queryByRole("list"));
+const SHORT = ["Vector", "Keyword", "Hybrid"];
+const REGIONS = ["Meaning (vector)", "Exact words (keyword)", "Combined (hybrid)"];
+const shown = () => SHORT.filter((_, i) => within(screen.getByRole("region", { name: REGIONS[i] })).queryByRole("list"));
 
 test("staged reveal: Vector, then Keyword, then Hybrid about 700 ms apart, each with its caption", async () => {
   motion(false);
