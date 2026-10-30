@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import { LoginForm } from "@/components/LoginForm";
 import { WakingBanner } from "@/components/WakingBanner";
@@ -7,6 +8,11 @@ import { missingDemoVars } from "@/lib/server/auth-handlers";
 
 // Reads server env per request so the demo button reflects the running configuration.
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Sign in",
+  description: "Sign in to your HelpHub workspace, or try the read-only demo.",
+};
 
 export default function LoginPage() {
   return (
