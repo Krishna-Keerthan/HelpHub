@@ -4,9 +4,10 @@ import { HomeActions } from "@/components/HomeActions";
 import { RequestAccessLink } from "@/components/RequestAccessLink";
 import { Faq } from "@/components/home/Faq";
 import { Features } from "@/components/home/Features";
-import { HomeFooter } from "@/components/home/HomeFooter";
 import { HomeNav } from "@/components/home/HomeNav";
 import { MockChat } from "@/components/home/MockChat";
+import { SiteFooter } from "@/components/shell/SiteFooter";
+import { SkipLink } from "@/components/shell/SkipLink";
 import { buttonClass, chipClass } from "@/components/ui/styles";
 import { missingDemoVars } from "@/lib/server/auth-handlers";
 
@@ -22,8 +23,10 @@ export function HomePage({ signedIn }: { signedIn: boolean }) {
   const contactEmail = process.env.NEXT_PUBLIC_CONTACT_EMAIL;
   return (
     <>
+      <SkipLink />
+      <div className="flex min-h-screen flex-col">
       <HomeNav contactEmail={contactEmail} signedIn={signedIn} />
-      <main className="mx-auto max-w-5xl px-4">
+      <main id="content" tabIndex={-1} className="mx-auto w-full max-w-5xl flex-1 px-4 focus:outline-none">
         <section className="relative isolate grid items-center gap-10 py-12 sm:py-20 lg:grid-cols-2">
           {/* Soft accent glow behind the hero: token colour, low opacity, decorative. */}
           <div aria-hidden="true" className="pointer-events-none absolute -top-24 left-1/2 -z-10 h-72 w-[36rem] max-w-full -translate-x-1/2 rounded-full bg-accent/20 blur-3xl" />
@@ -48,8 +51,9 @@ export function HomePage({ signedIn }: { signedIn: boolean }) {
         </section>
         <Features />
         <Faq />
-        <HomeFooter contactEmail={contactEmail} />
       </main>
+      <SiteFooter containerClass="max-w-5xl" />
+      </div>
     </>
   );
 }

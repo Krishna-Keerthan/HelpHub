@@ -66,6 +66,12 @@
   outline-offset: 2px;
 }
 
+/* The sticky header (two rows in the app, with the waking notice about 140 px) must never cover an anchor or the
+   skip-link target: every scroll-into-view, #hash jump and focus scroll leaves this much room at the top. */
+html {
+  scroll-padding-top: 7rem;
+}
+
 /* Smooth in-page anchors (home page nav), only for visitors who have not asked for reduced motion. */
 @media (prefers-reduced-motion: no-preference) {
   html {

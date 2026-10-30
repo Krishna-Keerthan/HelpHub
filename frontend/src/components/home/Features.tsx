@@ -13,7 +13,7 @@ export const FEATURES = [
 
 export function Features() {
   return (
-    <section id="features" aria-labelledby="features-title" className="scroll-mt-20 py-12">
+    <section id="features" aria-labelledby="features-title" className="py-12">
       <h2 id="features-title" className="text-2xl font-semibold tracking-tight sm:text-3xl">What it does</h2>
       <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {FEATURES.map((f) => (

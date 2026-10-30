@@ -12,7 +12,7 @@ export const FAQ = [
 
 export function Faq() {
   return (
-    <section id="faq" aria-labelledby="faq-title" className="scroll-mt-20 py-12">
+    <section id="faq" aria-labelledby="faq-title" className="py-12">
       <h2 id="faq-title" className="text-2xl font-semibold tracking-tight sm:text-3xl">Questions</h2>
       <div className={`mt-6 divide-y divide-line px-4 ${panelClass}`}>
         {FAQ.map((item) => (
