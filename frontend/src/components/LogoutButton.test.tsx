@@ -16,7 +16,7 @@ test("logging out sends the user to /login", async () => {
   const assign = stubLocation();
   render(<LogoutButton />);
   fireEvent.click(screen.getByRole("button", { name: "Log out" }));
-  await waitFor(() => expect(assign).toHaveBeenCalledWith("/login"));
+  await waitFor(() => expect(assign).toHaveBeenCalledWith("/login")); // exactly /login: no reason=expired
   expect(f.keys()).toEqual(["POST /api/auth/logout"]);
 });
 

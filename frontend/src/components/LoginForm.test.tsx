@@ -87,3 +87,18 @@ test("demo failure shows a message", async () => {
   await screen.findByText("The demo is not available right now.");
   expect(replace).not.toHaveBeenCalled();
 });
+
+test("reason=expired shows a polite status notice, and the safe next is still honoured", async () => {
+  search = "next=%2Fchat&reason=expired";
+  render(<LoginForm />);
+  expect(screen.getByRole("status")).toHaveTextContent("Your session ended. Please sign in again.");
+  routeFetch({ "POST /api/auth/login": () => Response.json({ ok: true }) });
+  fill();
+  await waitFor(() => expect(replace).toHaveBeenCalledWith("/chat"));
+});
+
+test.each(["", "next=%2Fchat", "reason=other", "reason="])("without reason=expired (%j) there is no notice", (q) => {
+  search = q;
+  render(<LoginForm />);
+  expect(screen.queryByRole("status")).toBeNull();
+});

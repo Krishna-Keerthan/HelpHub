@@ -1,5 +1,5 @@
-import { describe, expect, test, vi } from "vitest";
-import { createAuthedFetch, type AuthedFetchDeps } from "./authed-fetch";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { createAuthedFetch, defaultAuthedDeps, type AuthedFetchDeps } from "./authed-fetch";
 
 const expired = () => Response.json({ code: "token_expired" }, { status: 401 });
 const okRes = () => Response.json({ ok: true });
@@ -59,5 +59,16 @@ describe("createAuthedFetch", () => {
     const { f, refresh } = make(fetchImpl, "ok");
     expect((await f(request())).status).toBe(401);
     expect(refresh).not.toHaveBeenCalled();
+  });
+});
+
+describe("defaultAuthedDeps.endSession", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  test("a session that ends on its own goes to /login with next and reason=expired", () => {
+    const loc = { pathname: "/chat", search: "?c=1", href: "" };
+    vi.stubGlobal("location", loc);
+    defaultAuthedDeps.endSession();
+    expect(loc.href).toBe("/login?next=%2Fchat%3Fc%3D1&reason=expired");
   });
 });

@@ -9,7 +9,9 @@ import { buttonClass, captionClass, inputClass } from "./ui/styles";
 
 export function LoginForm({ demoAvailable = false }: { demoAvailable?: boolean }) {
   const router = useRouter();
-  const next = safeNext(useSearchParams().get("next"));
+  const params = useSearchParams();
+  const next = safeNext(params.get("next"));
+  const expired = params.get("reason") === "expired";
   const demo = useDemoLogin(next);
   const [formError, setFormError] = useState<string | null>(null);
   const [formBusy, setFormBusy] = useState(false);
@@ -48,6 +50,9 @@ export function LoginForm({ demoAvailable = false }: { demoAvailable?: boolean }
   const input = `mt-1 w-full ${inputClass}`;
   return (
     <>
+    {expired && (
+      <p role="status" className="mb-4 text-sm text-muted">Your session ended. Please sign in again.</p>
+    )}
     <form onSubmit={onSubmit} className="space-y-4" aria-label="Log in">
       <label className="block text-sm">
         Workspace

@@ -36,7 +36,8 @@ export const defaultAuthedDeps: AuthedFetchDeps = {
     const next = location.pathname + location.search;
     // Full navigation on purpose: it drops all in-memory client state.
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-    location.href = `/login?next=${encodeURIComponent(next)}`;
+    // reason=expired lets the login page say why; a user-initiated Log out never sets it.
+    location.href = `/login?next=${encodeURIComponent(next)}&reason=expired`;
   },
 };
 
