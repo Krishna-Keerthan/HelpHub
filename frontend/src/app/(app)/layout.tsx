@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { NavLink } from "@/components/ui/NavLink";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { AccountChip } from "@/components/AccountChip";
 import { LogoutButton } from "@/components/LogoutButton";
 import { UsersNavLink } from "@/components/UsersNavLink";
 import { WakingBanner } from "@/components/WakingBanner";
@@ -29,7 +30,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <NavLink href="/compare">Compare</NavLink>
             <UsersNavLink />
           </nav>
-          <div className="order-2 ml-auto flex shrink-0 items-center gap-1 sm:order-3 sm:ml-0">
+          <AccountChip />
+          <div className="order-2 ml-auto flex shrink-0 items-center gap-1 sm:order-4 sm:ml-0">
             <ThemeToggle />
             <LogoutButton />
           </div>

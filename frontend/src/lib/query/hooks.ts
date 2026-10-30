@@ -51,12 +51,12 @@ export function useMe() {
   return useQuery({
     queryKey: queryKeys.me,
     staleTime: ME_STALE_MS,
-    queryFn: async (): Promise<{ role: string }> => {
+    queryFn: async (): Promise<{ role: string; email: string | null }> => {
       const { data, response } = await api.GET("/auth/me");
-      const role = (data as { role?: unknown } | undefined)?.role;
+      const { role, email } = (data ?? {}) as { role?: unknown; email?: unknown };
       if (!data) throw new ApiError(response.status, retryAfterSeconds(response));
       if (typeof role !== "string") throw new ApiError(response.status, null);
-      return { role };
+      return { role, email: typeof email === "string" ? email : null };
     },
   });
 }
