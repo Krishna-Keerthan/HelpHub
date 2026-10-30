@@ -688,3 +688,24 @@ test("phone: a three-way switcher shows one column at a time; lg and up show all
   expect(container.querySelector(".lg\\:grid-cols-3")).not.toBeNull();
   expect(container.querySelector(".sm\\:grid-cols-3")).toBeNull();
 });
+
+test("cards drop a leading '## ' from the excerpt but keep the API order and text, and leave '#12' and 'C#' alone", async () => {
+  const vector = [
+    hit("a", { content: "## Refund policy\nFive days." }),
+    hit("b", { content: "C# and issue #12 are unrelated." }),
+    hit("c", { content: "#hashtag stays" }),
+  ];
+  routeFetch({
+    "POST /api/search": byMode({ vector: () => Response.json(vector), keyword: () => Response.json([]), hybrid: () => Response.json([]) }),
+  });
+  render(<CompareView />);
+  await search();
+  const items = within(await screen.findByRole("list", { name: "Vector results" })).getAllByRole("listitem");
+  expect(items.map((i) => i.textContent)).toEqual([
+    expect.stringContaining("Refund policy Five days."),
+    expect.stringContaining("C# and issue #12 are unrelated."),
+    expect.stringContaining("#hashtag stays"),
+  ]);
+  expect(items[0]!.textContent).not.toContain("##");
+  expect(items.map((i) => i.querySelector("span.font-medium")!.textContent)).toEqual(["Title a", "Title b", "Title c"]); // order unchanged
+});

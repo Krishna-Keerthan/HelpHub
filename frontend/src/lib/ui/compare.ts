@@ -69,9 +69,21 @@ export function whyListed(hit: SearchHit, mode: SearchMode): string {
 
 const SNIPPET_CHARS = 160;
 
+// Raw Markdown at the very start of an excerpt: a heading (1 to 6 #), a quote (>) or a bullet (-, * or +), each
+// followed by whitespace. The whitespace is required, so "#hashtag", "#12", "C#" and "-5" are never touched.
+const LEADING_MARKDOWN = /^(?:#{1,6}|>|[-*+])\s+/;
+
+/**
+ * The excerpt shown on a card. Display only: the passage text from the API, and the ranking, are not changed.
+ * Whitespace is collapsed, leading Markdown markers are dropped (a chunk often starts at "## Heading"), and the
+ * result is cut to about 160 characters. Markers anywhere but the start are left alone.
+ */
 export function snippet(content: string): string {
   const flat = content.replace(/\s+/g, " ").trim();
-  return flat.length > SNIPPET_CHARS ? `${flat.slice(0, SNIPPET_CHARS).trimEnd()}…` : flat;
+  let text = flat;
+  while (LEADING_MARKDOWN.test(text)) text = text.replace(LEADING_MARKDOWN, "");
+  if (!/[\p{L}\p{N}]/u.test(text)) text = flat; // nothing readable left (only markers): show it as it is
+  return text.length > SNIPPET_CHARS ? `${text.slice(0, SNIPPET_CHARS).trimEnd()}…` : text;
 }
 
 /**

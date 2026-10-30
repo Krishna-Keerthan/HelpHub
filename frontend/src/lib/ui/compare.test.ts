@@ -127,3 +127,56 @@ test("repeatNotes: no repeats, no notes; empty list is fine", () => {
   expect(repeatNotes([hit("a"), hit("b")])).toEqual([null, null]);
   expect(repeatNotes([])).toEqual([]);
 });
+
+// ---- display-only cleanup of leading Markdown in excerpts ---------------------------------------------------
+
+test.each([
+  ["# Title\nbody text", "Title body text"],
+  ["## Refund policy\n\nFive days.", "Refund policy Five days."],
+  ["###### Deep\nx", "Deep x"],
+  ["#   Spaced   heading", "Spaced heading"],
+  ["> quoted passage", "quoted passage"],
+  ["- first item\n- second item", "first item - second item"], // only the leading marker
+  ["* bullet", "bullet"],
+  ["+ bullet", "bullet"],
+  ["> ## Quoted heading", "Quoted heading"],
+  ["  \n# After blank lines", "After blank lines"],
+])("snippet strips leading Markdown noise: %j", (input, expected) => {
+  expect(snippet(input)).toBe(expected);
+});
+
+test.each([
+  ["#hashtag at the start", "#hashtag at the start"],
+  ["#12 was the issue", "#12 was the issue"],
+  ["C# is a language", "C# is a language"],
+  ["See issue #12 for details", "See issue #12 for details"],
+  ["Use the #hashtag mid-sentence", "Use the #hashtag mid-sentence"],
+  ["Text with ## in the middle", "Text with ## in the middle"],
+  ["Text\n## Later heading", "Text ## Later heading"], // not at the start: left alone
+  ["####### seven hashes", "####### seven hashes"],
+  ["-5 degrees", "-5 degrees"],
+  ["*emphasis* start", "*emphasis* start"],
+  ["**bold** start", "**bold** start"],
+  ["1. numbered", "1. numbered"],
+  ["Plain text", "Plain text"],
+])("snippet leaves this unchanged: %j", (input, expected) => {
+  expect(snippet(input)).toBe(expected);
+});
+
+test("snippet of only markers shows them rather than an empty excerpt", () => {
+  expect(snippet("#")).toBe("#");
+  expect(snippet("- - -")).toBe("- - -");
+  expect(snippet("")).toBe("");
+});
+
+test("snippet strips the marker before truncating, so the 160 characters are real text", () => {
+  const out = snippet(`## ${"x".repeat(500)}`);
+  expect(out.startsWith("x")).toBe(true);
+  expect(out).toHaveLength(161);
+});
+
+test("snippet does not change its input (display only)", () => {
+  const original = "## Heading\nbody";
+  snippet(original);
+  expect(original).toBe("## Heading\nbody");
+});
