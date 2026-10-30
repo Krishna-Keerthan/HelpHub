@@ -15,6 +15,8 @@ type Role = UserRow["role"];
 const NOT_ADMIN_MESSAGE = "Only workspace admins can manage users.";
 /** The users query asks for this many rows (hooks.ts); getting exactly this many means the list may be cut off. */
 const USERS_LIMIT = 100;
+/** Tighter cells and smaller text on phones, so all four columns fit at 390 px; the container still scrolls as a fallback. */
+const CELL_X = "px-2 sm:px-4";
 const LENGTH_HINT = `Use ${PASSWORD_MIN} to ${PASSWORD_MAX} characters.`;
 
 const parse = (iso: string): Date | null => {
@@ -204,23 +206,23 @@ function AdminUsers() {
           </p>
           {/* The table scrolls inside its own container on narrow screens; long emails truncate. */}
           <div className={`overflow-x-auto ${panelClass}`}>
-            <table className="w-full text-left text-sm">
+            <table className="w-full text-left text-xs sm:text-sm">
               <caption className="sr-only">Users in this workspace</caption>
               <thead className="border-b border-line text-muted">
                 <tr>
-                  <th scope="col" className="px-4 py-2 font-medium">Email</th>
-                  <th scope="col" className="px-4 py-2 font-medium">Role</th>
-                  <th scope="col" className="px-4 py-2 font-medium">Status</th>
-                  <th scope="col" className="px-4 py-2 font-medium">Created</th>
+                  <th scope="col" className={`${CELL_X} py-2 font-medium`}>Email</th>
+                  <th scope="col" className={`${CELL_X} py-2 font-medium`}>Role</th>
+                  <th scope="col" className={`${CELL_X} py-2 font-medium`}>Status</th>
+                  <th scope="col" className={`${CELL_X} py-2 font-medium`}>Created</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
                 {rows.map((u) => (
                   <tr key={u.id}>
-                    <td title={u.email} className="max-w-[10rem] truncate px-4 py-3 sm:max-w-xs">{u.email}</td>
-                    <td className="px-4 py-3">{u.role}</td>
-                    <td className="px-4 py-3">{u.is_active ? "Active" : "Inactive"}</td>
-                    <td title={fullTime(u.created_at)} className="whitespace-nowrap px-4 py-3">{shortDate(u.created_at)}</td>
+                    <td title={u.email} className={`max-w-[7rem] truncate ${CELL_X} py-3 sm:max-w-xs`}>{u.email}</td>
+                    <td className={`${CELL_X} py-3`}>{u.role}</td>
+                    <td className={`${CELL_X} py-3`}>{u.is_active ? "Active" : "Inactive"}</td>
+                    <td title={fullTime(u.created_at)} className={`whitespace-nowrap ${CELL_X} py-3`}>{shortDate(u.created_at)}</td>
                   </tr>
                 ))}
               </tbody>

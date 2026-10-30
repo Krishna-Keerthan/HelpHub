@@ -78,6 +78,24 @@ test("the table scrolls inside its own container, so the page does not overflow"
   expect(table.parentElement!.className).toContain("overflow-x-auto");
 });
 
+test("phone: tighter cells and smaller text so all four columns fit, the email truncates harder, the container still scrolls", async () => {
+  routeFetch({ ...me("admin"), ...list() });
+  render(<UsersView />);
+  const table = await screen.findByRole("table");
+  expect(table.className).toContain("text-xs");
+  expect(table.className).toContain("sm:text-sm");
+  for (const cell of within(table).getAllByRole("columnheader").concat(within(table).getAllByRole("cell"))) {
+    const cls = cell.className.split(" ");
+    expect(cls, cell.textContent ?? "").toContain("px-2");
+    expect(cls, cell.textContent ?? "").toContain("sm:px-4");
+    expect(cls).not.toContain("px-4");
+  }
+  const email = within(table).getAllByRole("cell")[0]!;
+  expect(email.className).toContain("max-w-[7rem]");
+  expect(email.className).toContain("sm:max-w-xs");
+  expect(table.parentElement!.className).toContain("overflow-x-auto"); // fallback
+});
+
 test("count line: 1 user, N users, and the first-100 note only at exactly 100 rows", async () => {
   routeFetch({ ...me("admin"), ...list([user("a@x.co")]) });
   const one = render(<UsersView />);
