@@ -307,10 +307,10 @@ test("Copy is offered only on finished answers: not while streaming, not on a re
 
 // ---- scrolling ------------------------------------------------------------------------------------------
 
-function page(height: number, y: number) {
-  vi.spyOn(document.documentElement, "scrollHeight", "get").mockReturnValue(height);
+/** Put the end-of-conversation marker `px` below the bottom of an 800 px screen (negative: on screen). */
+function markerBelowFold(px: number) {
   Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 });
-  Object.defineProperty(window, "scrollY", { configurable: true, value: y });
+  vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({ top: 800 + px } as DOMRect);
   window.dispatchEvent(new Event("scroll"));
 }
 
@@ -333,7 +333,7 @@ test("while streaming the view follows only if the reader is near the bottom", a
   await screen.findByText("one");
   await waitFor(() => expect(scrollIntoView).toHaveBeenCalled()); // at the bottom: followed
 
-  page(5000, 500); // the reader scrolled far up
+  markerBelowFold(4000); // the reader scrolled far up
   scrollIntoView.mockClear();
   s.push("token", { text: "two " });
   s.push("token", { text: "three" });
@@ -344,7 +344,7 @@ test("while streaming the view follows only if the reader is near the bottom", a
 test("asking a new question scrolls down even if the reader had scrolled up", async () => {
   routeFetch({ "POST /api/chat/stream": () => sse(["token", { text: "ok" }], done()) });
   render(<ChatView />);
-  page(5000, 0);
+  markerBelowFold(4000);
   scrollIntoView.mockClear();
   ask("q");
   await screen.findByText("ok");

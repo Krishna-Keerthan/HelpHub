@@ -191,7 +191,8 @@ function ChatSession() {
         </div>
       )}
       <ChatMessages turns={turns} />
-      <div ref={endRef} aria-hidden="true" />
+      {/* scroll-mb: the sticky composer (about 6rem) covers the bottom of the screen, so stop above it. */}
+      <div ref={endRef} aria-hidden="true" className="scroll-mb-32" />
       <ChatComposer inputRef={input} busy={busy} restoring={restoring} onSubmit={onSubmit} onStop={onStop} />
     </section>
   );
