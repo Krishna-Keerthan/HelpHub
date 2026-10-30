@@ -19,8 +19,13 @@ test("the home page is public without a cookie", () => {
   expect(res.headers.get("location")).toBeNull();
 });
 
-test("only the exact home path is public", () => {
-  for (const path of ["/documents", "/users", "/chat", "/homepage"]) {
+test("/home is public without a cookie", () => {
+  const res = proxy(new NextRequest("http://app.test/home"));
+  expect(res.headers.get("location")).toBeNull();
+});
+
+test("only the exact home paths are public", () => {
+  for (const path of ["/documents", "/users", "/chat", "/homepage", "/home/x"]) {
     const res = proxy(new NextRequest(`http://app.test${path}`));
     expect(res.headers.get("location"), path).toBe(`http://app.test/login?next=${encodeURIComponent(path)}`);
   }

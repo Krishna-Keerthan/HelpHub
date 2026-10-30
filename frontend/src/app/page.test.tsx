@@ -9,6 +9,7 @@ vi.mock("next/navigation", () => ({ redirect, useRouter: () => ({ replace: vi.fn
 vi.mock("@/lib/server/auth-handlers", () => ({ missingDemoVars: () => [] }));
 
 import Home, { metadata } from "./page";
+import HomeRoute from "./home/page";
 import { FAQ } from "@/components/home/Faq";
 import { FEATURES } from "@/components/home/Features";
 
@@ -21,11 +22,31 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 const page = async () => render((await Home()) as ReactElement);
+const homeRoute = async () => render((await HomeRoute()) as ReactElement);
 
 test("a signed-in visitor (hh_rt) is sent to /documents", async () => {
   jar.rt = "token";
   await expect(Home()).rejects.toThrow("REDIRECT /documents");
   expect(redirect).toHaveBeenCalledWith("/documents");
+});
+
+test("/home renders for a signed-in visitor with Open the app in the nav and the hero, and no redirect", async () => {
+  jar.rt = "token";
+  await homeRoute();
+  expect(redirect).not.toHaveBeenCalled();
+  for (const region of [screen.getByRole("banner"), screen.getByRole("main")]) {
+    expect(within(region).getByRole("link", { name: "Open the app" })).toHaveAttribute("href", "/documents");
+  }
+  expect(screen.queryByRole("link", { name: "Sign in" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Try the demo" })).toBeNull();
+  expect(screen.queryByRole("link", { name: "Request access" })).toBeNull();
+});
+
+test("/home signed out looks like / (Sign in, demo, Request access, no Open the app)", async () => {
+  await homeRoute();
+  expect(screen.getAllByRole("link", { name: "Sign in" }).length).toBeGreaterThan(0);
+  expect(screen.getByRole("button", { name: "Try the demo" })).toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Open the app" })).toBeNull();
 });
 
 test("hero: badge, headline, both actions, demo caption, cold-start line, mock chat, no screenshots", async () => {

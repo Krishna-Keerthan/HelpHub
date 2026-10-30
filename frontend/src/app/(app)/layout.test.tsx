@@ -31,8 +31,8 @@ test("main is widened only for pages that mark themselves wide", () => {
 test("header renders all three section links in order, each inside the labelled navigation", () => {
   render(<AppLayout><p>content</p></AppLayout>);
   const links = within(screen.getByRole("navigation", { name: "Main" })).getAllByRole("link");
-  expect(links.map((l) => l.textContent)).toEqual(["Documents", "Chat", "Compare"]);
-  expect(links.map((l) => l.getAttribute("href"))).toEqual(["/documents", "/chat", "/compare"]);
+  expect(links.map((l) => l.textContent)).toEqual(["Home", "Documents", "Chat", "Compare"]);
+  expect(links.map((l) => l.getAttribute("href"))).toEqual(["/home", "/documents", "/chat", "/compare"]);
 });
 
 test("the nav is not a scroll container, so focus rings cannot be clipped", () => {
@@ -41,8 +41,13 @@ test("the nav is not a scroll container, so focus rings cannot be clipped", () =
   expect(screen.getByRole("banner").innerHTML).not.toMatch(/overflow/);
 });
 
-test("header order: skip link first, then the nav links, then the theme toggle, then Log out", () => {
+test("header order: skip link first, then the brand, the nav links, then the theme toggle, then Log out", () => {
   render(<AppLayout><p>content</p></AppLayout>);
   const order = Array.from(document.body.querySelectorAll("a, button")).map((el) => el.getAttribute("aria-label") ?? el.textContent);
-  expect(order).toEqual(["Skip to content", "Documents", "Chat", "Compare", "Switch to dark theme", "Log out"]);
+  expect(order).toEqual(["Skip to content", "HelpHub", "Home", "Documents", "Chat", "Compare", "Switch to dark theme", "Log out"]);
+});
+
+test("the brand links to /documents", () => {
+  render(<AppLayout><p>content</p></AppLayout>);
+  expect(within(screen.getByRole("banner")).getByRole("link", { name: "HelpHub" })).toHaveAttribute("href", "/documents");
 });

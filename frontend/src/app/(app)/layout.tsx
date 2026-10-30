@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { NavLink } from "@/components/ui/NavLink";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { LogoutButton } from "@/components/LogoutButton";
@@ -20,8 +21,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <header className="border-b border-line bg-surface-raised">
         {/* Phone: brand and Log out on row one, the nav wraps below. sm and up: one row. No overflow, so focus rings are never clipped. */}
         <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 group-has-[[data-wide]]/shell:max-w-5xl sm:gap-x-4">
-          <span className="order-1 shrink-0 font-semibold tracking-tight">HelpHub</span>
+          <Link href="/documents" className="order-1 shrink-0 rounded-md font-semibold tracking-tight">HelpHub</Link>
           <nav aria-label="Main" className="order-3 flex basis-full flex-wrap gap-1 sm:order-2 sm:basis-auto sm:flex-1">
+            <NavLink href="/home">Home</NavLink>
             <NavLink href="/documents">Documents</NavLink>
             <NavLink href="/chat">Chat</NavLink>
             <NavLink href="/compare">Compare</NavLink>
