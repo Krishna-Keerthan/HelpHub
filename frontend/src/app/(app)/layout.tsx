@@ -2,6 +2,7 @@ import Link from "next/link";
 import { NavLink } from "@/components/ui/NavLink";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { AccountChip } from "@/components/AccountChip";
+import { HomeFooter } from "@/components/home/HomeFooter";
 import { LogoutButton } from "@/components/LogoutButton";
 import { UsersNavLink } from "@/components/UsersNavLink";
 import { WakingBanner } from "@/components/WakingBanner";
@@ -17,7 +18,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         Skip to content
       </a>
       {/* Named group: the header's inner width follows main (max-w-3xl, or 5xl when a page has [data-wide]). */}
-      <div className="group/shell">
+      <div className="group/shell flex min-h-screen flex-col">
       <WakingBanner />
       <header className="border-b border-line bg-surface-raised">
         {/* Phone: brand and Log out on row one, the nav wraps below. sm and up: one row. No overflow, so focus rings are never clipped. */}
@@ -37,7 +38,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
-      <main id="content" tabIndex={-1} className="mx-auto max-w-3xl p-4 sm:py-6 focus:outline-none has-[[data-wide]]:max-w-5xl">{children}</main>
+      <main id="content" tabIndex={-1} className="mx-auto w-full max-w-3xl flex-1 p-4 sm:py-6 focus:outline-none has-[[data-wide]]:max-w-5xl">{children}</main>
+      {/* Same container rule as the header and main, so the footer lines up with the page. */}
+      <div className="mx-auto w-full max-w-3xl px-4 group-has-[[data-wide]]/shell:max-w-5xl">
+        <HomeFooter contactEmail={process.env.NEXT_PUBLIC_CONTACT_EMAIL} showHome />
+      </div>
       </div>
     </>
   );
