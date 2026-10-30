@@ -1,5 +1,6 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
+import { resetSessionCache } from "@/lib/query/client";
 import { render } from "@/test/render";
 import { routeFetch } from "@/test/fetch-mock";
 import { UsersView } from "./UsersView";
@@ -41,12 +42,81 @@ test("pending lookup shows no form", () => {
   expect(screen.queryByText(NOT_ADMIN)).toBeNull();
 });
 
-test("admin sees the list with email, role and status", async () => {
+test("admin sees a table with Email, Role, Status and Created columns and one row per user", async () => {
   routeFetch({ ...me("admin"), ...list([user("a@x.co", "admin"), user("v@x.co", "viewer", false)]) });
   render(<UsersView />);
-  const items = await screen.findAllByRole("listitem");
-  expect(items[0]).toHaveTextContent("a@x.co");
-  expect(items[1]).toHaveTextContent(/v@x\.co.*viewer.*Inactive/);
+  const table = await screen.findByRole("table", { name: "Users in this workspace" });
+  expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Email", "Role", "Status", "Created"]);
+  const rows = within(table).getAllByRole("row").slice(1);
+  expect(rows).toHaveLength(2);
+  const cells = (r: HTMLElement) => within(r).getAllByRole("cell").map((c) => c.textContent);
+  expect(cells(rows[0]!)).toEqual(["a@x.co", "admin", "Active", new Date("2026-01-01T00:00:00Z").toLocaleDateString()]);
+  expect(cells(rows[1]!).slice(0, 3)).toEqual(["v@x.co", "viewer", "Inactive"]);
+});
+
+test("the created cell shows the local date and keeps the full timestamp in its title; the email keeps its full address", async () => {
+  routeFetch({ ...me("admin"), ...list([user("long.address@example.test")]) });
+  render(<UsersView />);
+  const row = (await screen.findAllByRole("row"))[1]!;
+  const [email, , , created] = within(row).getAllByRole("cell");
+  expect(email).toHaveAttribute("title", "long.address@example.test");
+  expect(created).toHaveAttribute("title", new Date("2026-01-01T00:00:00Z").toLocaleString());
+});
+
+test("a created_at that is not a date is shown as received, not as 'Invalid Date'", async () => {
+  routeFetch({ ...me("admin"), "GET /api/users": () => Response.json([{ ...user("a@x.co"), created_at: "soon" }]) });
+  render(<UsersView />);
+  const row = (await screen.findAllByRole("row"))[1]!;
+  expect(row).toHaveTextContent("soon");
+  expect(row).not.toHaveTextContent("Invalid Date");
+});
+
+test("the table scrolls inside its own container, so the page does not overflow", async () => {
+  routeFetch({ ...me("admin"), ...list() });
+  render(<UsersView />);
+  const table = await screen.findByRole("table");
+  expect(table.parentElement!.className).toContain("overflow-x-auto");
+});
+
+test("count line: 1 user, N users, and the first-100 note only at exactly 100 rows", async () => {
+  routeFetch({ ...me("admin"), ...list([user("a@x.co")]) });
+  const one = render(<UsersView />);
+  expect(await screen.findByText("1 user")).toBeInTheDocument();
+  one.unmount();
+  resetSessionCache();
+
+  routeFetch({ ...me("admin"), ...list([user("a@x.co"), user("b@x.co")]) });
+  const two = render(<UsersView />);
+  expect(await screen.findByText("2 users")).toBeInTheDocument();
+  expect(screen.queryByText(/first 100/)).toBeNull();
+  two.unmount();
+  resetSessionCache();
+
+  for (const n of [99, 100]) {
+    routeFetch({ ...me("admin"), ...list(Array.from({ length: n }, (_, i) => user(`u${i}@x.co`))) });
+    const r = render(<UsersView />);
+    expect(await screen.findByText(new RegExp(`^${n} users`))).toBeInTheDocument();
+    if (n === 100) expect(screen.getByText(/Showing the first 100 users\./)).toBeInTheDocument();
+    else expect(screen.queryByText(/first 100/)).toBeNull();
+    r.unmount();
+    resetSessionCache();
+  }
+});
+
+test("the header note says there is no password reset or deactivate action", async () => {
+  routeFetch({ ...me("admin"), ...list() });
+  render(<UsersView />);
+  expect(await screen.findByText(/People who can sign in to this workspace\./)).toHaveTextContent(
+    "There is no password reset or deactivate action yet. Ask the workspace operator.",
+  );
+});
+
+test("a non-admin sees only the read-only message: no table, no note", async () => {
+  routeFetch({ ...me("agent"), ...list() });
+  render(<UsersView />);
+  expect(await screen.findByText(NOT_ADMIN)).toBeInTheDocument();
+  expect(screen.queryByRole("table")).toBeNull();
+  expect(screen.queryByText(/password reset/)).toBeNull();
 });
 
 async function fillAndSubmit(password = "twelve-plus-chars") {
@@ -69,7 +139,7 @@ test("add success posts the body, refetches the list and clears the form", async
   });
   render(<UsersView />);
   await fillAndSubmit();
-  expect(await screen.findByText("new@x.co", { selector: "span" })).toBeInTheDocument();
+  expect(await screen.findByText("new@x.co", { selector: "td" })).toBeInTheDocument();
   expect(await f.calls.find((c) => c.key === "POST /api/users")!.req.json()).toEqual({
     email: "new@x.co", role: "viewer", password: "twelve-plus-chars",
   });

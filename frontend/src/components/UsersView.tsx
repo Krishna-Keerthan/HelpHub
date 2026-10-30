@@ -13,7 +13,16 @@ import { buttonClass, captionClass, cardClass, headingClass, inputClass, panelCl
 type Role = UserRow["role"];
 
 const NOT_ADMIN_MESSAGE = "Only workspace admins can manage users.";
+/** The users query asks for this many rows (hooks.ts); getting exactly this many means the list may be cut off. */
+const USERS_LIMIT = 100;
 const LENGTH_HINT = `Use ${PASSWORD_MIN} to ${PASSWORD_MAX} characters.`;
+
+const parse = (iso: string): Date | null => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+const shortDate = (iso: string): string => parse(iso)?.toLocaleDateString() ?? iso;
+const fullTime = (iso: string): string => parse(iso)?.toLocaleString() ?? iso;
 
 function addErrorMessage(status: number, retryAfter: number | null): string {
   if (status === 409) return "A user with this email already exists in this workspace.";
@@ -115,6 +124,9 @@ function AdminUsers() {
   const rows = users.data ?? null;
   return (
     <div className="space-y-6">
+      <p className={captionClass}>
+        People who can sign in to this workspace. There is no password reset or deactivate action yet. Ask the workspace operator.
+      </p>
       <form onSubmit={onSubmit} aria-label="Add a user" className={`space-y-4 ${cardClass}`}>
         <h2 className={headingClass}>Add a user</h2>
         <label className="block text-sm">
@@ -185,15 +197,36 @@ function AdminUsers() {
       {rows === null ? (
         !loadMessage && <Notice>Loading users…</Notice>
       ) : (
-        <ul aria-label="Users" className={`divide-y divide-line px-4 ${panelClass}`}>
-          {rows.map((u) => (
-            <li key={u.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3">
-              <span className="min-w-0 flex-1 basis-40 truncate">{u.email}</span>
-              <span className="text-sm text-muted">{u.role}</span>
-              <span className="text-sm text-muted">{u.is_active ? "Active" : "Inactive"}</span>
-            </li>
-          ))}
-        </ul>
+        <div>
+          <p className={`mb-2 ${captionClass}`}>
+            {rows.length === 1 ? "1 user" : `${rows.length} users`}
+            {rows.length === USERS_LIMIT && ". Showing the first 100 users."}
+          </p>
+          {/* The table scrolls inside its own container on narrow screens; long emails truncate. */}
+          <div className={`overflow-x-auto ${panelClass}`}>
+            <table className="w-full text-left text-sm">
+              <caption className="sr-only">Users in this workspace</caption>
+              <thead className="border-b border-line text-muted">
+                <tr>
+                  <th scope="col" className="px-4 py-2 font-medium">Email</th>
+                  <th scope="col" className="px-4 py-2 font-medium">Role</th>
+                  <th scope="col" className="px-4 py-2 font-medium">Status</th>
+                  <th scope="col" className="px-4 py-2 font-medium">Created</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {rows.map((u) => (
+                  <tr key={u.id}>
+                    <td title={u.email} className="max-w-[10rem] truncate px-4 py-3 sm:max-w-xs">{u.email}</td>
+                    <td className="px-4 py-3">{u.role}</td>
+                    <td className="px-4 py-3">{u.is_active ? "Active" : "Inactive"}</td>
+                    <td title={fullTime(u.created_at)} className="whitespace-nowrap px-4 py-3">{shortDate(u.created_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
     </div>
   );
