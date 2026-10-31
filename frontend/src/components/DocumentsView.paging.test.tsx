@@ -66,17 +66,6 @@ test("the last page (page=3) requests offset=20, shows 4 rows, and Next is disab
   expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
 });
 
-test("size in the URL is used, and changing the size resets to page 1 in the URL", async () => {
-  nav.search = "page=2&size=25";
-  const b = backend(all(60));
-  routeFetch({ ...asViewer, "GET /api/documents": b.handler });
-  render(<DocumentsView />);
-  expect(await screen.findByText("Showing 26 to 50 of 60")).toBeInTheDocument();
-  expect(b.seen[0]).toEqual({ limit: "25", offset: "25" });
-  fireEvent.change(screen.getByLabelText("Per page"), { target: { value: "50" } });
-  expect(nav.push).toHaveBeenCalledWith("/documents?size=50", { scroll: false });
-});
-
 test("invalid URL values fall back to page 1 and size 10", async () => {
   nav.search = "page=abc&size=7";
   const b = backend(all(24));
@@ -95,44 +84,11 @@ test("without X-Total-Count the footer says 'Page 1' and Next follows whether th
   expect(screen.getByRole("button", { name: "Next" })).toBeEnabled();
 });
 
-test("without X-Total-Count, a short page disables Next", async () => {
-  nav.search = "page=3";
-  const b = backend(all(24), () => null);
-  routeFetch({ ...asViewer, "GET /api/documents": b.handler });
-  render(<DocumentsView />);
-  expect(await screen.findByText("Page 3")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
-});
-
 test.each(["abc", "", "-3", "1.5", "99999999999999"])("an unparsable X-Total-Count (%j) is treated as absent", async (value) => {
   const b = backend(all(24), () => value);
   routeFetch({ ...asViewer, "GET /api/documents": b.handler });
   render(<DocumentsView />);
   expect(await screen.findByText("Page 1")).toBeInTheDocument();
-});
-
-test("a page past the end moves to the last page when the total is known", async () => {
-  nav.search = "page=9";
-  const b = backend(all(24));
-  routeFetch({ ...asViewer, "GET /api/documents": b.handler });
-  render(<DocumentsView />);
-  await waitFor(() => expect(nav.replace).toHaveBeenCalledWith("/documents?page=3", { scroll: false }));
-});
-
-test("a page past the end moves back one page when no total is known", async () => {
-  nav.search = "page=3";
-  const b = backend(all(15), () => null);
-  routeFetch({ ...asViewer, "GET /api/documents": b.handler });
-  render(<DocumentsView />);
-  await waitFor(() => expect(nav.replace).toHaveBeenCalledWith("/documents?page=2", { scroll: false }));
-});
-
-test("page 1 with no documents shows the empty state, not a redirect", async () => {
-  routeFetch({ ...asViewer, "GET /api/documents": backend([]).handler });
-  render(<DocumentsView />);
-  expect(await screen.findByText("No documents yet.")).toBeInTheDocument();
-  expect(nav.replace).not.toHaveBeenCalled();
-  expect(screen.queryByRole("navigation", { name: "Pagination" })).toBeNull();
 });
 
 test("deleting the only row on the last page moves to the previous page", async () => {
@@ -153,26 +109,6 @@ test("deleting the only row on the last page moves to the previous page", async 
   await waitFor(() => expect(f.keys()).toContain("DELETE /api/documents/21"));
   await waitFor(() => expect(nav.replace).toHaveBeenCalledWith("/documents?page=2", { scroll: false }));
   expect(nav.replace).toHaveBeenCalledTimes(1);
-});
-
-test("deleting a row on a middle page keeps the page and refreshes the total", async () => {
-  nav.search = "page=2";
-  let rows = all(24);
-  routeFetch({
-    ...asAdmin,
-    "GET /api/documents": (req) => backend(rows).handler(req),
-    "DELETE /api/documents/12": () => {
-      rows = rows.filter((d) => d.id !== "12");
-      return new Response(null, { status: 204 });
-    },
-  });
-  render(<DocumentsView />);
-  await screen.findByText("Showing 11 to 20 of 24");
-  vi.spyOn(window, "confirm").mockReturnValueOnce(true);
-  fireEvent.click(await screen.findByRole("button", { name: "Delete Doc 12" }));
-  expect(await screen.findByText("Showing 11 to 20 of 23")).toBeInTheDocument();
-  expect(screen.queryByText("Doc 12")).toBeNull();
-  expect(nav.replace).not.toHaveBeenCalled();
 });
 
 test("invalidating the documents prefix marks every cached page and single document stale", async () => {

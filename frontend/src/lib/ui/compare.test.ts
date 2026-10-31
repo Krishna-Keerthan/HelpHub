@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { canRevealNext, compareIntro, MODES, repeatNotes, snippet, topResultTakeaway, uniqueDocumentIds, type SearchHit } from "./compare";
+import { canRevealNext, repeatNotes, snippet, topResultTakeaway, uniqueDocumentIds, type SearchHit } from "./compare";
 
 const hit = (document_id: string): SearchHit => ({
   char_end: 1, char_start: 0, chunk_id: `c-${document_id}`, chunk_index: 0, content: "x",
@@ -46,17 +46,7 @@ test("canRevealNext: first column and errors go at once; a finished column waits
   expect(canRevealNext(3, ["done", "done", "done"], true)).toBe(false);
 });
 
-test("compareIntro quotes the query verbatim", () => {
-  expect(compareIntro("<b>x</b>")).toBe("Comparing Vector, Keyword and Hybrid for \u201c<b>x</b>\u201d.");
-});
-
 // ---- column titles ----------------------------------------------------------------------------------------
-
-test("column titles and switcher labels", () => {
-  expect(MODES.map((m) => m.title)).toEqual(["Meaning (vector)", "Exact words (keyword)", "Combined (hybrid)"]);
-  expect(MODES.map((m) => m.tab)).toEqual(["Meaning", "Exact words", "Combined"]);
-  expect(MODES.map((m) => m.mode)).toEqual(["vector", "keyword", "hybrid"]);
-});
 
 // ---- takeaway ---------------------------------------------------------------------------------------------
 

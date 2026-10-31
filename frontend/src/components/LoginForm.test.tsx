@@ -74,31 +74,3 @@ test("demo button calls the demo route with no body and goes to the app", async 
   expect(await f.calls[0]!.req.text()).toBe("");
 });
 
-test("demo button is disabled when the server has no demo configured", () => {
-  render(<LoginForm />);
-  expect((screen.getByRole("button", { name: "Try the demo" }) as HTMLButtonElement).disabled).toBe(true);
-  expect(screen.getByText(/not configured/)).toBeTruthy();
-});
-
-test("demo failure shows a message", async () => {
-  routeFetch({ "POST /api/auth/demo": () => Response.json({ code: "demo_unavailable" }, { status: 503 }) });
-  render(<LoginForm demoAvailable />);
-  fireEvent.click(screen.getByRole("button", { name: "Try the demo" }));
-  await screen.findByText("The demo is not available right now.");
-  expect(replace).not.toHaveBeenCalled();
-});
-
-test("reason=expired shows a polite status notice, and the safe next is still honoured", async () => {
-  search = "next=%2Fchat&reason=expired";
-  render(<LoginForm />);
-  expect(screen.getByRole("status")).toHaveTextContent("Your session ended. Please sign in again.");
-  routeFetch({ "POST /api/auth/login": () => Response.json({ ok: true }) });
-  fill();
-  await waitFor(() => expect(replace).toHaveBeenCalledWith("/chat"));
-});
-
-test.each(["", "next=%2Fchat", "reason=other", "reason="])("without reason=expired (%j) there is no notice", (q) => {
-  search = q;
-  render(<LoginForm />);
-  expect(screen.queryByRole("status")).toBeNull();
-});

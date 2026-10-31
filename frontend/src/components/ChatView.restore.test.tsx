@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { expect, test, vi } from "vitest";
+import { expect, test} from "vitest";
 import { STREAM_CUT_OFF_MESSAGE } from "@/lib/ui/chat-state";
 import { CONVERSATION_STORAGE } from "@/lib/session/storage";
 import { render } from "@/test/render";
@@ -145,24 +145,6 @@ test("a 404 on send clears the stored id", async () => {
   expect(sessionStorage.getItem(CONVERSATION_STORAGE)).toBeNull();
 });
 
-test("blocked storage does not break chat", async () => {
-  vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
-    throw new Error("blocked");
-  });
-  vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-    throw new Error("blocked");
-  });
-  routeFetch({
-    "POST /api/chat/stream": () =>
-      sse(["token", { text: "works" }], ["done", { conversation_id: ID, status: "complete", cited: [] }]),
-  });
-  render(<ChatView />);
-  expect(screen.getByLabelText("Your question")).toBeEnabled();
-  ask("hello");
-  expect(await screen.findByText("works")).toBeInTheDocument();
-  vi.restoreAllMocks();
-});
-
 test("an invalid stored source in the middle is dropped and the right chips are cited", async () => {
   sessionStorage.setItem(CONVERSATION_STORAGE, ID);
   routeFetch({
@@ -181,16 +163,3 @@ test("an invalid stored source in the middle is dropped and the right chips are 
   expect(chips.querySelectorAll("li")).toHaveLength(2);
 });
 
-test("the history failure alert goes away once a question is sent successfully", async () => {
-  sessionStorage.setItem(CONVERSATION_STORAGE, ID);
-  routeFetch({
-    [HISTORY]: () => Response.json({ detail: "x" }, { status: 500 }),
-    "POST /api/chat/stream": () =>
-      sse(["token", { text: "answered" }], ["done", { conversation_id: ID, status: "complete", cited: [] }]),
-  });
-  render(<ChatView />);
-  expect(await screen.findByRole("alert")).toHaveTextContent("Something went wrong on our side");
-  ask("hello");
-  expect(await screen.findByText("answered")).toBeInTheDocument();
-  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-});

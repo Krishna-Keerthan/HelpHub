@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen} from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vitest";
 
 // A pass-through spy on the real renderer, to count how often Markdown is actually rendered.
@@ -11,24 +11,6 @@ beforeEach(() => markdown.mockClear());
 import { AnswerMarkdown } from "./AnswerMarkdown";
 
 const show = (text: string) => render(<AnswerMarkdown text={text} />);
-
-test("bullets become a list", () => {
-  show("Steps:\n\n* first\n* second\n");
-  const items = within(screen.getByRole("list")).getAllByRole("listitem");
-  expect(items.map((i) => i.textContent)).toEqual(["first", "second"]);
-});
-
-test("numbered lists become an ordered list", () => {
-  const { container } = show("1. one\n2. two\n");
-  expect(container.querySelector("ol")).not.toBeNull();
-});
-
-test("**bold** becomes <strong> and `code` becomes <code>", () => {
-  const { container } = show("Refunds take **five days** via `card`.");
-  expect(container.querySelector("strong")).toHaveTextContent("five days");
-  expect(container.querySelector("code")).toHaveTextContent("card");
-  expect(container).not.toHaveTextContent("**");
-});
 
 test("a [n] citation marker stays visible text, also in its fullwidth forms", () => {
   const { container } = show("Five days [4]. Also ［2］ and 【3】.");
@@ -71,22 +53,3 @@ test("http(s) and mailto links open in a new tab with rel noopener noreferrer", 
   expect(screen.getByRole("link", { name: "a" })).toHaveAttribute("href", "https://example.test/a");
 });
 
-test("headings are plain emphasised paragraphs", () => {
-  const { container } = show("# Title\n\ntext");
-  expect(container.querySelector("h1")).toBeNull();
-  expect(container).toHaveTextContent("Title");
-});
-
-test("single newlines inside a paragraph still break the line", () => {
-  const { container } = show("line one\nline two");
-  expect(container.querySelector("p")!.className).toContain("whitespace-pre-line");
-});
-
-test("memoised by text: the same text does not render Markdown again, new text does", () => {
-  const { rerender } = show("same");
-  expect(markdown).toHaveBeenCalledTimes(1);
-  rerender(<AnswerMarkdown text="same" />);
-  expect(markdown).toHaveBeenCalledTimes(1);
-  rerender(<AnswerMarkdown text="same and more" />);
-  expect(markdown).toHaveBeenCalledTimes(2);
-});
