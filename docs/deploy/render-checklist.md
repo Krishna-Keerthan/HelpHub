@@ -1,6 +1,6 @@
 # Render deploy checklist (Render free + Supabase free)
 
-Built from `docs/deploy/runbook.md` (status lines updated 2026-10-29). Render-side results are owner-reported (see Status); this document's other checks were not run against Render. Items marked **unverified** are not stated by an official page.
+Built from `docs/deploy/runbook.md` (status lines updated 2026-10-31). Render-side results are owner-reported (see Status); this document's other checks were not run against Render. Items marked **unverified** are not stated by an official page.
 
 ## Status
 Lines marked owner-reported were stated by the owner; this update did not check them against GitHub, Render, Vercel, Supabase or the uptime service.
@@ -15,6 +15,7 @@ Lines marked owner-reported were stated by the owner; this update did not check 
 - `render.yaml` does **not** exist (checked in the repo root).
 - Render itself is unmeasured: no memory, region or cold-start figure from Render is recorded.
 - 2026-10-29, checked from this repo's session against the live service: `/health` 200 (0.42 to 0.86 s) and `/health/ready` 200 (1.34 to 1.86 s), three runs; `scripts/smoke_live.py` passed (login, upload, search, chat, delete, logout); no `access-control-allow-origin` header for either a foreign origin or the frontend origin (the BFF design needs none).
+- 2026-10-31, after the owner redeployed the backend (the deployed commit is not recorded here; the Render deploy page shows it): `/health` 200 (0.43 to 1.00 s), `/health/ready` 200 (1.26 to 2.89 s), `HEAD /health` 200 (the HEAD fix is live); `GET /documents` returns `X-Total-Count: 24`; `scripts/smoke_live.py` passed; a one-page PDF uploaded through `/documents/upload` reached READY in 9.21 s, was found by search and was deleted (document count back to 24). Not confirmed from outside: that pypdf 6.21.4 is the installed version.
 
 ## Health check path: use `/health`, not `/health/ready`
 - `GET /health` is liveness. It returns `{"status": "ok"}` and touches nothing else (`backend/app/api/health.py`).
@@ -32,11 +33,12 @@ Lines marked owner-reported were stated by the owner; this update did not check 
 ## First deploy
 - [ ] Run `migrate`, then deploy manually from the dashboard (auto deploy is off).
 - [ ] Watch startup: measured 40 to 56 s on a dev box, Render allows 15 minutes to bind the port. Whether the 60 s failed-check rule applies while starting is unverified; watch the first deploy.
-- [ ] `GET /health` returns 200, then `GET /health/ready` returns 200 (proves the pooler connection and the runtime role).
+- [x] `GET /health` returns 200, then `GET /health/ready` returns 200 (proves the pooler connection and the runtime role). Verified 2026-10-29 and 2026-10-31.
 - [ ] Record whether Render reaches Supabase over IPv6 directly (unknown); stay on the session pooler.
 
 ## Smoke checks (Day 12)
-- [x] Run `backend/scripts/smoke_live.py` (exists; tenant must already exist) against the deployed URL: login, upload, search, chat, delete, logout. Passed twice (owner-reported 2026-10-26) and again on 2026-10-29. Variables: `BASE_URL`, `SMOKE_TENANT_SLUG`, `SMOKE_EMAIL`, `SMOKE_PASSWORD` (see the runbook).
+- [x] Run `backend/scripts/smoke_live.py` (exists; tenant must already exist) against the deployed URL: login, upload, search, chat, delete, logout. Passed twice (owner-reported 2026-10-26) and again on 2026-10-29 and 2026-10-31 (after the redeploy). Variables: `BASE_URL`, `SMOKE_TENANT_SLUG`, `SMOKE_EMAIL`, `SMOKE_PASSWORD` (see the runbook).
+- [x] PDF upload through the live service (`POST /documents/upload`): READY, searchable, deleted afterwards (2026-10-31). `smoke_live.py` uploads text only, so this was a separate check.
 - [ ] Login works within the free-tier CPU budget (measured about 0.46 s alone at 0.1 CPU).
 - [ ] Wake from sleep: first request after 15 minutes idle takes about a minute (Render's figure).
 - [x] CORS: no `access-control-allow-origin` header for a foreign origin or for the frontend origin (2026-10-29); the browser only talks to the BFF, so none is needed.
