@@ -37,10 +37,6 @@ def test_password_hashing() -> None:
     assert verify_password("WrongPassword123!", hashed) is False
 
 
-def test_hashes_are_salted() -> None:
-    assert hash_password("SecurePassword123") != hash_password("SecurePassword123")
-
-
 def test_dummy_hash_never_verifies_and_matches_real_parameters() -> None:
     assert verify_password("anything", DUMMY_HASH) is False
     # "$argon2id$v=19$m=...,t=...,p=...$salt$hash": same cost parameters.

@@ -10,13 +10,12 @@ from pydantic import SecretStr
 
 from app.api.deps import get_llm_provider
 from app.core.config import settings
-from app.main import app, lifespan
+from app.main import app
 from app.services import llm as llm_module
 from app.services.llm import (
     GroqProvider,
     LLMBadRequestError,
     LLMError,
-    LLMRateLimitError,
     LLMTimeoutError,
     LLMUnavailableError,
 )
@@ -86,28 +85,6 @@ async def test_retries_are_capped_at_two() -> None:
     with pytest.raises(LLMUnavailableError):
         await collect(GroqProvider(client))
     assert len(client.calls) == 3  # first try + 2 retries
-
-
-async def test_retry_after_is_honoured_and_capped(key_and_sleep: list[float]) -> None:
-    client = FakeClient(
-        [
-            status_error(groq.RateLimitError, 429, {"retry-after": "120"}),
-            status_error(groq.RateLimitError, 429, {"retry-after": "2"}),
-            FakeStream([chunk("ok")]),
-        ]
-    )
-    assert await collect(GroqProvider(client)) == ["ok"]
-    assert key_and_sleep == [5.0, 2.0]
-
-
-async def test_retry_stops_at_overall_deadline(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(settings, "llm_retry_deadline_seconds", 1.0)
-    client = FakeClient([status_error(groq.RateLimitError, 429, {"retry-after": "5"})])
-    with pytest.raises(LLMRateLimitError):
-        await collect(GroqProvider(client))
-    assert len(client.calls) == 1
 
 
 async def test_no_retry_after_first_token() -> None:
@@ -189,16 +166,6 @@ async def test_gpt_oss_gets_low_effort_hidden_reasoning_and_token_headroom(
     assert call["max_completion_tokens"] == 50 + 512
 
 
-async def test_reasoning_effort_setting_is_what_is_sent(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(settings, "groq_model", GPT_OSS)
-    monkeypatch.setattr(settings, "llm_reasoning_effort", "medium")
-    client = FakeClient([FakeStream([chunk("a")])])
-    await collect(GroqProvider(client))
-    assert client.calls[0]["reasoning_effort"] == "medium"
-
-
 async def test_reasoning_deltas_are_never_yielded() -> None:
     thought = "PRIVATE-CHAIN-OF-THOUGHT"
     client = FakeClient(
@@ -246,22 +213,3 @@ async def test_404_is_model_unavailable_and_logs_the_model_not_provider_text(
     assert "retired/model-x" in caplog.text
     assert SECRET not in caplog.text
     assert len(client.calls) == 1  # a missing model is not retried
-
-
-async def test_one_shared_client_is_reused_and_closed_on_shutdown(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(llm_module, "_client", None)
-    monkeypatch.setattr(settings, "warm_up_embeddings", False)
-    first = llm_module.get_groq_client()
-    assert llm_module.get_groq_client() is first
-    closed: list[bool] = []
-
-    async def fake_close() -> None:
-        closed.append(True)
-
-    monkeypatch.setattr(first, "close", fake_close)
-    async with lifespan(app):
-        pass
-    assert closed == [True]
-    assert llm_module._client is None

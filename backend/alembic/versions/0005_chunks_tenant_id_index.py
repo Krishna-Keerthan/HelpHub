@@ -6,7 +6,7 @@ Create Date: 2026-10-10 00:00:00.000000
 
 Re-adds the tenant_id btree dropped in 0004: small-tenant search becomes an
 exact index lookup, the exact fallback is bounded by the tenant's size, and
-tenant delete cascades stop scanning chunks. See docs/plans/day-03.md.
+tenant delete cascades stop scanning chunks. See AR-15 in docs/review/accepted-risks.md.
 Plain CREATE INDEX: on a populated production table use
 CREATE INDEX CONCURRENTLY (outside a transaction) instead.
 """

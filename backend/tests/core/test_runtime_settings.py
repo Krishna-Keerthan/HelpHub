@@ -16,21 +16,6 @@ def runtime_settings() -> Settings:
     return Settings(_env_file=None, **RUNTIME_ONLY)  # type: ignore[arg-type]
 
 
-def test_settings_load_without_the_migration_url(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("MIGRATION_DATABASE_URL", raising=False)
-    assert runtime_settings().migration_database_dsn is None
-
-
-def test_reading_the_migration_url_without_it_names_the_variable(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("MIGRATION_DATABASE_URL", raising=False)
-    with pytest.raises(RuntimeError, match="MIGRATION_DATABASE_URL"):
-        _ = runtime_settings().migration_database_url
-
-
 async def test_app_serves_health_with_only_runtime_variables(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -41,7 +41,7 @@ async def create_user(
     session: DbSession, tenant_id: uuid.UUID, data: UserCreate
 ) -> User:
     # Waits for the hash slot while this request's session is open: admin-only,
-    # low volume (BL-14).
+    # low volume.
     password_hash = await hash_password_async(data.password)
     # The repository flushes, so the INSERT (and its unique check) runs here,
     # while the request is still open, not at commit time.

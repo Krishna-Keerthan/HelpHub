@@ -159,7 +159,7 @@ What `scripts/gate.sh` checks, in order, stopping at the first failure:
 8. `pip-audit` on production dependencies (blocking) and on the full environment (warning only).
 9. With `--full`: the whole pytest suite including slow tests.
 
-Tests live under `backend/tests/` by domain, with isolation tests (cross-tenant and RLS) in `tests/isolation/` and end-to-end acceptance tests in `tests/acceptance/` ([`backend/tests/README.md`](backend/tests/README.md)).
+Tests live under `backend/tests/` by domain, with isolation tests (cross-tenant and RLS) in `tests/isolation/` ([`backend/tests/README.md`](backend/tests/README.md)).
 
 ## Deployment
 

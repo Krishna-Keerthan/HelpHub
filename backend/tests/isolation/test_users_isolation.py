@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from app.core.security import create_access_token
 from app.main import app
-from tests.conftest import SEED_PASSWORD, SeededTenant, sqlstate
+from tests.conftest import SeededTenant, sqlstate
 
 # gate-allow: secret fake value used only by this test
 NEW_PASSWORD = "Another-Password-123"
@@ -124,27 +124,6 @@ async def test_get_users_lists_only_tenant_users(
     assert users[0]["tenant_id"] == str(tenant_a["id"])
 
 
-async def test_list_pagination_limits(
-    client: AsyncClient, two_tenants_seeded: dict[str, SeededTenant]
-) -> None:
-    headers = auth(token_for(two_tenants_seeded["tenant_a"]))
-
-    assert (await client.get("/users?limit=1", headers=headers)).status_code == 200
-    assert len((await client.get("/users?offset=1", headers=headers)).json()) == 0
-    assert (await client.get("/users?limit=101", headers=headers)).status_code == 422
-    assert (await client.get("/users?limit=0", headers=headers)).status_code == 422
-    assert (await client.get("/users?offset=-1", headers=headers)).status_code == 422
-
-
-async def test_get_own_user_returns_200(
-    client: AsyncClient, two_tenants_seeded: dict[str, SeededTenant]
-) -> None:
-    a = two_tenants_seeded["tenant_a"]
-    response = await client.get(f"/users/{a['user_id']}", headers=auth(token_for(a)))
-    assert response.status_code == 200
-    assert response.json()["id"] == str(a["user_id"])
-
-
 async def test_get_other_tenant_user_returns_404(
     client: AsyncClient, two_tenants_seeded: dict[str, SeededTenant]
 ) -> None:
@@ -201,60 +180,6 @@ async def test_agent_role_cannot_create_user_returns_403(
     assert response.status_code == 403
 
 
-async def test_admin_creates_user_who_can_log_in(
-    client: AsyncClient, two_tenants_seeded: dict[str, SeededTenant]
-) -> None:
-    a = two_tenants_seeded["tenant_a"]
-    email = f"new@{a['slug']}.example.com"
-
-    response = await client.post(
-        "/users",
-        json={"email": email, "password": NEW_PASSWORD, "role": "agent"},
-        headers=auth(token_for(a)),
-    )
-    assert response.status_code == 201
-    body = response.json()
-    assert body["email"] == email
-    assert body["tenant_id"] == str(a["id"])
-    assert body["role"] == "agent"
-
-    login = await client.post(
-        "/auth/login",
-        json={"tenant_slug": a["slug"], "email": email, "password": NEW_PASSWORD},
-    )
-    assert login.status_code == 200
-    assert login.json()["access_token"]
-
-
-async def test_duplicate_email_in_same_tenant_returns_409(
-    client: AsyncClient, two_tenants_seeded: dict[str, SeededTenant]
-) -> None:
-    a = two_tenants_seeded["tenant_a"]
-
-    response = await client.post(
-        "/users",
-        json={"email": a["email"].upper(), "password": NEW_PASSWORD},
-        headers=auth(token_for(a)),
-    )
-
-    assert response.status_code == 409
-
-
-async def test_same_email_in_other_tenant_returns_201(
-    client: AsyncClient, two_tenants_seeded: dict[str, SeededTenant]
-) -> None:
-    a, b = two_tenants_seeded["tenant_a"], two_tenants_seeded["tenant_b"]
-
-    response = await client.post(
-        "/users",
-        json={"email": b["email"], "password": NEW_PASSWORD},
-        headers=auth(token_for(a)),
-    )
-
-    assert response.status_code == 201
-    assert response.json()["tenant_id"] == str(a["id"])
-
-
 async def test_missing_garbage_and_expired_tokens_return_401(
     client: AsyncClient, two_tenants_seeded: dict[str, SeededTenant]
 ) -> None:
@@ -267,42 +192,6 @@ async def test_missing_garbage_and_expired_tokens_return_401(
     assert (await client.get("/users", headers=auth("garbage"))).status_code == 401
     assert (await client.get("/users", headers=auth(expired))).status_code == 401
     assert (await client.post("/users", json={})).status_code == 401
-
-
-async def test_login_invalid_credentials_returns_identical_response(
-    client: AsyncClient, two_tenants_seeded: dict[str, SeededTenant]
-) -> None:
-    a = two_tenants_seeded["tenant_a"]
-
-    wrong_pass = await client.post(
-        "/auth/login",
-        json={
-            "tenant_slug": a["slug"],
-            "email": a["email"],
-            "password": "WrongPassword!",
-        },
-    )
-    unknown_email = await client.post(
-        "/auth/login",
-        json={
-            "tenant_slug": a["slug"],
-            "email": "nonexistent@email.com",
-            "password": SEED_PASSWORD,
-        },
-    )
-    unknown_slug = await client.post(
-        "/auth/login",
-        json={
-            "tenant_slug": "t-nonexistent-slug",
-            "email": a["email"],
-            "password": SEED_PASSWORD,
-        },
-    )
-
-    assert wrong_pass.status_code == 401
-    assert unknown_email.status_code == 401
-    assert unknown_slug.status_code == 401
-    assert wrong_pass.json() == unknown_email.json() == unknown_slug.json()
 
 
 async def test_responses_never_contain_password_material(

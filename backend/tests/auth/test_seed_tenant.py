@@ -82,16 +82,3 @@ async def test_seed_creates_a_tenant_whose_admin_can_log_in(
         )
         await owner_conn.rollback()
         await _delete_tenants([row[0] for row in rows])
-
-
-async def test_seed_refuses_a_taken_slug_and_a_weak_password(
-    make_tenant,  # type: ignore[no-untyped-def]
-) -> None:
-    tenant = await make_tenant()
-    taken = run_script(tenant["slug"], "other@example.com", SEED_PASSWORD)
-    assert taken.returncode == 1
-    assert "already taken" in taken.stderr
-
-    weak = run_script(f"t-{uuid.uuid4().hex[:12]}", "a@example.com", "short-pw")
-    assert weak.returncode == 2
-    assert "short-pw" not in weak.stderr

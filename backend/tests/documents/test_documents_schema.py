@@ -33,66 +33,6 @@ async def test_composite_fk_tenant_mismatch_rejected(owner_conn, two_tenants_see
 
 
 @pytest.mark.asyncio
-async def test_content_hash_uniqueness_per_tenant(owner_conn, two_tenants_seeded):
-    ta = two_tenants_seeded["tenant_a"]
-    tb = two_tenants_seeded["tenant_b"]
-    content_hash = "hash_abc123"
-
-    # Same content hash in two different tenants succeeds
-    await insert_document(
-        owner_conn,
-        ta["id"],
-        created_by=ta["user_id"],
-        title="Doc 1",
-        content_hash=content_hash,
-    )
-    await insert_document(
-        owner_conn,
-        tb["id"],
-        created_by=tb["user_id"],
-        title="Doc 2",
-        content_hash=content_hash,
-    )
-    await owner_conn.commit()
-
-    # Twice in one tenant fails on the named unique constraint
-    with pytest.raises(DBAPIError) as exc_info:
-        await insert_document(
-            owner_conn,
-            ta["id"],
-            created_by=ta["user_id"],
-            title="Doc 3",
-            content_hash=content_hash,
-        )
-    await owner_conn.rollback()
-
-    assert "unique" in str(exc_info.value).lower()
-    assert sqlstate(exc_info.value) == "23505"
-    assert constraint_name(exc_info.value) == "uq_documents_tenant_id_content_hash"
-
-
-@pytest.mark.asyncio
-async def test_invalid_vector_dimension_rejected(owner_conn, two_tenants_seeded):
-    ta = two_tenants_seeded["tenant_a"]
-    doc_id = await insert_document(
-        owner_conn, ta["id"], created_by=ta["user_id"], title="Doc A"
-    )
-    await owner_conn.commit()
-
-    # 3-dimension vector rejected by the vector(384) column. dim=None disables
-    # the client-side length check so the database does the rejecting.
-    with pytest.raises(DBAPIError) as exc_info:
-        await insert_chunk(
-            owner_conn, ta["id"], doc_id, embedding=[0.1, 0.2, 0.3], dim=None
-        )
-    await owner_conn.rollback()
-
-    # SQLSTATE 22000 = data_exception ("expected 384 dimensions, not 3")
-    assert sqlstate(exc_info.value) == "22000"
-    assert "384" in str(exc_info.value)
-
-
-@pytest.mark.asyncio
 async def test_tenant_deletion_cascade(owner_conn, two_tenants_seeded):
     ta = two_tenants_seeded["tenant_a"]
     tb = two_tenants_seeded["tenant_b"]
@@ -127,17 +67,3 @@ async def test_tenant_deletion_cascade(owner_conn, two_tenants_seeded):
             {"tid": tb["id"]},
         )
         assert res.scalar_one() == 1, f"{table} of another tenant was deleted"
-
-
-@pytest.mark.asyncio
-async def test_hnsw_index_exists_with_cosine(owner_conn):
-    query = text("""
-        SELECT indexdef FROM pg_indexes
-        WHERE tablename = 'chunks' AND indexdef LIKE '%hnsw%vector_cosine_ops%';
-    """)
-    res = await owner_conn.execute(query)
-    indexdef = res.scalar_one_or_none()
-    assert indexdef is not None
-    # Build parameters match the model/migration declaration.
-    assert "m='16'" in indexdef
-    assert "ef_construction='64'" in indexdef

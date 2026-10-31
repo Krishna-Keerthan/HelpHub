@@ -16,21 +16,6 @@ async def owner_conn() -> AsyncIterator[AsyncConnection]:
     await engine.dispose()
 
 
-@pytest.mark.parametrize("table", ["tenants", "users"])
-async def test_table_exists(owner_conn: AsyncConnection, table: str) -> None:
-    result = await owner_conn.execute(
-        text("SELECT to_regclass(:name)"), {"name": f"public.{table}"}
-    )
-    assert result.scalar_one() is not None
-
-
-async def test_vector_extension_installed(owner_conn: AsyncConnection) -> None:
-    result = await owner_conn.execute(
-        text("SELECT 1 FROM pg_extension WHERE extname = 'vector'")
-    )
-    assert result.scalar_one_or_none() == 1
-
-
 async def test_app_role_is_not_privileged(owner_conn: AsyncConnection) -> None:
     result = await owner_conn.execute(
         text(

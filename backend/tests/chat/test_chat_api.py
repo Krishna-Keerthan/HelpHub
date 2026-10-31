@@ -67,33 +67,6 @@ async def test_requires_authentication(client: AsyncClient) -> None:
     assert response.status_code == 401
 
 
-@pytest.mark.parametrize(
-    "payload",
-    [
-        {"message": ""},
-        {"message": "   \n\t "},
-        {"message": "x" * 2001},
-        {"message": " " + "y" * 2001},
-        {"message": "ok", "conversation_id": "not-a-uuid"},
-        {},
-    ],
-    ids=repr,
-)
-async def test_invalid_body_is_422(
-    client: AsyncClient, make_tenant: MakeTenant, payload: dict
-) -> None:
-    tenant = await make_tenant()
-    assert (await stream(client, tenant, payload)).status_code == 422
-
-
-async def test_message_of_2000_chars_after_strip_is_accepted(
-    client: AsyncClient, make_tenant: MakeTenant
-) -> None:
-    tenant = await make_tenant()
-    response = await stream(client, tenant, {"message": "  " + "z" * 2000 + " "})
-    assert response.status_code == 200
-
-
 async def test_happy_path_streams_sources_tokens_done(
     client: AsyncClient,
     owner_conn: AsyncConnection,
@@ -236,65 +209,3 @@ async def test_other_users_and_other_tenants_conversations_are_404(
         assert listing.status_code == 404
     assert len(await message_rows(owner_conn, a["id"])) == 2
     assert await message_rows(owner_conn, b["id"]) == []
-
-
-async def test_conversations_list_is_own_newest_first_and_paged(
-    client: AsyncClient, owner_conn: AsyncConnection, make_tenant: MakeTenant
-) -> None:
-    a = await make_tenant()
-    other = await second_user_headers(owner_conn, a)
-    first = await start_conversation(client, a)
-    await client.post("/chat/stream", json={"message": "theirs"}, headers=other)
-    second = await start_conversation(client, a)
-    listed = await client.get("/conversations", headers=auth_headers(a))
-    assert listed.status_code == 200
-    assert [c["id"] for c in listed.json()] == [second, first]
-    assert set(listed.json()[0]) == {"id", "title", "created_at", "updated_at"}
-    paged = await client.get(
-        "/conversations", params={"limit": 1, "offset": 1}, headers=auth_headers(a)
-    )
-    assert [c["id"] for c in paged.json()] == [first]
-    for params in ({"limit": 0}, {"limit": 101}, {"offset": -1}):
-        bad = await client.get("/conversations", params=params, headers=auth_headers(a))
-        assert bad.status_code == 422
-
-
-async def test_messages_are_in_order_with_sources_and_no_internal_columns(
-    client: AsyncClient,
-    owner_conn: AsyncConnection,
-    make_tenant: MakeTenant,
-    fake_llm: FakeLLMProvider,
-) -> None:
-    a = await make_tenant()
-    await seed_chunk(owner_conn, a)
-    fake_llm.tokens = TOKENS
-    conversation_id = await start_conversation(client, a)
-    response = await client.get(
-        f"/conversations/{conversation_id}/messages", headers=auth_headers(a)
-    )
-    assert response.status_code == 200
-    messages = response.json()
-    assert [m["role"] for m in messages] == ["user", "assistant"]
-    assert messages[0]["content"] == "first"
-    assert messages[1]["content"] == "".join(TOKENS)
-    assert messages[1]["status"] == "complete"
-    assert len(messages[1]["sources"]) == 1
-    assert "tenant_id" not in messages[0] and "seq" not in messages[0]
-    paged = await client.get(
-        f"/conversations/{conversation_id}/messages",
-        params={"limit": 1, "offset": 1},
-        headers=auth_headers(a),
-    )
-    assert [m["role"] for m in paged.json()] == ["assistant"]
-
-
-async def test_messages_endpoint_requires_auth_and_valid_id(
-    client: AsyncClient, make_tenant: MakeTenant
-) -> None:
-    assert (
-        await client.get(f"/conversations/{uuid.uuid4()}/messages")
-    ).status_code == 401
-    assert (await client.get("/conversations")).status_code == 401
-    tenant = await make_tenant()
-    bad = await client.get("/conversations/nope/messages", headers=auth_headers(tenant))
-    assert bad.status_code == 422

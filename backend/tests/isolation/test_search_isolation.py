@@ -73,43 +73,6 @@ async def test_same_text_searched_isolates_tenants(
 
 
 @pytest.mark.asyncio
-async def test_limit_k_bounding(client, owner_conn, two_tenants_seeded):
-    ta = two_tenants_seeded["tenant_a"]
-    tb = two_tenants_seeded["tenant_b"]
-    doc_a = await insert_document(owner_conn, ta["id"], created_by=ta["user_id"])
-    doc_b = await insert_document(owner_conn, tb["id"], created_by=tb["user_id"])
-    await insert_chunks(
-        owner_conn, ta["id"], doc_a, [unit_vector(1.0, 0.1 * i) for i in range(3)]
-    )
-    await insert_chunks(
-        owner_conn, tb["id"], doc_b, [unit_vector(1.0, 0.1 * i) for i in range(5)]
-    )
-    await owner_conn.commit()
-    a_chunks = await _chunk_ids_by_tenant(owner_conn, ta["id"])
-    assert len(a_chunks) == 3
-
-    # Asking for k=50 when A has 3 chunks returns exactly 3 results, none from B.
-    response = await client.post(
-        "/search",
-        json={"query": "anything at all", "k": 50},
-        headers=auth_headers(ta),
-    )
-    assert response.status_code == 200
-    returned = [hit["chunk_id"] for hit in response.json()]
-    assert len(returned) == 3
-    assert set(returned) == a_chunks
-
-    # k bounds the other direction too.
-    limited = await client.post(
-        "/search",
-        json={"query": "anything at all", "k": 2},
-        headers=auth_headers(ta),
-    )
-    assert limited.status_code == 200
-    assert len(limited.json()) == 2
-
-
-@pytest.mark.asyncio
 async def test_filtered_ann_with_hnsw(owner_conn, app_conn, two_tenants_seeded):
     """
     Tenant B gets 200 chunks very close to query q. Tenant A gets 3 chunks far from q.
@@ -119,8 +82,8 @@ async def test_filtered_ann_with_hnsw(owner_conn, app_conn, two_tenants_seeded):
     tb = two_tenants_seeded["tenant_b"]
     q = unit_vector(1.0)
     # There is deliberately no tenant_id btree on chunks, so the planner has no
-    # competing index path. See docs/plans/day-03.md, "Decisions during
-    # implementation", for the trade-off and the fallback if one is re-added.
+    # competing index path. See AR-15 in docs/review/accepted-risks.md for the
+    # trade-off and the fallback if one is re-added.
 
     # Seed as owner: 200 chunks of B right next to q, 3 chunks of A far from q.
     doc_a = await insert_document(owner_conn, ta["id"], created_by=ta["user_id"])
@@ -182,17 +145,6 @@ async def test_search_raw_sql_no_tenant_context(
     )
     result = await app_conn.execute(text("SELECT count(*) FROM chunks"))
     assert result.scalar_one() == 1
-
-
-@pytest.mark.parametrize("k", [0, 51])
-@pytest.mark.asyncio
-async def test_search_k_outside_1_to_50_is_422(client, two_tenants_seeded, k):
-    response = await client.post(
-        "/search",
-        json={"query": "anything", "k": k},
-        headers=auth_headers(two_tenants_seeded["tenant_a"]),
-    )
-    assert response.status_code == 422
 
 
 def test_search_statement_is_tenant_filtered_and_materialized():

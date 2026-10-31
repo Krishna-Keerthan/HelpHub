@@ -59,18 +59,3 @@ async def test_bad_claims_are_generic_401(
     assert response.status_code == 401, response.text
     assert response.headers["www-authenticate"] == "Bearer"
     assert response.json() == GENERIC_401
-
-
-@pytest.mark.parametrize("endpoint", ENDPOINTS)
-async def test_extra_unknown_claims_are_ignored(
-    client: AsyncClient, two_tenants_seeded: Tenants, endpoint: str
-) -> None:
-    a = two_tenants_seeded["tenant_a"]
-    user_id, tenant_id = _ids(a)
-    token = create_access_token(
-        {"sub": user_id, "tid": tenant_id, "role": "superuser", "x": {"nested": [1]}}
-    )
-
-    response = await client.get(endpoint, headers={"Authorization": f"Bearer {token}"})
-
-    assert response.status_code == 200

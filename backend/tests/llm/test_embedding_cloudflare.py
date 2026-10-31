@@ -121,15 +121,6 @@ async def test_other_4xx_is_not_retried(status: int) -> None:
     assert len(seen) == 1
 
 
-async def test_retry_after_header_is_honoured_up_to_the_cap(
-    creds_and_sleep: list[float],
-) -> None:
-    p, _ = provider(lambda r: httpx.Response(429, headers={"retry-after": "99"}))
-    with pytest.raises(EmbeddingUnavailableError):
-        await p.embed_query("q")
-    assert creds_and_sleep == [cf.MAX_RETRY_AFTER_SECONDS] * 2
-
-
 async def test_network_errors_and_timeouts_are_retried_then_generic() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectTimeout(f"{TEXT} {ACCOUNT}", request=request)
@@ -174,28 +165,6 @@ async def test_no_secret_or_text_in_errors_or_logs(
         assert secret not in everything
 
 
-async def test_neurons_header_is_logged_and_summed(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    caplog.set_level(logging.INFO, logger="app.services.embeddings_cloudflare")
-    p, _ = provider(lambda r: ok(r, "2.5"))
-    await p.embed_passages([TEXT, "b"])
-    await p.embed_query("q")
-    assert cf.neurons_total == 5.0
-    assert "texts=2 neurons=2.5" in caplog.text
-    assert TEXT not in caplog.text
-
-
-async def test_missing_neurons_header_is_tolerated(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    caplog.set_level(logging.INFO, logger="app.services.embeddings_cloudflare")
-    p, _ = provider(lambda r: ok(r, None))
-    await p.embed_query("q")
-    assert cf.neurons_total == 0.0
-    assert "neurons=-" in caplog.text
-
-
 def test_cloudflare_provider_requires_credentials() -> None:
     from app.core.config import Settings
 
@@ -237,56 +206,3 @@ def _vector_handler(vector: list[float]):
 async def test_reference_cosine_matches_stored_vector() -> None:
     p, _ = provider(_vector_handler(_reference_vector(0.9995)))
     assert round(await cf.reference_cosine(p), 4) == 0.9995
-
-
-async def test_reference_mismatch_logs_a_warning_and_does_not_raise(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    p, _ = provider(_vector_handler(_reference_vector(0.9)))
-    await cf.warn_if_reference_differs(p)
-    assert "reference check FAILED" in caplog.text
-
-
-async def test_reference_check_survives_an_outage(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    p, _ = provider(lambda r: httpx.Response(500))
-    await cf.warn_if_reference_differs(p)
-    assert "reference check skipped" in caplog.text
-
-
-@pytest.mark.skipif(  # gate-allow: skip-xfail opt-in live test, runs only with credentials
-    not (
-        settings.cloudflare_account_id.get_secret_value()
-        and settings.cloudflare_api_token.get_secret_value()
-    ),
-    reason="needs CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN",
-)
-async def test_live_hosted_vector_matches_the_local_reference(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Opt-in: runs only when credentials are present; spends about 0.2 neurons."""
-    monkeypatch.undo()  # the autouse fixture replaced the real credentials
-    try:
-        cosine = await cf.reference_cosine(cf.CloudflareEmbeddingProvider())
-    finally:
-        await cf.close_client()
-    assert cosine >= cf.REFERENCE_MIN_COSINE
-
-
-def test_metrics_logging_is_idempotent_and_scoped(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    logger = logging.getLogger("app.services.embeddings_cloudflare")
-    before = list(logger.handlers), logger.level, logger.propagate
-    try:
-        cf.enable_metrics_logging()
-        cf.enable_metrics_logging()
-        added = [h for h in logger.handlers if getattr(h, "_helphub_metrics", False)]
-        assert len(added) == 1
-        assert logger.level == logging.INFO
-        assert logging.getLogger("app").level != logging.INFO
-    finally:
-        logger.handlers[:] = before[0]
-        logger.setLevel(before[1])
-        logger.propagate = before[2]

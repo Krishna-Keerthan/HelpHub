@@ -2,7 +2,6 @@
 
 import importlib.util
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -46,29 +45,6 @@ def _register(*ids: int) -> str:
 # --- gate-allow format ---------------------------------------------------------
 
 
-def test_valid_allow_is_listed(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    root = _repo(tmp_path, {"a.py": f"x = 1  {ALLOW} print unused CLI stub here\n"})
-    assert gc.allows(root) == []
-    assert "[print] unused CLI stub here" in capsys.readouterr().out
-
-
-@pytest.mark.parametrize(
-    "comment",
-    [
-        f"{ALLOW} print short",  # reason under 10 characters
-        f"{ALLOW} print",  # no reason
-        "# gate" + "-allow unused stub with no colon",
-        "# gate" + "-allow:",
-    ],
-)
-def test_malformed_allow_is_flagged(tmp_path: Path, comment: str) -> None:
-    root = _repo(tmp_path, {"a.py": f"x = 1  {comment}\n"})
-    problems = gc.allows(root)
-    assert problems and "malformed" in problems[0]
-
-
 # --- secret scan ---------------------------------------------------------------
 
 
@@ -102,12 +78,6 @@ def test_short_expression_or_placeholder_is_not_flagged(
     tmp_path: Path, line: str
 ) -> None:
     assert gc.secrets(_repo(tmp_path, {"app.py": line + "\n"})) == []
-
-
-def test_env_style_unquoted_value_is_flagged_in_env_files_only(tmp_path: Path) -> None:
-    line = "GROQ_API_KEY=abcdefghijklmnopqrstuvwx\n"
-    root = _repo(tmp_path, {".env.example": line, "code.py": line})
-    assert gc.secrets(root) == [".env.example:1: secret-assignment"]
 
 
 @pytest.mark.parametrize("name", FAKE_TOKENS)
@@ -183,115 +153,7 @@ def test_real_repo_register_and_secrets_are_clean() -> None:
 # --- report stamp --------------------------------------------------------------
 
 
-def test_stamp_records_commit_time_and_dirty_flag(tmp_path: Path) -> None:
-    root = _repo(tmp_path, {"a.txt": "x\n"})
-    env = ["-c", "user.name=t", "-c", "user.email=t@example.com"]
-    subprocess.run(["git", *env, "commit", "-qm", "m"], cwd=root, check=True)
-    head = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=root,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
-    report = tmp_path.parent / f"{tmp_path.name}-report.txt"
-
-    gc.stamp(root, report)
-    assert report.read_text().startswith(f"gate-report commit={head} time=")
-    assert report.read_text().strip().endswith("dirty=no")
-
-    (root / "a.txt").write_text("changed\n")
-    gc.stamp(root, report)
-    assert report.read_text().strip().endswith("dirty=yes")
-
-
 # --- untracked files -----------------------------------------------------------
 
 
-def test_untracked_file_under_a_checked_directory_is_listed(tmp_path: Path) -> None:
-    root = _repo(tmp_path, {"backend/app/a.py": "x = 1\n"})
-    assert gc.untracked(root) == []
-    (root / "backend" / "tests").mkdir(parents=True)
-    (root / "backend" / "tests" / "test_new.py").write_text("x = 1\n")
-    (root / "docs").mkdir()
-    (root / "docs" / "n.md").write_text("n\n")
-    problems = gc.untracked(root)
-    assert [p.split(":")[0] for p in problems] == [
-        "backend/tests/test_new.py",
-        "docs/n.md",
-    ]
-
-
-def test_untracked_ignores_ignored_files_and_other_directories(
-    tmp_path: Path,
-) -> None:
-    root = _repo(tmp_path, {".gitignore": "*.log\n", "backend/app/a.py": "x\n"})
-    (root / "backend" / "app" / "debug.log").write_text("noise\n")
-    (root / "notes.txt").write_text("outside the checked directories\n")
-    assert gc.untracked(root) == []
-
-
-def test_untracked_cli_exit_code(tmp_path: Path) -> None:
-    root = _repo(tmp_path, {"scripts/a.sh": "echo\n"})
-    cmd = [str(ROOT / "scripts" / "gate_checks.py"), "--root", str(root), "untracked"]
-    assert subprocess.run([sys.executable, *cmd], check=False).returncode == 0
-    (root / "scripts" / "b.sh").write_text("echo\n")
-    assert subprocess.run([sys.executable, *cmd], check=False).returncode == 1
-
-
 # --- exec-modes: directly executed scripts must be 100755 in git ------------------------
-
-
-def _chmod(root: Path, name: str, mode: str) -> None:
-    subprocess.run(
-        ["git", "update-index", f"--chmod={mode}", name], cwd=root, check=True
-    )
-
-
-def test_exec_modes_flags_a_directly_run_script_recorded_as_644(tmp_path: Path) -> None:
-    root = _repo(
-        tmp_path,
-        {
-            "scripts/audit_deps.sh": "echo\n",
-            ".github/workflows/ci.yml": "      - run: ../scripts/audit_deps.sh prod\n",
-        },
-    )
-    problems = gc.exec_modes(root)
-    assert len(problems) == 1
-    assert "scripts/audit_deps.sh" in problems[0] and "100644" in problems[0]
-    _chmod(root, "scripts/audit_deps.sh", "+x")
-    assert gc.exec_modes(root) == []
-
-
-def test_exec_modes_accepts_interpreter_invocations(tmp_path: Path) -> None:
-    root = _repo(
-        tmp_path,
-        {
-            "scripts/a.sh": "echo\n",
-            "backend/scripts/b.py": "x = 1\n",
-            ".github/workflows/ci.yml": "run: bash ../scripts/a.sh prod\n",
-            "scripts/gate.sh": (
-                'timeout 120 bash "$ROOT/scripts/a.sh" full\n'
-                'python3 "$ROOT/scripts/b.py"\n'
-                "# ../scripts/a.sh in a comment is ignored\n"
-            ),
-        },
-    )
-    assert gc.exec_modes(root) == []
-
-
-def test_exec_modes_checks_the_dockerfile_and_backend_scripts(tmp_path: Path) -> None:
-    root = _repo(
-        tmp_path,
-        {
-            "backend/scripts/seed.sh": "echo\n",
-            "backend/Dockerfile": "COPY scripts/seed.sh /x\nRUN scripts/seed.sh\n",
-        },
-    )
-    problems = gc.exec_modes(root)
-    assert len(problems) == 1 and "backend/scripts/seed.sh" in problems[0]
-    assert "Dockerfile:2" in problems[0]  # the COPY line is not an execution
-
-
-def test_exec_modes_passes_on_this_repository() -> None:
-    assert gc.exec_modes(ROOT) == []

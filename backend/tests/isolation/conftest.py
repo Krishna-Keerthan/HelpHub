@@ -1,7 +1,7 @@
 """Hermetic HNSW state for the ANN search tests.
 
 Dead index entries left by earlier tests can make HNSW lose its paths to a
-small tenant (see docs/plans/day-03.md, "HNSW dead tuples"). The modules
+small tenant (see AR-15 in docs/review/accepted-risks.md). The modules
 below therefore start from a vacuumed chunks table.
 
 test_search_isolation is an unedited spec module whose ANN test only sets

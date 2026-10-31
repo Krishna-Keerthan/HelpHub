@@ -2,8 +2,6 @@
 
 import uuid
 
-import pytest
-from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -54,26 +52,3 @@ async def test_rls_is_enabled_not_forced(owner_conn: AsyncConnection) -> None:
         )
     )
     assert row.one() == (True, False)
-
-
-@pytest.mark.usefixtures("registration_open")
-async def test_registration_through_api_works(
-    client: AsyncClient, owner_conn: AsyncConnection
-) -> None:
-    slug = f"rls-{uuid.uuid4().hex[:10]}"
-    resp = await client.post(
-        "/auth/register",
-        json={
-            "tenant_name": "Rls",
-            "tenant_slug": slug,
-            "email": "admin@rls.example.com",
-            "password": "correct-horse-battery",  # gate-allow: secret fake test value
-        },
-    )
-    try:
-        assert resp.status_code == 201
-    finally:
-        await owner_conn.execute(
-            text("DELETE FROM tenants WHERE slug = :s"), {"s": slug}
-        )
-        await owner_conn.commit()

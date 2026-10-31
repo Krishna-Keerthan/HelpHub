@@ -60,10 +60,10 @@ class Settings(BaseSettings):
     # Per-request budget for one Workers AI call (retries come on top, max 2).
     embedding_timeout_seconds: float = Field(default=20.0, gt=0)
     # onnxruntime threads for the embedding model; unset lets it use every host
-    # core, which at a 0.1 CPU share costs memory (docs/deploy/runbook.md, C8.5).
+    # core, which at a 0.1 CPU share costs memory (measured locally at 0.1 CPU; see tag pre-prune).
     embedding_threads: int | None = Field(default=None, ge=1)
     # Longest /health/ready waits for SELECT 1 before answering 503. At 0.1 CPU
-    # under load the default was exceeded once (docs/deploy/runbook.md, C7).
+    # under load the default was exceeded once in a local load test.
     ready_timeout_seconds: float = Field(default=5.0, gt=0)
     # Longest document (in characters, after NUL stripping) accepted for ingestion.
     max_document_chars: int = 500_000
@@ -100,7 +100,7 @@ class Settings(BaseSettings):
     max_context_chars: int = 12_000
     max_message_chars: int = 2000
     # Below this top-hit score a question gets a refusal and no LLM call
-    # (provisional, from scripts/calibrate_threshold.py; see docs/plans/day-04.md).
+    # (provisional, from scripts/calibrate_threshold.py; see AR-10 in docs/review/accepted-risks.md).
     min_retrieval_score: float = 0.59
 
     @field_validator("jwt_signing_key")

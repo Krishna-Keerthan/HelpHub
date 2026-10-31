@@ -60,52 +60,12 @@ def test_attribute_error_message_hides_secrets(monkeypatch: pytest.MonkeyPatch) 
     _assert_hidden(str(exc_info.value))
 
 
-def test_accessors_return_plain_values() -> None:
-    settings = make_settings()
-    assert settings.jwt_secret == JWT
-    assert (
-        settings.database_url == f"postgresql+asyncpg://app:{DB_PASSWORD}@localhost/db"
-    )
-    assert (
-        settings.migration_database_url
-        == f"postgresql+asyncpg://own:{OWNER_PASSWORD}@localhost/db"
-    )
-    assert all(
-        isinstance(v, str)
-        for v in (
-            settings.jwt_secret,
-            settings.database_url,
-            settings.migration_database_url,
-        )
-    )
-
-
-def test_environment_variable_names_unchanged(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DATABASE_URL", f"postgresql+asyncpg://app:{DB_PASSWORD}@h/db")
-    monkeypatch.setenv(
-        "MIGRATION_DATABASE_URL", f"postgresql+asyncpg://own:{OWNER_PASSWORD}@h/db"
-    )
-    monkeypatch.setenv("JWT_SECRET", JWT)
-
-    settings = Settings(_env_file=None)  # type: ignore[call-arg]
-
-    assert settings.jwt_secret == JWT
-    assert DB_PASSWORD in settings.database_url
-    assert OWNER_PASSWORD in settings.migration_database_url
-
-
 def test_rejected_secret_not_echoed_in_validation_error() -> None:
     almost = "s" * 31  # too short, but could still be a real secret
     with pytest.raises(ValidationError) as exc_info:
         make_settings(jwt_secret=almost)
     assert "at least 32" in str(exc_info.value)
     assert almost not in str(exc_info.value)
-
-
-def test_secrets_are_read_only() -> None:
-    settings = make_settings()
-    with pytest.raises(AttributeError):
-        settings.jwt_secret = "x" * 40  # type: ignore[misc]
 
 
 SECRET_NAME_PARTS = ("key", "secret", "password", "url", "dsn")

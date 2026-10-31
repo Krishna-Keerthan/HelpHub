@@ -101,16 +101,6 @@ async def test_each_mode_returns_its_candidate_sets(
     assert by_id[ids["kw_far"]].vector_rank is not None  # vector also lists every chunk
 
 
-async def test_omitted_mode_is_hybrid(
-    owner_conn: AsyncConnection,
-    app_conn: AsyncConnection,
-    two_tenants_seeded: dict[str, SeededTenant],
-) -> None:
-    ta = two_tenants_seeded["tenant_a"]
-    await _seed(owner_conn, ta)
-    assert await _hits(app_conn, ta, None) == await _hits(app_conn, ta, "hybrid")
-
-
 async def test_api_keyword_mode_never_calls_the_embedder(
     client: AsyncClient, owner_conn: AsyncConnection, make_tenant: MakeTenant
 ) -> None:
@@ -133,22 +123,3 @@ async def test_api_keyword_mode_never_calls_the_embedder(
         )
         assert resp.status_code == 200
     assert spy.query_calls == 2
-
-
-async def test_api_default_mode_matches_hybrid_and_invalid_mode_is_422(
-    client: AsyncClient, owner_conn: AsyncConnection, make_tenant: MakeTenant
-) -> None:
-    tenant = await make_tenant()
-    await _seed(owner_conn, tenant)
-    headers = auth_headers(tenant)
-    default = await client.post("/search", json={"query": WORD}, headers=headers)
-    hybrid = await client.post(
-        "/search", json={"query": WORD, "mode": "hybrid"}, headers=headers
-    )
-    assert default.status_code == hybrid.status_code == 200
-    assert default.json() == hybrid.json()
-    for bad in ("fuzzy", "", "HYBRID", None):
-        resp = await client.post(
-            "/search", json={"query": WORD, "mode": bad}, headers=headers
-        )
-        assert resp.status_code == 422

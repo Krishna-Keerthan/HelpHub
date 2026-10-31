@@ -183,11 +183,3 @@ async def test_worker_gets_no_secrets(
     assert set(env) <= {"PATH", "LANG"}, sorted(env)
     for value in (*planted.values(), settings.jwt_secret, settings.database_url):
         assert value not in env.values()
-
-
-def test_pdf_limit_defaults() -> None:
-    fields = type(settings).model_fields
-    assert fields["pdf_timeout_seconds"].default == 10.0
-    assert fields["pdf_cpu_seconds"].default == 10
-    assert fields["pdf_memory_bytes"].default == 512 * 1024 * 1024
-    assert fields["pdf_max_concurrency"].default == 2

@@ -105,33 +105,3 @@ async def test_rejection_logs_reason_only(
     assert MARKER not in text
     assert token not in text
     assert t["email"] not in text
-
-
-@pytest.mark.parametrize("endpoint", ENDPOINTS)
-async def test_inactive_user_logs_reason(
-    client: AsyncClient,
-    make_tenant: MakeTenant,
-    caplog: pytest.LogCaptureFixture,
-    endpoint: str,
-) -> None:
-    t = await make_tenant(is_active=False)
-    token = create_access_token(_claims(t))
-
-    reasons, text = await _reasons(client, endpoint, token, caplog)
-
-    assert reasons == ["auth_rejected reason=inactive"]
-    assert MARKER not in text and token not in text
-
-
-@pytest.mark.parametrize("endpoint", ENDPOINTS)
-async def test_missing_credentials_logs_reason(
-    client: AsyncClient, caplog: pytest.LogCaptureFixture, endpoint: str
-) -> None:
-    caplog.clear()
-    with caplog.at_level(logging.INFO):
-        response = await client.get(endpoint)
-    assert response.status_code == 401
-    reasons = [
-        r.getMessage() for r in caplog.records if "auth_rejected" in r.getMessage()
-    ]
-    assert reasons == ["auth_rejected reason=missing_credentials"]

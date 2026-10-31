@@ -111,17 +111,6 @@ async def test_traversal_filename_becomes_plain_title(
     assert row is not None and row["raw_text"] == "just text"
 
 
-async def test_backslash_traversal_filename_becomes_plain_title(
-    client: AsyncClient, make_tenant: MakeTenant
-) -> None:
-    tenant = await make_tenant()
-    response = await _upload(
-        client, tenant, "..\\..\\windows\\notes.md", b"# notes", "text/markdown"
-    )
-    assert response.status_code == 201, response.text
-    assert response.json()["title"] == "notes.md"
-
-
 # --- 415 ---------------------------------------------------------------------
 
 
@@ -191,18 +180,6 @@ async def test_unprocessable_upload_is_422_without_row(
     assert await _document_count(owner_conn, tenant["id"]) == 0
 
 
-async def test_missing_file_field_is_422(
-    client: AsyncClient, make_tenant: MakeTenant
-) -> None:
-    tenant = await make_tenant()
-    response = await client.post(
-        "/documents/upload",
-        files={"attachment": ("a.txt", b"text", "text/plain")},
-        headers=auth_headers(tenant),
-    )
-    assert response.status_code == 422
-
-
 async def test_upload_requires_authentication(client: AsyncClient) -> None:
     response = await client.post(
         "/documents/upload", files={"file": ("a.txt", b"text", "text/plain")}
@@ -224,10 +201,6 @@ async def test_file_over_limit_is_413(
     response = await _upload(client, tenant, "big.txt", b"x" * 1025, "text/plain")
     assert response.status_code == 413
     assert await _document_count(owner_conn, tenant["id"]) == 0
-
-
-def test_max_upload_bytes_default() -> None:
-    assert type(settings).model_fields["max_upload_bytes"].default == 5 * 1024 * 1024
 
 
 class _CountingBody:

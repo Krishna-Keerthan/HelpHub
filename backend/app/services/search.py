@@ -73,7 +73,7 @@ async def search_in_session(
     """Fused top-k, with an exact vector branch when ANN misses some of the tenant.
 
     HNSW is approximate: dead index entries can leave a tenant's nodes
-    unreachable (docs/plans/day-03.md). If the ANN branch returns fewer
+    unreachable (AR-15). If the ANN branch returns fewer
     candidates than the branch size while the tenant has more chunks than that,
     rerun the statement with the exact vector order.
     """

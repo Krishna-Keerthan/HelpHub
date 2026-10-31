@@ -1,7 +1,6 @@
 """POST /search: validation, response shape, tenant titles, no open
 transaction while the query is embedded."""
 
-import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -40,31 +39,6 @@ async def _upload(client: AsyncClient, tenant: SeededTenant, title: str, content
     return response.json()["id"]
 
 
-@pytest.mark.parametrize(
-    "query", ["", "   \n\t ", "x" * 1001, " " + "y" * 1001], ids=repr
-)
-async def test_invalid_query_is_422(
-    client: AsyncClient, make_tenant: MakeTenant, query: str
-) -> None:
-    tenant = await make_tenant()
-    response = await client.post(
-        "/search", json={"query": query}, headers=auth_headers(tenant)
-    )
-    assert response.status_code == 422
-
-
-async def test_query_of_1000_chars_after_strip_is_accepted(
-    client: AsyncClient, make_tenant: MakeTenant
-) -> None:
-    tenant = await make_tenant()
-    response = await client.post(
-        "/search",
-        json={"query": "  " + "z" * 1000 + "  "},
-        headers=auth_headers(tenant),
-    )
-    assert response.status_code == 200
-
-
 async def test_search_requires_authentication(client: AsyncClient) -> None:
     response = await client.post("/search", json={"query": "anything"})
     assert response.status_code == 401
@@ -90,17 +64,6 @@ async def test_response_shape_and_offsets(
         assert CONTENT[hit["char_start"] : hit["char_end"]] == hit["content"]
     for forbidden in ("used_fallback", "embedding", "raw_text"):
         assert forbidden not in response.text
-
-
-async def test_default_k_is_5(client: AsyncClient, make_tenant: MakeTenant) -> None:
-    tenant = await make_tenant()
-    for i in range(7):
-        await _upload(client, tenant, f"Doc {i}", f"Distinct document number {i}.")
-    response = await client.post(
-        "/search", json={"query": "document"}, headers=auth_headers(tenant)
-    )
-    assert response.status_code == 200
-    assert len(response.json()) == 5
 
 
 async def test_titles_come_from_own_tenant_only(

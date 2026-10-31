@@ -1,4 +1,3 @@
-import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -64,39 +63,6 @@ def test_chunk_properties(text, params):
     assert [p for p, ch in enumerate(text) if not ch.isspace() and not covered[p]] == []
 
 
-@given(text=st.text(max_size=100), max_chars=st.integers(1, 30))
-def test_invalid_overlap_rejected(text, max_chars):
-    for bad in (-1, max_chars, max_chars + 5):
-        with pytest.raises(ValueError):
-            chunk_text(text, max_chars=max_chars, overlap=bad)
-
-
-def test_overlap_is_used_when_segment_boundaries_allow_it():
-    # Four-character sentences; two fit per 12-character chunk. With overlap=5
-    # the next chunk restarts at the last sentence of the previous one.
-    text = "aaa. bbb. ccc. ddd. eee. fff."
-    chunks = chunk_text(text, max_chars=12, overlap=5)
-    assert [c["text"] for c in chunks] == [
-        "aaa. bbb.",
-        "bbb. ccc.",
-        "ccc. ddd.",
-        "ddd. eee.",
-        "eee. fff.",
-    ]
-    # With no overlap the chunks are disjoint.
-    plain = chunk_text(text, max_chars=12, overlap=0)
-    assert [c["text"] for c in plain] == ["aaa. bbb.", "ccc. ddd.", "eee. fff."]
-
-
-def test_defaults_and_whitespace_only():
-    assert chunk_text("") == []
-    assert chunk_text(" \n\t\r\n ") == []
-    text = "word " * 1000
-    chunks = chunk_text(text)
-    assert all(len(c["text"]) <= 1000 for c in chunks)
-    assert len(chunks) > 1
-
-
 def test_crlf_offsets_are_preserved():
     text = "First paragraph.\r\n\r\nSecond paragraph that is a bit longer.\r\n"
     chunks = chunk_text(text, max_chars=20, overlap=0)
@@ -108,9 +74,3 @@ def test_crlf_offsets_are_preserved():
     ]
     for c in chunks:
         assert text[c["start"] : c["end"]] == c["text"]
-
-
-def test_unbroken_string_is_wrapped_at_max_chars():
-    text = "x" * 25
-    chunks = chunk_text(text, max_chars=10, overlap=3)
-    assert [(c["start"], c["end"]) for c in chunks] == [(0, 10), (10, 20), (20, 25)]

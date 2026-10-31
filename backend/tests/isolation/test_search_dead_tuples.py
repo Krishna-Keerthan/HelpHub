@@ -1,7 +1,7 @@
 """Regression: dead HNSW entries make a small tenant unreachable; the exact
 fallback must still return its chunks.
 
-Reproduces the Day 3 diagnosis (docs/plans/day-03.md, "HNSW dead tuples"):
+Reproduces the Day 3 HNSW dead-tuples diagnosis (AR-15 in docs/review/accepted-risks.md):
 churning 200 near-identical B vectors without VACUUM leaves tenant A's
 far-away nodes unreachable from the graph's entry point.
 """

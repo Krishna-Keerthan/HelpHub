@@ -35,7 +35,7 @@
 3. Confirm Framework Preset = Next.js; leave Build/Output defaults.
 4. Settings -> Build and Deployment -> Node.js Version: 24.x (or rely on `engines`).
 5. Settings -> Environment Variables: add `BACKEND_URL` for Production and Preview (point Preview at a non-production backend if you have one). Add `ALLOWED_ORIGINS` only if you attach a custom domain.
-6. Deploy. Open the deployment URL, then run `docs/frontend/integration-checklist.md` against it (the 4.5 MB body limit and the cold-start/streaming behaviour can only be verified on Vercel).
+6. Deploy. Open the deployment URL and check a 4 MB upload, cold start and SSE streaming by hand (the 4.5 MB body limit and the cold-start/streaming behaviour can only be verified on Vercel).
 7. After assigning a production domain, make sure the browser origin equals the app's own origin or is listed in `ALLOWED_ORIGINS`, then redeploy.
 8. Backend side: nothing for CORS (the browser only talks to the Next.js origin). The backend must be reachable from Vercel's servers; if it sleeps (Render free), the first request after idle takes about a minute (https://render.com/docs/free).
 
@@ -47,4 +47,4 @@
 
 ## Known gaps before relying on a deployment
 - CI workflow (`.github/workflows/frontend.yml`) runs on GitHub: `gh run list --workflow frontend.yml` showed successful runs on pull requests and on `main` (latest 2026-10-27, run 40512245380). It only runs when `frontend/`, `docs/api/` or the workflow changes.
-- Not measured: cold start through a deployed route, SSE buffering, 4 MB upload through Vercel. All listed in `integration-checklist.md`.
+- Not measured: cold start through a deployed route, SSE buffering, 4 MB upload through Vercel.

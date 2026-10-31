@@ -1,7 +1,7 @@
 name: DB operations (manual)
 
 # Manual dispatch only. No schedule: do not add one until a manual run of each job
-# has been checked (docs/deploy/deploy-plan.md).
+# has been checked.
 on:
   workflow_dispatch:
     inputs:

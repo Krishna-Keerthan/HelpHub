@@ -23,7 +23,7 @@ Multi-tenant support knowledge engine: FastAPI, async SQLAlchemy 2.0, Postgres +
 - Never log document content, tokens, passwords, emails, or raw driver exception messages. Log class name, SQLSTATE, ids, and traceback frames only. No `str(exc)`, `logger.exception`, or `print(` in `app/`.
 
 ## Test layout
-- `tests/<domain>/` per domain; helpers in `tests/helpers/`; isolation in `tests/isolation/`; end-to-end in `tests/acceptance/`; migrations in `tests/migrations/`; static/security in `tests/security/`, `tests/tooling/`.
+- `tests/<domain>/` per domain; helpers in `tests/helpers/`; isolation in `tests/isolation/`; migrations in `tests/migrations/`; static/security in `tests/security/`, `tests/tooling/`.
 - No skip/xfail. No edits to existing tests to make them pass. Default run skips `slow`; before a Day-end commit run `uv run pytest -m "slow or not slow"`. Never run two pytest sessions at once (shared database).
 
 ## Gate

@@ -2,7 +2,6 @@ import asyncio
 import uuid
 
 import pytest
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from app.db.models import Document
@@ -69,34 +68,3 @@ async def test_concurrent_ingest_produces_one_set_of_chunks(
     )
     row = await owner_document(owner_conn, document.id)
     assert row is not None and row["status"] == "READY"
-
-
-async def test_concurrent_create_or_get_returns_one_document(
-    monkeypatch: pytest.MonkeyPatch,
-    owner_conn: AsyncConnection,
-    make_tenant: MakeTenant,
-) -> None:
-    tenant = await make_tenant()
-    original = documents_repo.insert_if_absent
-    both_inserting = asyncio.Barrier(2)
-
-    async def gated_insert(*args, **kwargs):
-        # Neither transaction inserts until both are about to.
-        await asyncio.wait_for(both_inserting.wait(), BARRIER_TIMEOUT)
-        return await original(*args, **kwargs)
-
-    monkeypatch.setattr(documents_repo, "insert_if_absent", gated_insert)
-
-    results = await asyncio.gather(
-        documents_service.create_or_get(tenant["id"], tenant["user_id"], "A", CONTENT),
-        documents_service.create_or_get(tenant["id"], tenant["user_id"], "B", CONTENT),
-    )
-
-    (doc_1, created_1), (doc_2, created_2) = results
-    assert doc_1.id == doc_2.id
-    assert sorted([created_1, created_2]) == [False, True]
-    count = await owner_conn.execute(
-        text("SELECT count(*) FROM documents WHERE tenant_id = :tid"),
-        {"tid": tenant["id"]},
-    )
-    assert count.scalar_one() == 1

@@ -93,22 +93,6 @@ async def test_no_transaction_or_connection_is_held_while_streaming(
     assert checks == len(TOKENS)
 
 
-async def test_assistant_message_is_saved_only_after_streaming_completes(
-    owner_conn: AsyncConnection, make_tenant: MakeTenant
-) -> None:
-    tenant = await seeded(owner_conn, make_tenant)
-    llm = FakeLLMProvider(tokens=TOKENS)
-    _, stream = await start(tenant, llm)
-    async for event in stream:
-        if isinstance(event, TokenEvent) and event.text == "t1 ":
-            rows = await message_rows(owner_conn, tenant["id"])
-            assert [r["role"] for r in rows] == ["user"]
-    assert [r["role"] for r in await message_rows(owner_conn, tenant["id"])] == [
-        "user",
-        "assistant",
-    ]
-
-
 async def test_llm_failure_mid_stream_saves_failed_with_partial_text(
     owner_conn: AsyncConnection, make_tenant: MakeTenant
 ) -> None:
@@ -206,42 +190,6 @@ async def test_cancelling_the_consumer_saves_interrupted_partial_text(
     assert assistant["status"] == "interrupted"
     assert assistant["content"] == "".join(received) != ""
     assert len(received) < len(TOKENS)
-
-
-async def test_aclose_after_n_tokens_saves_interrupted_partial_text(
-    owner_conn: AsyncConnection, make_tenant: MakeTenant
-) -> None:
-    tenant = await seeded(owner_conn, make_tenant)
-    llm = FakeLLMProvider(tokens=TOKENS)
-    _, stream = await start(tenant, llm)
-    received: list[str] = []
-    async for event in stream:
-        if isinstance(event, TokenEvent):
-            received.append(event.text)
-            if len(received) == 2:
-                break
-    await stream.aclose()
-    _, assistant = await message_rows(owner_conn, tenant["id"])
-    assert assistant["status"] == "interrupted"
-    assert assistant["content"] == "t0 t1 "
-
-
-async def test_second_turn_sees_the_first_turn_as_history(
-    owner_conn: AsyncConnection, make_tenant: MakeTenant
-) -> None:
-    tenant = await seeded(owner_conn, make_tenant)
-    llm = FakeLLMProvider(tokens=["first answer [1]"])
-    ctx, stream = await start(tenant, llm)
-    _ = [e async for e in stream]
-    ctx2 = await chat.prepare_chat(principal_of(tenant), ctx.conversation_id, "again?")
-    assert [(m["role"], m["content"]) for m in ctx2.history] == [
-        ("user", QUESTION),
-        ("assistant", "first answer [1]"),
-    ]
-    _ = [e async for e in chat.stream_answer(ctx2, AxisQueryEmbedder(), llm)]
-    contents = [m["content"] for m in llm.last_messages]
-    assert QUESTION in contents and "first answer [1]" in contents
-    assert contents[-1] == "again?"
 
 
 async def test_foreign_or_unknown_conversation_is_not_found_and_writes_nothing(

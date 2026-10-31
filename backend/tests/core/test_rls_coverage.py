@@ -73,7 +73,7 @@ async def test_tenant_policies_filter_on_app_tenant_id(
         )
 
 
-@pytest.mark.parametrize("table", ["tenants", "users"])
+@pytest.mark.parametrize("table", ["tenants", "users", "documents", "chunks"])
 @pytest.mark.parametrize("privilege", ["SELECT", "INSERT", "UPDATE", "DELETE"])
 async def test_app_role_has_table_privileges(
     owner_conn: AsyncConnection, table: str, privilege: str

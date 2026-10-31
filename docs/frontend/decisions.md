@@ -36,17 +36,16 @@ Worst case for one chat request: about 60 s cold start (Render docs say about on
 The backend has no escalation event, status or field (docs/api/chat-stream.md, "What the frontend might need"). The UI shows a refusal only, detected by `done.status == "no_answer"` (never by text), with a neutral message.
 
 ## D3. API contract source
-Types are generated from `docs/api/openapi.json` once the backend shell commits it (merge `cleanup/lean` into this branch; do not copy the file). SSE event payloads are not in the schema; they come from `docs/api/chat-stream.md`.
+Types are generated from `docs/api/openapi.json` (the committed contract; do not copy the file). SSE event payloads are not in the schema; they come from `docs/api/chat-stream.md`.
 
 ## D4. Node version
 - Pinned major: **24** (`frontend/.nvmrc` = `24`, `package.json` `engines.node` = `24.x`). Local: v24.22.0 (fnm).
 - Vercel supports it: "Current available versions are: 24.x (default), 22.x"; the version is overridden by `engines.node` in `package.json`, and `24.x` deploys the latest 24.x. The page does not distinguish Hobby from other plans, so Hobby support is inferred, not stated. Source: https://vercel.com/docs/functions/runtimes/node-js/node-js-versions (last updated 2026-02-27). Node 20 deprecation date (2026-10-01) is from the same page's related-links list, not verified further.
-- CI: `.github/workflows/ci.yml` has no frontend job yet and is outside this shell's tree. **Request for whoever owns CI:** add a frontend job using `actions/setup-node` with `node-version-file: frontend/.nvmrc` (the action reads `.nvmrc` or `package.json`, and the file input is ignored if `node-version` is also set; so do not set both). Source: https://github.com/actions/setup-node/blob/main/docs/advanced-usage.md. Then run `npm ci && npm run lint && npm run typecheck && npm test && npm run build` in `frontend/`. Not built, therefore not verified.
 
 ## D5. Uploads: known limitation
 - Vercel caps a function request body at 4.5 MB (D1 sources). The backend's own limit is `max_upload_bytes = 5 * 1024 * 1024` (5 MiB) in `backend/app/core/config.py:70`. The Vercel cap is the tighter one.
 - The UI rejects files over **4 MB** (4 * 1024 * 1024 bytes) before sending, with a clear message; that leaves room for multipart overhead under 4.5 MB. No second upload path is built.
-- The frontend is now deployed on Vercel, but no upload of a 4 MB file through the deployed site is recorded in the repo, so whether it passes Vercel's limit is still unverified. The only 4 MiB `.txt` upload on record went through a local dev server and was **rejected** with 413 `Document is too large` (`integration-checklist.md`, observed run 3, item 4.1); a 4 MiB PDF was accepted there, which says nothing about Vercel's limit.
+- The frontend is now deployed on Vercel, but no upload of a 4 MB file through the deployed site is recorded in the repo, so whether it passes Vercel's limit is still unverified. The only 4 MiB `.txt` upload on record went through a local dev server and was **rejected** with 413 `Document is too large` (an earlier local run; the manual checklist was removed, see git tag `pre-prune`); a 4 MiB PDF was accepted there, which says nothing about Vercel's limit.
 - The backend also limits extracted text to `max_document_chars = 500_000` (`backend/app/core/config.py:69`), checked in `backend/app/services/documents.py:75`. That is a count of characters, not bytes, and the repo records no byte equivalent for English text; the only byte statement in the code is that a character is at most 4 UTF-8 bytes (`backend/app/api/documents.py:29`). The 4 MiB UI cap is therefore not the effective limit for plain text, which is much lower. The 4.5 MB Vercel cap and the 5 MiB `max_upload_bytes` apply to the file, this limit to its extracted text.
 
 ## D6. Tooling notes
@@ -69,7 +68,6 @@ The backend marks a refresh token used on first spend and revokes the whole fami
 3. **Several serverless instances:** they share no memory and need none. A refresh request reaches an instance only from layers 1-2, so at most one per rotation exists, and each instance reads the current cookie from the request itself. Different devices/browsers have separate logins and therefore separate token families.
 4. **Cold start:** the refresh token is sent upstream at most once per call. The route first wakes the backend with repeatable `GET /health` (bounded: 4 attempts x 25 s); if it never answers, `503 service_waking` is returned, nothing was spent and cookies are untouched; the client retries (2 more times with backoff) and shows a "service waking up" state (`onServiceWaking`). The cookie is cleared only when the refresh call itself returns 401.
 
-Tests: `src/lib/api/session.test.ts` (single-flight, lock/adoption, backoff, indeterminate not retried), `src/lib/server/auth-handlers.test.ts` (rotation against a fake backend that revokes the family on reuse, 6 parallel callers -> 1 rotation; the uncoordinated double-spend -> 401, cookies cleared, session ends once with no retry loop; cold start leaves cookies and token untouched), `passthrough.test.ts`, `upstream.test.ts`, `proxy.test.ts`.
 
 ### Residual risks (unverified against the real backend)
 - **Lost response:** if the refresh request reached the backend but the answer is lost (timeout/5xx), the token may already be rotated while the browser still holds the old one; the next refresh then looks like reuse and revokes the family. The route reports `502 refresh_indeterminate`, keeps the cookies and the client does not auto-retry, but the user may still be forced to log in again. A short reuse grace window or idempotency key on the backend would remove this. **Config/feature request for the backend shell**; not done here.
@@ -107,7 +105,6 @@ Screenshots: not captured (no browser available in this environment); see the ph
   - A failed documents revalidation keeps the last list, shows the existing alert plus "Showing the last list that loaded.", and "Try again" refetches.
 - **Invalidation:** the list is invalidated after a successful upload and after a delete (the deleted row is removed first, then the list is refetched).
 - **Per tab:** the cache is per tab and does not follow a logout or login made in another tab, so an older tab can show the previous role for up to 5 minutes (`ME_STALE_MS`) until it refetches; the backend still enforces roles.
-- **Negative controls run:** the new cache tests fail 5/9 against the previous `DocumentsView` (including the second-visit test), and 3/9 with the `resetSessionCache` calls removed from login/logout.
 - **Not measured:** the number of requests saved over a real page tour (no browser here); the tests show only that a second visit inside the window sends none.
 
 ## D14. UI pass, Phase 3: compare page
@@ -116,7 +113,6 @@ Sources: `backend/app/schemas/search.py:30-34`, `backend/app/db/repositories/chu
 - **Copy:** "passages" throughout; ranks are ranks among passages. A three-sentence intro says what each mode does and does not rank the modes. Each column has a one-line caption. Keyword adds "The API returns no keyword score, only the rank."; hybrid adds "The order combines the two ranks, which is why the similarity values are not descending."
 - **Every hit** starts with a why-listed line built from `vector_rank` and `keyword_rank` (not `found_by`): "Vector rank 3 · Keyword rank 1"; a single branch reads "Found by keyword only (rank 2)" in the hybrid column and "Keyword rank 2" in its own column; with neither rank, "No rank was reported for this passage". "Similarity 0.xxx" is secondary, in the vector and hybrid columns only, with a tooltip and screen-reader text.
 - **Staged reveal** is presentation only: the three requests still run in parallel. A finished column appears when its turn has come (Vector at once, Keyword +700 ms, Hybrid +1400 ms) and the column before it is showing, so the order is always Vector, Keyword, Hybrid; until then it shows "Searching…". Errors show at once. Under `prefers-reduced-motion` everything appears when loaded. The 700 ms step is a choice. "Only in this list" still waits for all three columns to have loaded (not merely been revealed).
-- **Tests:** `CompareView.test.tsx` and `compare.test.ts` (labels per mode, null score in keyword, why-listed cases, reveal order with fake timers, a slow first column, errors, reduced motion, badge timing). Negative control: 8 of the 19 CompareView tests fail against the previous component; the reduced-motion and badge-timing tests pass on it, since that behaviour was unchanged.
 - **Not done:** screenshots (no browser); no check against live search results; wording unreviewed by a designer.
 
 ## D15. Chat and Compare survive page changes and refresh

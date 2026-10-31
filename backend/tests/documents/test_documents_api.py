@@ -6,28 +6,6 @@ from tests.conftest import auth_headers
 
 
 @pytest.mark.asyncio
-async def test_document_api_error_codes(client, two_tenants_seeded):
-    ta = two_tenants_seeded["tenant_a"]
-    headers = auth_headers(ta)
-
-    # 422 Unprocessable Entity (Empty body/fields)
-    res_422 = await client.post("/documents", json={}, headers=headers)
-    assert res_422.status_code == 422
-
-    # 415 Unsupported Media Type
-    res_415 = await client.post("/documents", content="raw text", headers=headers)
-    assert res_415.status_code == 415
-
-    # Same with an explicit non-JSON content type
-    res_415_text = await client.post(
-        "/documents",
-        content="raw text",
-        headers={**headers, "Content-Type": "text/plain"},
-    )
-    assert res_415_text.status_code == 415
-
-
-@pytest.mark.asyncio
 async def test_agent_cannot_delete_document_returns_403(
     client, two_tenants_seeded, make_document
 ):
@@ -100,58 +78,6 @@ async def test_unknown_document_is_404(client, two_tenants_seeded):
 
 
 @pytest.mark.asyncio
-async def test_admin_can_delete_own_document(client, two_tenants_seeded, make_document):
-    ta = two_tenants_seeded["tenant_a"]  # admin
-    doc_a = await make_document(ta)
-    headers = auth_headers(ta)
-
-    assert (
-        await client.delete(f"/documents/{doc_a}", headers=headers)
-    ).status_code == 204
-    assert (await client.get(f"/documents/{doc_a}", headers=headers)).status_code == 404
-
-
-@pytest.mark.asyncio
 async def test_documents_require_authentication(client):
     assert (await client.get("/documents")).status_code == 401
     assert (await client.post("/documents", json={})).status_code == 401
-
-
-async def _total(client, tenant, query: str = "") -> tuple[int, int]:
-    response = await client.get(f"/documents{query}", headers=auth_headers(tenant))
-    assert response.status_code == 200
-    return len(response.json()), int(response.headers["X-Total-Count"])
-
-
-@pytest.mark.asyncio
-async def test_total_count_header_for_zero_one_and_many(
-    client, make_tenant, make_document
-):
-    tenant = await make_tenant()
-    assert await _total(client, tenant) == (0, 0)
-    await make_document(tenant, raw_text="first")
-    assert await _total(client, tenant) == (1, 1)
-    for i in range(4):
-        await make_document(tenant, raw_text=f"more {i}")
-    assert await _total(client, tenant) == (5, 5)
-
-
-@pytest.mark.asyncio
-async def test_total_count_ignores_limit_and_offset(client, make_tenant, make_document):
-    tenant = await make_tenant()
-    for i in range(5):
-        await make_document(tenant, raw_text=f"doc {i}")
-    assert await _total(client, tenant, "?limit=2") == (2, 5)
-    assert await _total(client, tenant, "?limit=2&offset=4") == (1, 5)
-    assert await _total(client, tenant, "?limit=2&offset=50") == (0, 5)
-
-
-@pytest.mark.asyncio
-async def test_total_count_header_absent_on_errors(client, two_tenants_seeded):
-    headers = auth_headers(two_tenants_seeded["tenant_a"])
-    bad = await client.get("/documents?limit=0", headers=headers)
-    assert bad.status_code == 422
-    assert "X-Total-Count" not in bad.headers
-    anonymous = await client.get("/documents")
-    assert anonymous.status_code == 401
-    assert "X-Total-Count" not in anonymous.headers

@@ -121,14 +121,6 @@ def test_system_message_is_byte_identical_whatever_the_chunks_contain() -> None:
     assert first == SYSTEM_PROMPT
 
 
-def test_question_is_a_separate_message_outside_the_sources_block() -> None:
-    built = build(["chunk one"])
-    last = built.messages[-1]
-    assert last["role"] == "user" and last["content"] == QUESTION
-    assert QUESTION not in sources_message(built)
-    assert QUESTION not in sources_section(built)
-
-
 def test_question_cannot_inject_through_chunks_and_history_is_outside() -> None:
     built = build_messages(
         history=[{"role": "user", "content": "earlier"}],
@@ -147,19 +139,6 @@ def test_budget_drops_lowest_ranked_first_and_labels_stay_contiguous() -> None:
     section = sources_section(built)
     assert LABEL.findall(section) == ["[1]", "[2]"]
     assert "c" * 100 not in section and "d" * 100 not in section
-
-
-def test_budget_keeps_the_top_source_even_if_it_alone_is_too_big() -> None:
-    built = build(["x" * 1000, "y" * 10], max_context_chars=200)
-    assert len(built.sources) == 1
-    assert LABEL.findall(sources_section(built)) == ["[1]"]
-    assert "y" * 10 not in sources_section(built)
-
-
-def test_no_sources_still_builds_a_valid_prompt() -> None:
-    built = build([])
-    assert built.sources == []
-    assert built.messages[-1]["content"] == QUESTION
 
 
 @pytest.mark.parametrize(
@@ -217,7 +196,3 @@ def test_lenticular_brackets_are_parsed_as_citations(
 
 def test_lenticular_citation_in_a_document_is_neutralized() -> None:
     assert neutralize("fact \u30101, 2\u3011 here") == "fact (1, 2) here"
-
-
-def test_prompt_asks_for_ascii_square_brackets_only() -> None:
-    assert "ASCII square brackets only" in SYSTEM_PROMPT

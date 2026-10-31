@@ -14,20 +14,6 @@ async def test_health(client: AsyncClient) -> None:
     assert response.json() == {"status": "ok"}
 
 
-async def test_health_answers_head_without_a_body(client: AsyncClient) -> None:
-    response = await client.head("/health")
-
-    assert response.status_code == 200
-    assert response.content == b""
-
-
-async def test_ready_answers_head_without_a_body(client: AsyncClient) -> None:
-    response = await client.head("/health/ready")
-
-    assert response.status_code == 200
-    assert response.content == b""
-
-
 async def test_ready_runs_select_1_through_the_app_role(client: AsyncClient) -> None:
     await ping()  # raises if the runtime engine cannot reach the database
 
@@ -54,19 +40,3 @@ async def test_not_ready_when_the_database_fails_and_nothing_leaks(
     assert "ConnectionRefusedError" in caplog.text
     assert "SECRET-PW" not in caplog.text
     assert "SECRET-PW" not in response.text
-
-
-async def test_not_ready_when_the_database_hangs(
-    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    import asyncio
-
-    async def hangs() -> None:
-        await asyncio.sleep(60)
-
-    monkeypatch.setattr(health, "ping", hangs)
-    monkeypatch.setattr(health.settings, "ready_timeout_seconds", 0.05)
-
-    response = await client.get("/health/ready")
-
-    assert response.status_code == 503

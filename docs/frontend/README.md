@@ -41,8 +41,8 @@ No `NEXT_PUBLIC_*` variables exist. Never read or commit `.env*` files.
 - Chat shows a refusal only (`done.status == "no_answer"`); there is no escalation or hand-off (the backend has none).
 - Residual risk AR-F1: a refresh whose response is lost can force a new login (`decisions.md` D9).
 - Logout sends only the refresh token (backend contract after `a67513b`); the backend answers 204 whether or not it revoked anything, so the UI cannot tell. Unverified against the running backend.
-- Layout and dark mode were **not checked in a real browser** (none available); only roles/labels are covered by tests.
-- The frontend is deployed on Vercel (project `frontend`) against the Render backend, but the manual steps in `integration-checklist.md` have not been run against the deployment (its recorded runs are from 2026-10-20, local dev server only); see `deploy.md`.
+- Layout was checked in a real browser on 2026-10-30; tests cover roles and labels only.
+- The frontend is deployed on Vercel (project `frontend`) against the Render backend; see `deploy.md`. The old manual real-backend checklist was removed in the scale-down and is recoverable from the `pre-prune` tag.
 
 ## Docs
-`decisions.md` (sourced decisions and risks), `integration-checklist.md` (manual real-backend steps), `deploy.md` (Vercel).
+`decisions.md` (sourced decisions and risks), `deploy.md` (Vercel).

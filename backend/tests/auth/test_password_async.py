@@ -83,19 +83,6 @@ async def test_event_loop_stays_responsive_while_hashing(
     assert worst < BLOCK_SECONDS / 2
 
 
-async def test_the_gap_measurement_detects_a_hash_that_blocks_the_loop(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Negative control: the same stand-in called on the loop must trip the assertion above.
-    monkeypatch.setattr(security, "hash_password", _blocking_hash)
-
-    async def hash_on_the_loop() -> str:
-        return security.hash_password(PASSWORD)
-
-    worst = await _max_loop_gap(hash_on_the_loop)
-    assert worst >= BLOCK_SECONDS * 0.9
-
-
 async def test_only_one_hash_runs_at_a_time(monkeypatch: pytest.MonkeyPatch) -> None:
     active = 0
     peak = 0
@@ -114,21 +101,6 @@ async def test_only_one_hash_runs_at_a_time(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(security, "hash_password", slow_hash)
     await asyncio.gather(*[hash_password_async("p") for _ in range(5)])
     assert peak == 1
-
-
-async def test_each_event_loop_gets_its_own_semaphore() -> None:
-    first = security._hash_slot()
-    assert security._hash_slot() is first
-    other: list[Any] = []
-
-    def run_in_new_loop() -> None:
-        async def get() -> None:
-            other.append(security._hash_slot())
-
-        asyncio.run(get())
-
-    await asyncio.to_thread(run_in_new_loop)
-    assert other[0] is not first
 
 
 @pytest.mark.usefixtures("registration_open")

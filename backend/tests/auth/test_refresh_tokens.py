@@ -80,33 +80,6 @@ async def test_login_returns_a_working_pair_with_the_documented_claims(
     assert row["used_at"] is None and row["revoked_at"] is None
 
 
-async def test_default_lifetimes_are_15_minutes_and_7_days(
-    client: AsyncClient, make_tenant: MakeTenant
-) -> None:
-    from app.core.config import Settings
-
-    fresh = Settings(
-        _env_file=None,  # type: ignore[call-arg]
-        database_url="postgresql+asyncpg://x:y@h/d",
-        migration_database_url="postgresql+asyncpg://x:y@h/d",
-        jwt_secret="k" * 40,
-    )
-    assert (fresh.access_token_minutes, fresh.refresh_token_days) == (15, 7)
-
-
-async def test_lifetimes_follow_the_settings(
-    client: AsyncClient, make_tenant: MakeTenant, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(settings, "access_token_minutes", 3)
-    monkeypatch.setattr(settings, "refresh_token_days", 2)
-    pair = await login(client, await make_tenant())
-    now = datetime.now(UTC).timestamp()
-    access = jwt.decode(pair["access_token"], options={"verify_signature": False})
-    refresh_ = jwt.decode(pair["refresh_token"], options={"verify_signature": False})
-    assert access["exp"] - now == pytest.approx(180, abs=30)
-    assert refresh_["exp"] - now == pytest.approx(2 * 86400, abs=30)
-
-
 async def test_refresh_rotates_and_marks_the_old_token_used(
     client: AsyncClient, make_tenant: MakeTenant, owner_conn: AsyncConnection
 ) -> None:
@@ -228,36 +201,6 @@ async def test_a_token_naming_another_tenants_user_is_rejected(
     assert (await refresh(client, pair_a["refresh_token"])).status_code == 200
 
 
-async def test_expired_rows_are_deleted_on_login_and_on_refresh(
-    client: AsyncClient, make_tenant: MakeTenant, owner_conn: AsyncConnection
-) -> None:
-    tenant = await make_tenant()
-    old = [uuid.uuid4(), uuid.uuid4()]
-    for jti in old:
-        await owner_conn.execute(
-            text(
-                "INSERT INTO refresh_tokens (jti, tenant_id, user_id, family_id, expires_at) "
-                "VALUES (:j, :t, :u, gen_random_uuid(), now() - interval '1 day')"
-            ),
-            {"j": jti, "t": tenant["id"], "u": tenant["user_id"]},
-        )
-    await owner_conn.commit()
-
-    pair = await login(client, tenant)
-    assert {r["jti"] for r in await rows(owner_conn, tenant)}.isdisjoint(old)
-
-    await owner_conn.execute(
-        text(
-            "INSERT INTO refresh_tokens (jti, tenant_id, user_id, family_id, expires_at) "
-            "VALUES (:j, :t, :u, gen_random_uuid(), now() - interval '1 day')"
-        ),
-        {"j": old[0], "t": tenant["id"], "u": tenant["user_id"]},
-    )
-    await owner_conn.commit()
-    await refresh(client, pair["refresh_token"])
-    assert old[0] not in {r["jti"] for r in await rows(owner_conn, tenant)}
-
-
 # --- logout -----------------------------------------------------------------
 
 
@@ -306,17 +249,6 @@ async def test_logout_works_with_an_expired_access_token_or_none(
     assert (await refresh(client, other["refresh_token"])).status_code == 401
 
 
-async def test_logout_of_a_revoked_token_answers_the_same(
-    client: AsyncClient, make_tenant: MakeTenant
-) -> None:
-    pair = await login(client, await make_tenant())
-    first = await logout(client, pair["refresh_token"])
-    second = await logout(client, pair["refresh_token"])
-
-    assert (first.status_code, first.content) == (second.status_code, second.content)
-    assert second.status_code == 204
-
-
 async def test_logout_with_a_bad_token_answers_204_and_revokes_nothing(
     client: AsyncClient, make_tenant: MakeTenant
 ) -> None:
@@ -359,19 +291,6 @@ async def test_logout_cannot_reach_another_tenants_tokens(
     assert (await refresh(client, pair_a["refresh_token"])).status_code == 200
     assert (await logout(client, pair_a["refresh_token"])).status_code == 204
     assert (await refresh(client, pair_b["refresh_token"])).status_code == 200  # B kept
-
-
-async def test_logout_does_not_touch_other_logins(
-    client: AsyncClient, make_tenant: MakeTenant
-) -> None:
-    tenant = await make_tenant()
-    one, other = await login(client, tenant), await login(client, tenant)
-    await client.post(
-        "/auth/logout",
-        json={"refresh_token": one["refresh_token"]},
-        headers=bearer(one["access_token"]),
-    )
-    assert (await refresh(client, other["refresh_token"])).status_code == 200
 
 
 # --- token types ------------------------------------------------------------

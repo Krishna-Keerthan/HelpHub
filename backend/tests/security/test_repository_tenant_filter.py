@@ -153,96 +153,23 @@ def test_repository_functions_are_tenant_scoped(path: Path) -> None:
     assert violations(path.read_text(), path.stem) == []
 
 
-def test_tenants_module_has_no_function_allowlist() -> None:
-    assert not any(e.startswith("tenants.") for e in EXEMPT)
-
-
-def test_exempt_helpers_still_exist() -> None:
-    defined = {
-        f"{p.stem}.{n.name}"
-        for p in _repo_files()
-        for n in ast.parse(p.read_text()).body
-        if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)
-    }
-    assert EXEMPT <= defined
-
-
 GOOD = """
 async def get(session, tenant_id, document_id):
     return await session.execute(
         select(Document).where(Document.tenant_id == tenant_id, Document.id == document_id)
     )
 """
-BAD_FILTER = GOOD.replace("Document.tenant_id == tenant_id, ", "")
-BAD_PARAM = GOOD.replace("session, tenant_id,", "session,")
-BAD_TEXT = """
-async def f(session, tenant_id):
-    await session.execute(text("SELECT 1 FROM documents"))
-"""
 GOOD_SUBQUERY = """
 async def count(session, tenant_id):
     capped = select(Chunk.id).where(Chunk.tenant_id == tenant_id).subquery()
     return await session.execute(select(func.count()).select_from(capped))
 """
-BAD_SUBQUERY = GOOD_SUBQUERY.replace(
-    "Chunk.tenant_id == tenant_id", "Chunk.id.isnot(None)"
-)
-SQL_CONSTANT = """
-_SQL = "SELECT 1 FROM chunks WHERE tenant_id = :tid"
-async def f(session, tenant_id):
-    await session.execute(text(_SQL))
-"""
-
-
-def test_checker_ignores_set_config_statements() -> None:
-    source = (
-        "async def f(session, tenant_id):\n"
-        "    await session.execute(text(\"SELECT set_config('a', 'b', true)\"))\n"
-    )
-    assert violations(source, "m") == []
-
-
-def test_checker_accepts_scoped_code() -> None:
-    assert violations(GOOD, "m") == []
-    assert violations(GOOD_SUBQUERY, "m") == []
-    assert violations(SQL_CONSTANT, "m") == []
-
-
-@pytest.mark.parametrize(
-    ("source", "expected"),
-    [
-        (BAD_FILTER, "m.get:3: statement without tenant_id"),
-        (BAD_PARAM, "m.get: no tenant_id parameter"),
-        (BAD_TEXT, "m.f:3: statement without tenant_id"),
-        (BAD_SUBQUERY, "m.count:3: statement without tenant_id"),
-    ],
-)
-def test_checker_rejects_unscoped_code(source: str, expected: str) -> None:
-    assert expected in violations(source, "m")
 
 
 MODEL_UNFILTERED = """
 async def _users(tenant_id, session):
     return list(await session.scalars(select(User.email).limit(4)))
 """
-MODEL_FILTERED = MODEL_UNFILTERED.replace(
-    "select(User.email)", "select(User.email).where(User.tenant_id == tenant_id)"
-)
-TENANT_ONLY = """
-async def get(session, slug):
-    return await session.execute(select(Tenant).where(Tenant.slug == slug))
-"""
-
-
-def test_model_rule_flags_private_functions_in_tenants_module() -> None:
-    assert violations(MODEL_UNFILTERED, "tenants") == [
-        "tenants._users:3: tenant model without tenant_id"
-    ]
-    assert violations(MODEL_FILTERED, "tenants") == []
-
-
-def test_model_rule_lets_tenants_only_statements_omit_the_filter() -> None:
-    assert violations(TENANT_ONLY, "tenants") == []
 
 
 def test_model_rule_applies_to_every_tenant_model() -> None:

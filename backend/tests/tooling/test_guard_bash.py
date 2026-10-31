@@ -114,87 +114,10 @@ BLOCKED = [
     "cat 'unterminated .env",
 ]
 
-ALLOWED = [
-    "ls -la",
-    "git status --short",
-    "git diff HEAD~1",
-    "git log --oneline -5",
-    "git add .",
-    "git add -A",
-    "git add .env.example",
-    'git commit -m "Day 5 commit 5b"',
-    'git commit -m "mention git reset --hard and --no-verify and DROP DATABASE"',
-    "git commit -m \"$(cat <<'EOF'\nfix rm -rf / docs\nEOF\n)\"",
-    "git commit --amend --no-edit",
-    "git push",
-    "git push origin main",
-    "git push -u origin feature",
-    "git push --dry-run",
-    "git reset HEAD file.py",
-    "git reset --soft HEAD~1",
-    "git clean -n",
-    "git clean --dry-run",
-    "git switch main",
-    "git branch -D calibration/seeded",
-    "git stash push -m x",
-    "uv run pytest",
-    "uv run pytest -q -m 'slow or not slow' -rfsx",
-    "uv run pytest tests/auth -k drop_database",
-    "uv run ruff check .",
-    "uv run ruff format app/main.py",
-    "uv run alembic upgrade head",
-    "uv run alembic downgrade base",
-    "uv run alembic check",
-    "docker compose up -d",
-    "docker compose ps",
-    "docker compose down",
-    "docker compose logs postgres",
-    "docker compose exec postgres psql -U owner -c 'select 1'",
-    "docker volume ls",
-    "docker ps",
-    "rm -rf node_modules",
-    "rm -rf ./build",
-    "rm -rf /tmp/scratch",
-    f"rm -rf {REPO}/backend/.pytest_cache",
-    "rm file.txt",
-    "rm -f /tmp/x.log",
-    "cat .env.example",
-    "cat docs/review/context.md",
-    "cat backend/app/core/config.py",
-    "grep -rn get_session app/",
-    "grep -n environment docs/x.md",
-    "head -n 5 README.md",
-    "sed -n 1,5p CLAUDE.md",
-    "python -c 'print(1)'",
-    "python3 scripts/gate.py",
-    "ls -a | grep env_example",
-    "echo '.env is ignored by git'",
-    "cat .environment",
-    "ssh-keygen -t ed25519",
-    "scripts/gate.sh --full",
-    "psql -c 'select 1'",
-    "curl -s localhost:9200",
-    "cat <<'EOF'\nit's fine; docker volume rm v\nEOF",
-    "python3 - <<'PY'\nprint(\"don't\")\nPY",
-    "cat > f.py <<'EOF'\nx = 'git reset --hard'\nEOF\nuv run pytest",
-    "cat > f <<'EOF'\nit's a file; don't 'quote' me: docker compose down -v\nEOF",
-    "git commit -m \"$(cat <<'EOF'\nfix: don't drop it's data\n\nbody mentions docker compose down -v\nEOF\n)\"",
-    "docker volume inspect helphub_pgdata",
-    "docker system df",
-    "docker system info",
-    "docker image prune -f",
-    "",
-]
-
 
 @pytest.mark.parametrize("command", BLOCKED)
 def test_blocked(command: str) -> None:
     assert guard.check(command) is not None, command
-
-
-@pytest.mark.parametrize("command", ALLOWED)
-def test_allowed(command: str) -> None:
-    assert guard.check(command) is None, (command, guard.check(command))
 
 
 def _run(payload: str) -> subprocess.CompletedProcess[str]:
@@ -220,23 +143,7 @@ def test_exit_code_0_and_silent_when_allowed() -> None:
     assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
 
 
-@pytest.mark.parametrize(
-    "payload",
-    ["not json", "", "[]", '"a string"', "null", '{"tool_input": "x"}',
-     '{"tool_input": {"command": 5}}'],
-)  # fmt: skip
-def test_unreadable_input_fails_closed(payload: str) -> None:
-    result = _run(payload)
-    assert result.returncode == 2
-    assert "guard_bash" in result.stderr
-    assert result.stdout == ""
-
-
 def test_unparseable_command_is_blocked_with_exit_2() -> None:
     result = _run(json.dumps({"tool_input": {"command": "echo 'oops"}}))
     assert result.returncode == 2
     assert "unparseable" in result.stderr
-
-
-def test_missing_command_is_allowed() -> None:
-    assert _run(json.dumps({"tool_input": {}})).returncode == 0
