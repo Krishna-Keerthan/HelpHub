@@ -159,7 +159,11 @@ What `scripts/gate.sh` checks, in order, stopping at the first failure:
 8. `pip-audit` on production dependencies (blocking) and on the full environment (warning only).
 9. With `--full`: the whole pytest suite including slow tests.
 
-Tests live under `backend/tests/` by domain, with isolation tests (cross-tenant and RLS) in `tests/isolation/` ([`backend/tests/README.md`](backend/tests/README.md)).
+Tests live under `backend/tests/` by domain; cross-tenant and RLS tests are in `tests/isolation/` ([`backend/tests/README.md`](backend/tests/README.md)). This is a closed beta, so the suites were deliberately cut down on 2026-10-31 (the full set is recoverable from the `pre-prune` tag). At that date there were 603 backend tests (601 in the default run; the 2 slow ones are the migration round trip and the RLS check after upgrade) and 229 frontend Vitest tests (299 cases when run, since parametrized tests expand).
+
+Covered: tenant isolation and RLS, login, refresh and reuse detection, rate limits, role checks, the Groq and Cloudflare adapters, the relevance gate and its refusal path, upload and ingestion, the search statements, migrations and the OpenAPI contract. On the frontend: the BFF passthrough, cookies and origin checks, session refresh, the SSE and citation parsers, safe Markdown, role-gated controls, chat and Compare restore, and the colour-contrast check.
+
+Not covered: UI layout, copy text, CSS classes, animation timing, most of the home page, per-field validation permutations and the helper scripts. Those are checked by hand and with `scripts/smoke_live.py` against the live service.
 
 ## Deployment
 
