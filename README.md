@@ -114,6 +114,8 @@ GitHub Actions runs on every pull request and push to main: the gate with the fu
 
 Tests live under `backend/tests/` by domain; cross-tenant tests are in `tests/isolation/`. This is a closed beta website.
 
+A concurrent isolation stress run (10 tenants, reads and writes, local database) is described in [`backend/tests/README.md`](backend/tests/README.md#isolation-stress-run-2026-11-01).
+
 Covered: tenant isolation, login and token refresh, rate limits, role checks, the Groq and Cloudflare clients, the relevance cut-off and refusal, upload and ingestion, search, migrations and the OpenAPI contract. On the frontend: the BFF passthrough, cookies and origin checks, session refresh, the stream and citation parsers, safe Markdown, role-gated controls, and chat and Compare restore.
 
 Not covered: UI layout, copy text, animation timing, most of the home page and the helper scripts. Those are checked by hand and with `scripts/smoke_live.py` against the live service.
