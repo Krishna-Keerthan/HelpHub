@@ -68,6 +68,8 @@ extend-select = ["S", "B", "ASYNC"]
 "tests/isolation/test_documents_chunks_rls.py" = ["S608"]
 "tests/tooling/test_gate_checks.py" = ["S603", "S607"]  # git with argument lists, no shell
 "tests/chat/test_chat_service.py" = ["ASYNC110"]
+# Local stress script: table names are two module constants, the seeded PRNG is not security.
+"scripts/isolation_stress.py" = ["S608", "S311"]
 "tests/migrations/test_migration_roundtrip.py" = ["S603"]
 "tests/tooling/test_guard_bash.py" = ["S603"]
 

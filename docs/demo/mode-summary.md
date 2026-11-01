@@ -17,3 +17,17 @@ Sensitivity to tie-breaking: before the deterministic tie-break, ties were broke
 Provenance: the vectors behind the original tenant were produced with local fastembed (`BAAI/bge-small-en-v1.5`). Across the 49 chunks they agree with the Cloudflare vectors (`@cf/baai/bge-small-en-v1.5`) to a cosine of at least 0.999998 (median 0.999999).
 
 The five queries in `queries.json` were selected because the modes differ on them. They are examples, not a benchmark.
+
+## Re-check on 2026-11-01 (recall, MRR, interval)
+
+What was run: for each of the 32 answerable questions, the rank of the expected document among distinct documents in the top 10 (k=10), for vector, keyword and hybrid, through the same search code the API uses. Tenant `local-dev` (24 documents, 49 chunks, local `BAAI/bge-small-en-v1.5` vectors). Each question has one expected document.
+
+| Mode | Recall@1 | Recall@3 | Recall@5 | MRR@10 | 95% Wilson interval for Recall@5 |
+|---|---|---|---|---|---|
+| vector | 24/32 | 28/32 | 31/32 | 0.836 | 0.843 to 0.994 |
+| keyword | 21/32 | 31/32 | 32/32 | 0.799 | 0.893 to 1.000 |
+| hybrid | 23/32 | 31/32 | 32/32 | 0.852 | 0.893 to 1.000 |
+
+The counts match the table at the top of this file exactly (no mismatch). Limits: 32 questions written by the project author on a 24-document corpus, so the intervals are wide and differences of 1 to 2 questions are noise. Run once; the Cloudflare-vector tenant was not re-run here.
+
+How to run it, from `backend/`: `uv run python scripts/retrieval_ranks.py [tenant-slug]` (default `local-dev`). It is read-only, refuses a non-local database, and prints one rank per question per mode.
