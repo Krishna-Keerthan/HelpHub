@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     # Per-request budget for one Workers AI call (retries come on top, max 2).
     embedding_timeout_seconds: float = Field(default=20.0, gt=0)
     # onnxruntime threads for the embedding model; unset lets it use every host
-    # core, which at a 0.1 CPU share costs memory (measured locally at 0.1 CPU; see tag pre-prune).
+    # core, which at a 0.1 CPU share costs memory (measured locally at 0.1 CPU; see commit 1bee6c6).
     embedding_threads: int | None = Field(default=None, ge=1)
     # Longest /health/ready waits for SELECT 1 before answering 503. At 0.1 CPU
     # under load the default was exceeded once in a local load test.

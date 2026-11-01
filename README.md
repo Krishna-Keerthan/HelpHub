@@ -112,7 +112,7 @@ Tests, from `backend/`: `uv run pytest` (slow tests are skipped; `-m "slow or no
 
 GitHub Actions runs on every pull request and push to main: the gate with the full test suite, a dependency audit, a Docker image build, a gitleaks secret scan, and, when frontend files change, lint, typecheck, tests, build and a colour-contrast check.
 
-Tests live under `backend/tests/` by domain; cross-tenant tests are in `tests/isolation/`. This is a closed beta, so the suites were deliberately cut down on 2026-10-31 (the full set is recoverable from the `pre-prune` tag). At that date there were 603 backend tests and 229 frontend Vitest tests (299 cases when run, since parametrized tests expand).
+Tests live under `backend/tests/` by domain; cross-tenant tests are in `tests/isolation/`. This is a closed beta, so the suites were deliberately cut down on 2026-10-31 (the full set is recoverable from commit `1bee6c6`). At that date there were 603 backend tests and 229 frontend Vitest tests (299 cases when run, since parametrized tests expand).
 
 Covered: tenant isolation, login and token refresh, rate limits, role checks, the Groq and Cloudflare clients, the relevance cut-off and refusal, upload and ingestion, search, migrations and the OpenAPI contract. On the frontend: the BFF passthrough, cookies and origin checks, session refresh, the stream and citation parsers, safe Markdown, role-gated controls, and chat and Compare restore.
 
@@ -137,5 +137,3 @@ The longer list of accepted risks is in [`docs/review/accepted-risks.md`](docs/r
 ## Author
 
 Krishna Keerthan K, [github.com/Krishna-Keerthan](https://github.com/Krishna-Keerthan).
-
-TODO(owner): add contact details and the demo video link.

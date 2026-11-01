@@ -35,7 +35,7 @@ Pinned to **24** (`.nvmrc`, `engines.node` = `24.x`). Vercel offers 24.x (defaul
 ## D5. Uploads: known limitation
 - Vercel caps a function request body at 4.5 MB; the backend allows `max_upload_bytes` = 5 MiB. The Vercel cap is the tighter one.
 - The UI rejects files over **4 MB** (4 * 1024 * 1024 bytes) before sending, which leaves room for multipart overhead. There is no second upload path.
-- No 4 MB upload through the deployed site is recorded, so whether it passes Vercel's limit is not tested. The only 4 MiB `.txt` upload on record went through a local dev server and was **rejected** with 413 `Document is too large` (an earlier local run; see git tag `pre-prune`). A 4 MiB PDF was accepted there, which says nothing about Vercel.
+- No 4 MB upload through the deployed site is recorded, so whether it passes Vercel's limit is not tested. The only 4 MiB `.txt` upload on record went through a local dev server and was **rejected** with 413 `Document is too large` (an earlier local run; see commit `1bee6c6`). A 4 MiB PDF was accepted there, which says nothing about Vercel.
 - The backend also limits extracted text to `max_document_chars` = 500,000 characters (not bytes). The repo records no byte equivalent for English text, so the 4 MiB UI cap is not the effective limit for plain text, which is much lower.
 
 ## D6. Tooling notes

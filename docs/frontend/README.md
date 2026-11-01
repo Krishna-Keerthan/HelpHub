@@ -42,7 +42,7 @@ No `NEXT_PUBLIC_*` variables exist. Never read or commit `.env*` files.
 - Residual risk AR-F1: a refresh whose response is lost can force a new login (`decisions.md` D9).
 - Logout sends only the refresh token (backend contract after `a67513b`); the backend answers 204 whether or not it revoked anything, so the UI cannot tell. Unverified against the running backend.
 - Layout was checked in a real browser on 2026-10-30; tests cover roles and labels only.
-- The frontend is deployed on Vercel (project `frontend`) against the Render backend; see `deploy.md`. The old manual real-backend checklist was removed in the scale-down and is recoverable from the `pre-prune` tag.
+- The frontend is deployed on Vercel (project `frontend`) against the Render backend; see `deploy.md`. The old manual real-backend checklist was removed in the scale-down and is recoverable from commit `1bee6c6`.
 
 ## Docs
 `decisions.md` (sourced decisions and risks), `deploy.md` (Vercel).

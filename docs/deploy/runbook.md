@@ -6,7 +6,7 @@ Lines marked owner-reported come from the owner and have not been checked agains
 - The Render service is live, the Vercel project is deployed and the uptime bot is set up (owner-reported; the bot's service, interval and alert rule are not recorded here). `backend/scripts/smoke_live.py` passed against the Render service on 2026-10-29.
 - `.github/workflows/db-ops.yml` has two manual jobs, `migrate` and `backup`. **No backups exist: the `backup` job refuses to run while the repository is public.** There is no `render.yaml`.
 - **Render itself is not measured.** No memory, region or cold-start figure from Render is recorded. The one memory measurement with the production embedding provider is under "Cloudflare-embedding plateau" below.
-- Older measurements of the local fastembed model (container, load and memory tests) were removed from this file; they are in git history at tag `pre-prune`.
+- Older measurements of the local fastembed model (container, load and memory tests) were removed from this file; they are in git history at commit `1bee6c6`.
 
 ## Connection defaults
 - The app (`DATABASE_URL`) and migrations (`MIGRATION_DATABASE_URL`) both use the Supabase **session pooler**, port 5432, user `role.<project-ref>`. It works with no asyncpg changes.
@@ -216,7 +216,7 @@ Run `uv run alembic upgrade head` with `MIGRATION_DATABASE_URL` = `helphub_owner
 - Backups: Supabase free has none, and the `backup` job in `db-ops.yml` refuses to run while the repository is public (see Status).
 
 ## Cloudflare-embedding plateau (local Docker, 2026-10-20; Render NOT measured)
-The only memory measurement with the production embedding provider. The test script lived in a session scratch folder and is not in the repo, and the original record was removed (see tag `pre-prune`), so only what is below is known.
+The only memory measurement with the production embedding provider. The test script lived in a session scratch folder and is not in the repo, and the original record was removed (see commit `1bee6c6`), so only what is below is known.
 - Setup: local Docker with `--memory=512m --memory-swap=512m --cpus=0.1`; 6 runs of 10 rounds, each round 5 chats plus one 10-page PDF upload; real Cloudflare Workers AI embeddings, a **stub LLM (no Groq)**, a local pgvector Postgres (no Supabase, no network delay to the database).
 - Result: max PSS 165.2 to 165.5 MB; plateau 165.1 to 165.5 MB; no out-of-memory kills; 360 of 360 requests ok.
 - Probably far below the 321 to 485 MB measured earlier with the local model because the ONNX model (about +230 MB at warm-up) is not loaded when embeddings are remote. That was not measured, and the two sets of numbers are different setups.
